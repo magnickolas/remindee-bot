@@ -131,7 +131,7 @@ fn get_active_reminders() -> Result<Vec<Reminder>> {
     Ok(reminders)
 }
 
-fn get_active_user_reminders(msg: &Message) -> Result<Vec<Reminder>> {
+fn get_pending_user_reminders(msg: &Message) -> Result<Vec<Reminder>> {
     let conn = get_db_connection()?;
     let mut stmt = conn.prepare(
         "select id, user_id, time, desc, sent
@@ -186,7 +186,7 @@ async fn run() {
                     UpdateKind::Message(msg) => match msg.text() {
                         Some(text) => match text {
                             "list" | "/list" => {
-                                let text = get_active_user_reminders(&msg)
+                                let text = get_pending_user_reminders(&msg)
                                     .map(|v| {
                                         vec!["List of reminders:".to_string()]
                                             .into_iter()
