@@ -31,8 +31,17 @@ async fn reminders_pooling(bot: &Bot) {
     loop {
         let reminders = db::get_active_reminders().unwrap();
         for reminder in reminders {
-            tg::send_message(&reminder.to_string(), &bot, reminder.user_id).await;
-            db::mark_reminder_as_sent(&reminder).unwrap()
+            tg::send_message(&reminder.to_string(), &bot, reminder.user_id)
+                .await
+                .map_err(|err| {
+                    dbg!(err);
+                })
+                .and_then(|_| {
+                    db::mark_reminder_as_sent(&reminder).map_err(|err| {
+                        dbg!(err);
+                    })
+                })
+                .unwrap_or_default();
         }
         task::sleep(Duration::from_secs(1)).await;
     }
@@ -70,7 +79,13 @@ async fn run() {
                                     .unwrap_or(
                                         "Error occured while querying reminders...".to_string(),
                                     );
-                                tg::send_message(&text, &bot, msg.chat_id()).await
+                                tg::send_message(&text, &bot, msg.chat_id())
+                                    .await
+                                    .unwrap_or_else({
+                                        |err| {
+                                            dbg!(err);
+                                        }
+                                    });
                             }
                             text => match tg::parse_req(text, &msg) {
                                 Some(reminder) => {
@@ -82,6 +97,11 @@ async fn run() {
                                             msg.chat_id(),
                                         )
                                         .await
+                                        .unwrap_or_else({
+                                            |err| {
+                                                dbg!(err);
+                                            }
+                                        });
                                     }
                                     res.unwrap_or_else({
                                         |err| {
@@ -97,6 +117,11 @@ async fn run() {
                                             msg.chat_id(),
                                         )
                                         .await
+                                        .unwrap_or_else({
+                                            |err| {
+                                                dbg!(err);
+                                            }
+                                        });
                                     }
                                     _ => {}
                                 },

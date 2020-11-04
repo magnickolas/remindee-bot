@@ -4,18 +4,14 @@ use chrono::offset::{FixedOffset, TimeZone};
 use chrono::Utc;
 use regex::Regex;
 use teloxide::prelude::*;
-use teloxide::types::Message;
 use teloxide::types::ParseMode::MarkdownV2;
 
-pub async fn send_message(text: &String, bot: &Bot, user_id: i64) {
+pub async fn send_message(text: &String, bot: &Bot, user_id: i64) -> Result<(), RequestError> {
     bot.send_message(user_id, text)
         .parse_mode(MarkdownV2)
         .send()
         .await
         .map(|_| ())
-        .unwrap_or_else(|err| {
-            dbg!(err);
-        })
 }
 
 pub fn parse_req(s: &str, msg: &Message) -> Option<db::Reminder> {
