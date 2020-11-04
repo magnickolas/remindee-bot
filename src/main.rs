@@ -5,27 +5,12 @@ mod db;
 mod tg;
 
 use async_std::task;
-use chrono::offset::FixedOffset;
-use chrono::prelude::*;
 use std::time::Duration;
 use teloxide::dispatching::update_listeners::polling_default;
 use teloxide::prelude::*;
 use teloxide::types::UpdateKind;
-use teloxide::utils::markdown::{bold, escape};
+use tg::TgResponse;
 use tokio::runtime::Handle;
-
-impl ToString for db::Reminder {
-    fn to_string(&self) -> String {
-        //TODO remove fixed offset
-        let time = FixedOffset::east(3 * 3600).from_utc_datetime(&self.time.naive_utc());
-        format!("{:02}", time.hour())
-            + ":"
-            + &format!("{:02}", time.minute())
-            + &escape(" <")
-            + &bold(&escape(&self.desc))
-            + &escape(">")
-    }
-}
 
 async fn reminders_pooling(bot: &Bot) {
     loop {
@@ -70,15 +55,13 @@ async fn run() {
                             "list" | "/list" => {
                                 let text = db::get_pending_user_reminders(&msg)
                                     .map(|v| {
-                                        vec!["List of reminders:".to_string()]
+                                        vec![TgResponse::RemindersListHeader.text()]
                                             .into_iter()
                                             .chain(v.into_iter().map(|x| x.to_string()))
                                             .collect::<Vec<String>>()
                                             .join("\n")
                                     })
-                                    .unwrap_or(
-                                        "Error occured while querying reminders...".to_string(),
-                                    );
+                                    .unwrap_or(TgResponse::QueryingError.text());
                                 tg::send_message(&text, &bot, msg.chat_id())
                                     .await
                                     .unwrap_or_else({
@@ -92,7 +75,7 @@ async fn run() {
                                     let res = db::insert_reminder(&reminder);
                                     if res.is_ok() {
                                         tg::send_message(
-                                            &escape("Remember that!"),
+                                            &TgResponse::SuccessInsert.text(),
                                             &bot,
                                             msg.chat_id(),
                                         )
@@ -112,7 +95,7 @@ async fn run() {
                                 None => match msg.from() {
                                     Some(user) if user.id as i64 == msg.chat_id() => {
                                         tg::send_message(
-                                            &escape("Incorrect request!"),
+                                            &TgResponse::IncorrectRequest.text(),
                                             &bot,
                                             msg.chat_id(),
                                         )

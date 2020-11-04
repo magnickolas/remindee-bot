@@ -1,10 +1,44 @@
 use crate::db;
 
 use chrono::offset::{FixedOffset, TimeZone};
+use chrono::prelude::*;
 use chrono::Utc;
 use regex::Regex;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode::MarkdownV2;
+use teloxide::utils::markdown::{bold, escape};
+
+pub enum TgResponse {
+    SuccessInsert,
+    IncorrectRequest,
+    QueryingError,
+    RemindersListHeader,
+}
+
+impl TgResponse {
+    pub fn text(self) -> String {
+        let raw_text = match self {
+            TgResponse::SuccessInsert => "Remember that!",
+            TgResponse::IncorrectRequest => "Incorrect request!",
+            TgResponse::QueryingError => "Error occured while querying reminders...",
+            TgResponse::RemindersListHeader => "List of reminders:",
+        };
+        escape(raw_text)
+    }
+}
+
+impl ToString for db::Reminder {
+    fn to_string(&self) -> String {
+        //TODO remove fixed offset
+        let time = FixedOffset::east(3 * 3600).from_utc_datetime(&self.time.naive_utc());
+        format!("{:02}", time.hour())
+            + ":"
+            + &format!("{:02}", time.minute())
+            + &escape(" <")
+            + &bold(&escape(&self.desc))
+            + &escape(">")
+    }
+}
 
 pub async fn send_message(text: &String, bot: &Bot, user_id: i64) -> Result<(), RequestError> {
     bot.send_message(user_id, text)
