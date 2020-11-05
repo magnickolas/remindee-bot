@@ -122,24 +122,20 @@ async fn run() {
                                     });
                             }
                             "mytz" | "/mytz" | "mytimezone" | "/mytimezone" => {
-                                match db::get_user_timezone_name(msg.chat_id()) {
-                                    Ok(tz_name) => {
-                                        tg::send_message(
-                                            &TgResponse::ChosenTimezone(tz_name).text(),
-                                            &bot,
-                                            msg.chat_id(),
-                                        )
-                                        .await
-                                        .unwrap_or_else({
-                                            |err| {
-                                                dbg!(err);
-                                            }
-                                        });
-                                    }
+                                let response = match db::get_user_timezone_name(msg.chat_id()) {
+                                    Ok(tz_name) => TgResponse::ChosenTimezone(tz_name),
                                     Err(err) => {
                                         dbg!(err);
+                                        TgResponse::NoChosenTimezone
                                     }
-                                }
+                                };
+                                tg::send_message(&response.text(), &bot, msg.chat_id())
+                                    .await
+                                    .unwrap_or_else({
+                                        |err| {
+                                            dbg!(err);
+                                        }
+                                    });
                             }
                             text => match tg::parse_req(text, &msg) {
                                 Some(reminder) => {

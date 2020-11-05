@@ -17,6 +17,7 @@ pub enum TgResponse {
     RemindersListHeader,
     SelectTimezone,
     ChosenTimezone(String),
+    NoChosenTimezone,
     FailedSetTimezone(String),
     FailedGetTimezone,
 }
@@ -31,6 +32,7 @@ impl TgResponse {
             TgResponse::RemindersListHeader => "List of reminders:".to_string(),
             TgResponse::SelectTimezone => "Select your timezone:".to_string(),
             TgResponse::ChosenTimezone(tz_name) => format!("Selected timezone {}", tz_name),
+            TgResponse::NoChosenTimezone => "You've not selected timezone yet".to_string(),
             TgResponse::FailedSetTimezone(tz_name) => format!("Failed to set timezone {}", tz_name),
             TgResponse::FailedGetTimezone => format!("Failed to get timezone for reminder"),
         };
