@@ -74,8 +74,8 @@ pub fn get_pending_user_reminders(msg: &Message) -> Result<Vec<Reminder>> {
     let conn = get_db_connection()?;
     let mut stmt = conn.prepare(
         "select id, user_id, time, desc, sent
-            from reminder
-            where user_id=?1 and datetime(time) >= datetime('now')",
+        from reminder
+        where user_id=?1 and datetime(time) >= datetime('now')",
     )?;
     let rows = stmt.query_map(params![msg.chat_id()], |row| {
         Ok(Reminder {
@@ -91,4 +91,37 @@ pub fn get_pending_user_reminders(msg: &Message) -> Result<Vec<Reminder>> {
         reminders.push(reminder?);
     }
     Ok(reminders)
+}
+
+pub fn create_user_timezone_table() -> Result<()> {
+    let conn = get_db_connection()?;
+    conn.execute(
+        "create table if not exists user_timezone (
+             user_id    integer primary key,
+             timezone   text not null
+        )",
+        params![],
+    )?;
+    Ok(())
+}
+
+pub fn get_user_timezone_name(user_id: i64) -> Result<String> {
+    let conn = get_db_connection()?;
+    let mut stmt = conn.prepare(
+        "select timezone
+        from user_timezone
+        where user_id=?1",
+    )?;
+    let row = stmt.query_row(params![user_id], |row| Ok(row.get("timezone")?))?;
+    Ok(row)
+}
+
+pub fn set_user_timezone_name(user_id: i64, timezone: &str) -> Result<()> {
+    let conn = get_db_connection()?;
+    conn.execute(
+        "insert or replace into user_timezone (user_id, timezone)
+        values (?1, ?2)",
+        params![user_id, timezone],
+    )?;
+    Ok(())
 }

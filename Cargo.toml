@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 async-std = "1.6.5"
 chrono = "0.4"
+chrono-tz = "0.5.3"
 directories = "1.0.1"
 lazy_static = "1.4.0"
 regex = "1"
