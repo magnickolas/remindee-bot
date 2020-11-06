@@ -94,13 +94,13 @@ async fn run() {
                             "list" | "/list" => {
                                 let text = db::get_pending_user_reminders(&msg)
                                     .map(|v| {
-                                        vec![TgResponse::RemindersListHeader.text()]
+                                        vec![TgResponse::RemindersListHeader.to_string()]
                                             .into_iter()
                                             .chain(v.into_iter().map(|x| x.to_string()))
                                             .collect::<Vec<String>>()
                                             .join("\n")
                                     })
-                                    .unwrap_or(TgResponse::QueryingError.text());
+                                    .unwrap_or(TgResponse::QueryingError.to_string());
                                 tg::send_message(&text, &bot, msg.chat_id())
                                     .await
                                     .unwrap_or_else({
@@ -110,16 +110,19 @@ async fn run() {
                                     });
                             }
                             "tz" | "/tz" | "timezone" | "/timezone" => {
-                                bot.send_message(msg.chat_id(), TgResponse::SelectTimezone.text())
-                                    .reply_markup(get_markup_for_page_idx(0))
-                                    .send()
-                                    .await
-                                    .map(|_| ())
-                                    .unwrap_or_else({
-                                        |err| {
-                                            dbg!(err);
-                                        }
-                                    });
+                                bot.send_message(
+                                    msg.chat_id(),
+                                    TgResponse::SelectTimezone.to_string(),
+                                )
+                                .reply_markup(get_markup_for_page_idx(0))
+                                .send()
+                                .await
+                                .map(|_| ())
+                                .unwrap_or_else({
+                                    |err| {
+                                        dbg!(err);
+                                    }
+                                });
                             }
                             "mytz" | "/mytz" | "mytimezone" | "/mytimezone" => {
                                 let response = match db::get_user_timezone_name(msg.chat_id()) {
@@ -129,7 +132,7 @@ async fn run() {
                                         TgResponse::NoChosenTimezone
                                     }
                                 };
-                                tg::send_message(&response.text(), &bot, msg.chat_id())
+                                tg::send_message(&response.to_string(), &bot, msg.chat_id())
                                     .await
                                     .unwrap_or_else({
                                         |err| {
@@ -147,7 +150,7 @@ async fn run() {
                                         }
                                     };
 
-                                    tg::send_message(&response.text(), &bot, msg.chat_id())
+                                    tg::send_message(&response.to_string(), &bot, msg.chat_id())
                                         .await
                                         .unwrap_or_else({
                                             |err| {
@@ -158,7 +161,7 @@ async fn run() {
                                 None => match msg.from() {
                                     Some(user) if user.id as i64 == msg.chat_id() => {
                                         tg::send_message(
-                                            &TgResponse::IncorrectRequest.text(),
+                                            &TgResponse::IncorrectRequest.to_string(),
                                             &bot,
                                             msg.chat_id(),
                                         )
@@ -204,7 +207,7 @@ async fn run() {
                                                 TgResponse::FailedSetTimezone(tz_name.to_string())
                                             }
                                         };
-                                    tg::send_message(&response.text(), &bot, msg.chat_id())
+                                    tg::send_message(&response.to_string(), &bot, msg.chat_id())
                                         .await
                                         .unwrap_or_else({
                                             |err| {

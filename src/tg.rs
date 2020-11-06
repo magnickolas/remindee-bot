@@ -22,8 +22,8 @@ pub enum TgResponse {
     FailedGetTimezone,
 }
 
-impl TgResponse {
-    pub fn text(self) -> String {
+impl ToString for TgResponse {
+    fn to_string(&self) -> String {
         let raw_text: String = match self {
             TgResponse::SuccessInsert => "Remember that!".to_string(),
             TgResponse::FailedInsert => "Failed to create a reminder...".to_string(),
@@ -40,6 +40,17 @@ impl TgResponse {
     }
 }
 
+#[non_exhaustive]
+struct ReminderRegexFields;
+
+impl ReminderRegexFields {
+    const DAY: &'static str = "day";
+    const MONTH: &'static str = "month";
+    const HOUR: &'static str = "hour";
+    const MINUTE: &'static str = "minute";
+    const DESCRIPTION: &'static str = "description";
+}
+
 impl ToString for db::Reminder {
     fn to_string(&self) -> String {
         match tz::get_user_timezone(self.user_id) {
@@ -52,7 +63,7 @@ impl ToString for db::Reminder {
                     + &bold(&escape(&self.desc))
                     + &escape(">")
             }
-            _ => TgResponse::FailedGetTimezone.text(),
+            _ => TgResponse::FailedGetTimezone.to_string(),
         }
     }
 }
@@ -67,24 +78,46 @@ pub async fn send_message(text: &String, bot: &Bot, user_id: i64) -> Result<(), 
 
 pub fn parse_req(s: &str, msg: &Message) -> Option<db::Reminder> {
     lazy_static! {
-        static ref RE: Regex =
-            Regex::new(r"^(?P<hour>\d{1,2}):(?P<minutes>\d{2})\s*(?P<desc>.*?)\s*$").unwrap();
+        static ref RE: Regex = Regex::new(&format!(
+                r"^\s*((?P<{}>\d{{1,2}})(\.(?P<{}>\d{{2}}))?\s+)?(?P<{}>\d{{1,2}}):(?P<{}>\d{{2}})\s*(?P<{}>.*?)\s*$",
+            ReminderRegexFields::DAY,
+            ReminderRegexFields::MONTH,
+            ReminderRegexFields::HOUR,
+            ReminderRegexFields::MINUTE,
+            ReminderRegexFields::DESCRIPTION
+        ))
+        .unwrap();
     }
     match tz::get_user_timezone(msg.chat_id()) {
-        Ok(user_timezone) => RE.captures(s).map(|caps| {
+        Ok(user_timezone) => RE.captures(s).and_then(|caps| {
             let now = user_timezone.from_utc_datetime(&Utc::now().naive_utc());
-            let time = now.date().and_hms(
-                caps["hour"].to_string().parse().unwrap(),
-                caps["minutes"].to_string().parse().unwrap(),
-                0,
-            );
-            db::Reminder {
+            let get_field_by_name_or = |name, default: u32| {
+                caps.name(name)
+                    .and_then(|x| x.as_str().parse().ok())
+                    .unwrap_or(default)
+            };
+            let day = get_field_by_name_or(ReminderRegexFields::DAY, now.day());
+            let month = get_field_by_name_or(ReminderRegexFields::MONTH, now.month());
+            let hour = get_field_by_name_or(ReminderRegexFields::HOUR, now.hour());
+            let minute = get_field_by_name_or(ReminderRegexFields::MINUTE, now.minute());
+
+            if !((0..=23).contains(&hour) && (0..=60).contains(&minute)) {
+                return None;
+            }
+
+            let time = now
+                .date()
+                .with_day(day)
+                .and_then(|x| x.with_month(month))
+                .unwrap_or(now.date())
+                .and_hms(hour, minute, 0);
+            Some(db::Reminder {
                 id: 0,
                 user_id: msg.chat_id(),
                 time: time.with_timezone(&Utc),
-                desc: caps["desc"].to_string(),
+                desc: caps[ReminderRegexFields::DESCRIPTION].to_string(),
                 sent: false,
-            }
+            })
         }),
         _ => None,
     }
