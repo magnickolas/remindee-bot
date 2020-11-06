@@ -88,7 +88,7 @@ pub async fn send_message(text: &String, bot: &Bot, user_id: i64) -> Result<(), 
 pub fn parse_req(s: &str, msg: &Message) -> Option<db::Reminder> {
     lazy_static! {
         static ref RE: Regex = Regex::new(&format!(
-                r"^\s*((?P<{}>\d{{1,2}})(\.(?P<{}>\d{{2}}))?\s+)?(?P<{}>\d{{1,2}}):(?P<{}>\d{{2}})\s*(?P<{}>.*?)\s*$",
+            r"^\s*((?P<{}>\d{{1,2}})(\.(?P<{}>\d{{2}}))?\s+)?(?P<{}>\d{{1,2}}):(?P<{}>\d{{2}})\s*(?P<{}>.*?)\s*$",
             ReminderRegexFields::DAY,
             ReminderRegexFields::MONTH,
             ReminderRegexFields::HOUR,
@@ -110,7 +110,7 @@ pub fn parse_req(s: &str, msg: &Message) -> Option<db::Reminder> {
             let hour = get_field_by_name_or(ReminderRegexFields::HOUR, now.hour());
             let minute = get_field_by_name_or(ReminderRegexFields::MINUTE, now.minute());
 
-            if !((0..=23).contains(&hour) && (0..=60).contains(&minute)) {
+            if !((0..24).contains(&hour) && (0..60).contains(&minute)) {
                 return None;
             }
 
