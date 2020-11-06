@@ -160,8 +160,14 @@ async fn run() {
                                 }
                                 None => match msg.from() {
                                     Some(user) if user.id as i64 == msg.chat_id() => {
+                                        let response =
+                                            if tz::get_user_timezone(msg.chat_id()).is_err() {
+                                                TgResponse::NoChosenTimezone
+                                            } else {
+                                                TgResponse::IncorrectRequest
+                                            };
                                         tg::send_message(
-                                            &TgResponse::IncorrectRequest.to_string(),
+                                            &response.to_string(),
                                             &bot,
                                             msg.chat_id(),
                                         )
