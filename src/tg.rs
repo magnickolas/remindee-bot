@@ -56,7 +56,16 @@ impl ToString for db::Reminder {
         match tz::get_user_timezone(self.user_id) {
             Ok(user_timezone) => {
                 let time = user_timezone.from_utc_datetime(&self.time.naive_utc());
-                format!("{:02}", time.hour())
+                let now = Utc::now().with_timezone(&user_timezone);
+                let mut s = String::new();
+                if time.date() != now.date() {
+                    s = s
+                        + &format!("{:02}", time.day())
+                        + &escape(".")
+                        + &format!("{:02}", time.month())
+                        + " ";
+                }
+                s + &format!("{:02}", time.hour())
                     + ":"
                     + &format!("{:02}", time.minute())
                     + &escape(" <")
