@@ -260,6 +260,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
 
 [[package]]
+name = "cron-parser"
+version = "0.7.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8446d1ce86096fd2260e732c6f5dffc752cbfa6cb14371d057bc1de3a1831b6"
+dependencies = [
+ "chrono",
+]
+
+[[package]]
 name = "crossbeam-utils"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1191,6 +1200,7 @@ dependencies = [
  "async-std",
  "chrono",
  "chrono-tz",
+ "cron-parser",
  "directories",
  "lazy_static",
  "log",

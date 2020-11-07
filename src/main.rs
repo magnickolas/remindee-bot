@@ -6,6 +6,8 @@ mod tg;
 mod tz;
 
 use async_std::task;
+use chrono::Utc;
+use cron_parser::parse as parse_cron;
 use std::time::Duration;
 use teloxide::dispatching::update_listeners::polling_default;
 use teloxide::prelude::*;
@@ -24,6 +26,36 @@ async fn reminders_pooling(bot: &Bot) {
                 Ok(_) => db::mark_reminder_as_sent(&reminder).unwrap_or_else(|err| {
                     dbg!(err);
                 }),
+                Err(err) => {
+                    dbg!(err);
+                }
+            }
+        }
+        let cron_reminders = db::get_active_cron_reminders().unwrap();
+        for cron_reminder in cron_reminders {
+            match tg::send_message(&cron_reminder.to_string(), &bot, cron_reminder.user_id).await {
+                Ok(_) => {
+                    db::mark_cron_reminder_as_sent(&cron_reminder).unwrap_or_else(|err| {
+                        dbg!(err);
+                    });
+                    if let Ok(new_time) =
+                        tz::get_user_timezone(cron_reminder.user_id).and_then(|timezone| {
+                            parse_cron(
+                                &cron_reminder.cron_expr,
+                                &Utc::now().with_timezone(&timezone),
+                            )
+                            .map_err(|err| err.into())
+                        })
+                    {
+                        let new_cron_reminder = db::CronReminder {
+                            time: new_time.with_timezone(&Utc),
+                            ..cron_reminder
+                        };
+                        db::insert_cron_reminder(&new_cron_reminder).unwrap_or_else(|err| {
+                            dbg!(err);
+                        });
+                    }
+                }
                 Err(err) => {
                     dbg!(err);
                 }
@@ -78,6 +110,7 @@ async fn run() {
     let updater = polling_default(bot.clone());
 
     db::create_reminder_table().unwrap();
+    db::create_cron_reminder_table().unwrap();
     db::create_user_timezone_table().unwrap();
 
     let handle = Handle::current();
@@ -92,9 +125,18 @@ async fn run() {
                     UpdateKind::Message(msg) => match msg.text() {
                         Some(text) => match text {
                             "list" | "/list" => {
-                                let text = db::get_pending_user_reminders(&msg)
+                                let mut text = db::get_pending_user_reminders(&msg)
                                     .map(|v| {
                                         vec![TgResponse::RemindersListHeader.to_string()]
+                                            .into_iter()
+                                            .chain(v.into_iter().map(|x| x.to_string()))
+                                            .collect::<Vec<String>>()
+                                            .join("\n")
+                                    })
+                                    .unwrap_or(TgResponse::QueryingError.to_string());
+                                text = db::get_pending_user_cron_reminders(&msg)
+                                    .map(|v| {
+                                        vec![text]
                                             .into_iter()
                                             .chain(v.into_iter().map(|x| x.to_string()))
                                             .collect::<Vec<String>>()
@@ -140,8 +182,8 @@ async fn run() {
                                         }
                                     });
                             }
-                            text => match tg::parse_req(text, &msg) {
-                                Some(reminder) => {
+                            text => {
+                                if let Some(reminder) = tg::parse_req(text, &msg) {
                                     let response = match db::insert_reminder(&reminder) {
                                         Ok(_) => TgResponse::SuccessInsert,
                                         Err(err) => {
@@ -157,30 +199,69 @@ async fn run() {
                                                 dbg!(err);
                                             }
                                         });
-                                }
-                                None => match msg.from() {
-                                    Some(user) if user.id as i64 == msg.chat_id() => {
-                                        let response =
-                                            if tz::get_user_timezone(msg.chat_id()).is_err() {
-                                                TgResponse::NoChosenTimezone
-                                            } else {
-                                                TgResponse::IncorrectRequest
-                                            };
-                                        tg::send_message(
-                                            &response.to_string(),
-                                            &bot,
-                                            msg.chat_id(),
-                                        )
+                                } else if let Ok((cron_expr, time)) = {
+                                    let cron_expr = text
+                                        .split_whitespace()
+                                        .take(5)
+                                        .collect::<Vec<_>>()
+                                        .join(" ");
+                                    tz::get_user_timezone(msg.chat_id()).and_then(|timezone| {
+                                        parse_cron(&cron_expr, &Utc::now().with_timezone(&timezone))
+                                            .map_err(|err| err.into())
+                                            .map(|time| (cron_expr, time))
+                                    })
+                                } {
+                                    let response =
+                                        match db::insert_cron_reminder(&db::CronReminder {
+                                            id: 0,
+                                            user_id: msg.chat_id(),
+                                            cron_expr: cron_expr.clone(),
+                                            time: time.with_timezone(&Utc),
+                                            desc: text
+                                                .strip_prefix(&(cron_expr.to_string() + " "))
+                                                .unwrap_or("")
+                                                .to_string(),
+                                            sent: false,
+                                        }) {
+                                            Ok(_) => TgResponse::SuccessInsert,
+                                            Err(err) => {
+                                                dbg!(err);
+                                                TgResponse::FailedInsert
+                                            }
+                                        };
+
+                                    tg::send_message(&response.to_string(), &bot, msg.chat_id())
                                         .await
                                         .unwrap_or_else({
                                             |err| {
                                                 dbg!(err);
                                             }
                                         });
+                                } else {
+                                    match msg.from() {
+                                        Some(user) if user.id as i64 == msg.chat_id() => {
+                                            let response =
+                                                if tz::get_user_timezone(msg.chat_id()).is_err() {
+                                                    TgResponse::NoChosenTimezone
+                                                } else {
+                                                    TgResponse::IncorrectRequest
+                                                };
+                                            tg::send_message(
+                                                &response.to_string(),
+                                                &bot,
+                                                msg.chat_id(),
+                                            )
+                                            .await
+                                            .unwrap_or_else({
+                                                |err| {
+                                                    dbg!(err);
+                                                }
+                                            });
+                                        }
+                                        _ => {}
                                     }
-                                    _ => {}
-                                },
-                            },
+                                }
+                            }
                         },
                         None => {}
                     },
@@ -223,7 +304,6 @@ async fn run() {
                                 }
                             }
                         }
-                        dbg!("{}", &cb_query.data);
                     }
                     _ => {}
                 },

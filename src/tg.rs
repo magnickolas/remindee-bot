@@ -25,16 +25,16 @@ pub enum TgResponse {
 impl ToString for TgResponse {
     fn to_string(&self) -> String {
         let raw_text: String = match self {
-            TgResponse::SuccessInsert => "Remember that!".to_string(),
-            TgResponse::FailedInsert => "Failed to create a reminder...".to_string(),
-            TgResponse::IncorrectRequest => "Incorrect request!".to_string(),
-            TgResponse::QueryingError => "Error occured while querying reminders...".to_string(),
-            TgResponse::RemindersListHeader => "List of reminders:".to_string(),
-            TgResponse::SelectTimezone => "Select your timezone:".to_string(),
-            TgResponse::ChosenTimezone(tz_name) => format!("Selected timezone {}", tz_name),
-            TgResponse::NoChosenTimezone => "You've not selected timezone yet".to_string(),
-            TgResponse::FailedSetTimezone(tz_name) => format!("Failed to set timezone {}", tz_name),
-            TgResponse::FailedGetTimezone => format!("Failed to get timezone for reminder"),
+            Self::SuccessInsert => "Remember that!".to_string(),
+            Self::FailedInsert => "Failed to create a reminder...".to_string(),
+            Self::IncorrectRequest => "Incorrect request!".to_string(),
+            Self::QueryingError => "Error occured while querying reminders...".to_string(),
+            Self::RemindersListHeader => "List of reminders:".to_string(),
+            Self::SelectTimezone => "Select your timezone:".to_string(),
+            Self::ChosenTimezone(tz_name) => format!("Selected timezone {}", tz_name),
+            Self::NoChosenTimezone => "You've not selected timezone yet".to_string(),
+            Self::FailedSetTimezone(tz_name) => format!("Failed to set timezone {}", tz_name),
+            Self::FailedGetTimezone => format!("Failed to get timezone for reminder"),
         };
         escape(&raw_text)
     }
@@ -77,6 +77,34 @@ impl ToString for db::Reminder {
     }
 }
 
+impl ToString for db::CronReminder {
+    fn to_string(&self) -> String {
+        match tz::get_user_timezone(self.user_id) {
+            Ok(user_timezone) => {
+                let time = user_timezone.from_utc_datetime(&self.time.naive_utc());
+                let now = Utc::now().with_timezone(&user_timezone);
+                let mut s = String::new();
+                if time.date() != now.date() {
+                    s = s
+                        + &format!("{:02}", time.day())
+                        + &escape(".")
+                        + &format!("{:02}", time.month())
+                        + " ";
+                }
+                s + &format!("{:02}", time.hour())
+                    + ":"
+                    + &format!("{:02}", time.minute())
+                    + &escape(" <")
+                    + &bold(&escape(&self.desc))
+                    + &escape("> [")
+                    + &escape(&self.cron_expr)
+                    + &escape("]")
+            }
+            _ => TgResponse::FailedGetTimezone.to_string(),
+        }
+    }
+}
+
 pub async fn send_message(text: &String, bot: &Bot, user_id: i64) -> Result<(), RequestError> {
     bot.send_message(user_id, text)
         .parse_mode(MarkdownV2)
@@ -100,7 +128,7 @@ pub fn parse_req(s: &str, msg: &Message) -> Option<db::Reminder> {
     match tz::get_user_timezone(msg.chat_id()) {
         Ok(user_timezone) => RE.captures(s).and_then(|caps| {
             let now = user_timezone.from_utc_datetime(&Utc::now().naive_utc());
-            let get_field_by_name_or = |name, default: u32| {
+            let get_field_by_name_or = |name, default| {
                 caps.name(name)
                     .and_then(|x| x.as_str().parse().ok())
                     .unwrap_or(default)
