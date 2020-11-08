@@ -1,7 +1,7 @@
 use crate::db;
+use crate::err;
 
 use chrono_tz::Tz;
-use std::error;
 
 pub fn get_tz_names() -> Vec<&'static str> {
     vec![
@@ -364,8 +364,7 @@ pub fn get_tz_names_for_page_idx(num: usize) -> Option<Vec<&'static str>> {
         .map(|v| v.to_vec())
 }
 
-pub fn get_user_timezone(user_id: i64) -> Result<Tz, Box<dyn error::Error>> {
-    db::get_user_timezone_name(user_id)?
-        .parse::<Tz>()
-        .map_err(|err| err.into())
+pub fn get_user_timezone(user_id: i64) -> Result<Tz, err::Error> {
+    let tz_name = db::get_user_timezone_name(user_id).map_err(err::Error::Database)?;
+    tz_name.parse::<Tz>().map_err(err::Error::Parse)
 }

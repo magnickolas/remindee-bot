@@ -2,13 +2,13 @@
 extern crate lazy_static;
 
 mod db;
+mod err;
 mod tg;
 mod tz;
 
 use async_std::task;
 use chrono::Utc;
 use cron_parser::parse as parse_cron;
-use std::error;
 use std::panic;
 use std::time::Duration;
 use teloxide::dispatching::update_listeners::polling_default;
@@ -40,22 +40,30 @@ async fn reminders_pooling(bot: &Bot) {
                     db::mark_cron_reminder_as_sent(&cron_reminder).unwrap_or_else(|err| {
                         dbg!(err);
                     });
-                    if let Ok(new_time) =
+                    let new_time =
                         tz::get_user_timezone(cron_reminder.user_id).and_then(|timezone| {
-                            parse_cron(
-                                &cron_reminder.cron_expr,
-                                &Utc::now().with_timezone(&timezone),
-                            )
-                            .map_err(|err| err.into())
-                        })
-                    {
-                        let new_cron_reminder = db::CronReminder {
-                            time: new_time.with_timezone(&Utc),
-                            ..cron_reminder
-                        };
-                        db::insert_cron_reminder(&new_cron_reminder).unwrap_or_else(|err| {
-                            dbg!(err);
+                            panic::catch_unwind(|| {
+                                parse_cron(
+                                    &cron_reminder.cron_expr,
+                                    &Utc::now().with_timezone(&timezone),
+                                )
+                                .map_err(err::Error::CronParse)
+                            })
+                            .unwrap_or(Err(err::Error::CronPanic))
                         });
+                    match new_time {
+                        Ok(new_time) => {
+                            let new_cron_reminder = db::CronReminder {
+                                time: new_time.with_timezone(&Utc),
+                                ..cron_reminder
+                            };
+                            db::insert_cron_reminder(&new_cron_reminder).unwrap_or_else(|err| {
+                                dbg!(err);
+                            });
+                        }
+                        Err(err) => {
+                            dbg!(err);
+                        }
                     }
                 }
                 Err(err) => {
@@ -208,15 +216,15 @@ async fn run() {
                                         .collect::<Vec<_>>()
                                         .join(" ");
                                     tz::get_user_timezone(msg.chat_id()).and_then(|timezone| {
-                                        panic::catch_unwind(|| {
+                                        let time = panic::catch_unwind(|| {
                                             parse_cron(
                                                 &cron_expr,
                                                 &Utc::now().with_timezone(&timezone),
                                             )
-                                            .map_err(|err| err.into())
-                                            .map(|time| (cron_expr, time))
+                                            .map_err(err::Error::CronParse)
                                         })
-                                        .unwrap_or(Err(dbg!("Cron parser failed").into()))
+                                        .unwrap_or(Err(err::Error::CronPanic))?;
+                                        Ok((cron_expr, time))
                                     })
                                 } {
                                     let response =
