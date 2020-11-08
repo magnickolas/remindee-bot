@@ -8,6 +8,8 @@ mod tz;
 use async_std::task;
 use chrono::Utc;
 use cron_parser::parse as parse_cron;
+use std::error;
+use std::panic;
 use std::time::Duration;
 use teloxide::dispatching::update_listeners::polling_default;
 use teloxide::prelude::*;
@@ -206,9 +208,15 @@ async fn run() {
                                         .collect::<Vec<_>>()
                                         .join(" ");
                                     tz::get_user_timezone(msg.chat_id()).and_then(|timezone| {
-                                        parse_cron(&cron_expr, &Utc::now().with_timezone(&timezone))
+                                        panic::catch_unwind(|| {
+                                            parse_cron(
+                                                &cron_expr,
+                                                &Utc::now().with_timezone(&timezone),
+                                            )
                                             .map_err(|err| err.into())
                                             .map(|time| (cron_expr, time))
+                                        })
+                                        .unwrap_or(Err(dbg!("Cron parser failed").into()))
                                     })
                                 } {
                                     let response =
