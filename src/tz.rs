@@ -365,6 +365,6 @@ pub fn get_tz_names_for_page_idx(num: usize) -> Option<Vec<&'static str>> {
 }
 
 pub fn get_user_timezone(user_id: i64) -> Result<Tz, err::Error> {
-    let tz_name = db::get_user_timezone_name(user_id).map_err(err::Error::Database)?;
+    let tz_name = db::get_user_timezone_name(user_id)?;
     tz_name.parse::<Tz>().map_err(err::Error::Parse)
 }

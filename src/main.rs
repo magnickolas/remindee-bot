@@ -47,7 +47,7 @@ async fn reminders_pooling(bot: &Bot) {
                                     &cron_reminder.cron_expr,
                                     &Utc::now().with_timezone(&timezone),
                                 )
-                                .map_err(err::Error::CronParse)
+                                .map_err(From::from)
                             })
                             .unwrap_or(Err(err::Error::CronPanic))
                         });
@@ -221,7 +221,7 @@ async fn run() {
                                                 &cron_expr,
                                                 &Utc::now().with_timezone(&timezone),
                                             )
-                                            .map_err(err::Error::CronParse)
+                                            .map_err(From::from)
                                         })
                                         .unwrap_or(Err(err::Error::CronPanic))?;
                                         Ok((cron_expr, time))

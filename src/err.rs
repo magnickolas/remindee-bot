@@ -18,3 +18,15 @@ impl fmt::Display for Error {
         }
     }
 }
+
+impl From<rusqlite::Error> for Error {
+    fn from(err: rusqlite::Error) -> Self {
+        Self::Database(err)
+    }
+}
+
+impl From<cron_parser::ParseError> for Error {
+    fn from(err: cron_parser::ParseError) -> Self {
+        Self::CronParse(err)
+    }
+}
