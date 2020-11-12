@@ -47,6 +47,7 @@ async fn reminders_pooling(bot: &Bot) {
                                     &cron_reminder.cron_expr,
                                     &Utc::now().with_timezone(&timezone),
                                 )
+                                .map(|time| time.with_timezone(&Utc))
                                 .map_err(From::from)
                             })
                             .unwrap_or(Err(err::Error::CronPanic))
@@ -54,7 +55,7 @@ async fn reminders_pooling(bot: &Bot) {
                     match new_time {
                         Ok(new_time) => {
                             let new_cron_reminder = db::CronReminder {
-                                time: new_time.with_timezone(&Utc),
+                                time: new_time,
                                 ..cron_reminder
                             };
                             db::insert_cron_reminder(&new_cron_reminder).unwrap_or_else(|err| {
@@ -210,29 +211,28 @@ async fn run() {
                                             }
                                         });
                                 } else if let Ok((cron_expr, time)) = {
-                                    let cron_expr = text
-                                        .split_whitespace()
-                                        .take(5)
-                                        .collect::<Vec<_>>()
-                                        .join(" ");
-                                    tz::get_user_timezone(msg.chat_id()).and_then(|timezone| {
-                                        let time = panic::catch_unwind(|| {
-                                            parse_cron(
+                                    let cron_fields: Vec<&str> =
+                                        text.split_whitespace().take(5).collect();
+                                    if cron_fields.len() < 5 {
+                                        Err(err::Error::CronFewFields)
+                                    } else {
+                                        let cron_expr = cron_fields.join(" ");
+                                        tz::get_user_timezone(msg.chat_id()).and_then(|timezone| {
+                                            let time = parse_cron(
                                                 &cron_expr,
                                                 &Utc::now().with_timezone(&timezone),
-                                            )
-                                            .map_err(From::from)
+                                            )?
+                                            .with_timezone(&Utc);
+                                            Ok((cron_expr, time))
                                         })
-                                        .unwrap_or(Err(err::Error::CronPanic))?;
-                                        Ok((cron_expr, time))
-                                    })
+                                    }
                                 } {
                                     let response =
                                         match db::insert_cron_reminder(&db::CronReminder {
                                             id: 0,
                                             user_id: msg.chat_id(),
                                             cron_expr: cron_expr.clone(),
-                                            time: time.with_timezone(&Utc),
+                                            time,
                                             desc: text
                                                 .strip_prefix(&(cron_expr.to_string() + " "))
                                                 .unwrap_or("")

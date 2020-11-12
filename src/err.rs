@@ -5,6 +5,7 @@ pub enum Error {
     Database(rusqlite::Error),
     Parse(String),
     CronParse(cron_parser::ParseError),
+    CronFewFields,
     CronPanic,
 }
 
@@ -14,6 +15,7 @@ impl fmt::Display for Error {
             Self::Database(ref err) => write!(f, "Database error: {}", err),
             Self::Parse(ref err) => write!(f, "Parse error: {}", err),
             Self::CronParse(ref err) => write!(f, "Cron parse error: {}", err),
+            Self::CronFewFields => write!(f, "Can't parse cron since no enough fields"),
             Self::CronPanic => write!(f, "Cron parse error"),
         }
     }
