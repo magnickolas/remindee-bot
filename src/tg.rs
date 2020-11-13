@@ -48,6 +48,7 @@ impl ReminderRegexFields {
     const MONTH: &'static str = "month";
     const HOUR: &'static str = "hour";
     const MINUTE: &'static str = "minute";
+    const SECOND: &'static str = "second";
     const DESCRIPTION: &'static str = "description";
 }
 
@@ -116,11 +117,12 @@ pub async fn send_message(text: &String, bot: &Bot, user_id: i64) -> Result<(), 
 pub fn parse_req(s: &str, msg: &Message) -> Option<db::Reminder> {
     lazy_static! {
         static ref RE: Regex = Regex::new(&format!(
-            r"^\s*((?P<{}>\d{{1,2}})(\.(?P<{}>\d{{2}}))?\s+)?(?P<{}>\d{{1,2}}):(?P<{}>\d{{2}})\s*(?P<{}>.*?)\s*$",
+            r"^\s*((?P<{}>\d{{1,2}})(\.(?P<{}>\d{{2}}))?\s+)?(?P<{}>\d{{1,2}}):(?P<{}>\d{{2}})(:(?P<{}>\d{{2}}))?\s*(?P<{}>.*?)\s*$",
             ReminderRegexFields::DAY,
             ReminderRegexFields::MONTH,
             ReminderRegexFields::HOUR,
             ReminderRegexFields::MINUTE,
+            ReminderRegexFields::SECOND,
             ReminderRegexFields::DESCRIPTION
         ))
         .unwrap();
@@ -137,6 +139,7 @@ pub fn parse_req(s: &str, msg: &Message) -> Option<db::Reminder> {
             let month = get_field_by_name_or(ReminderRegexFields::MONTH, now.month());
             let hour = get_field_by_name_or(ReminderRegexFields::HOUR, now.hour());
             let minute = get_field_by_name_or(ReminderRegexFields::MINUTE, now.minute());
+            let second = get_field_by_name_or(ReminderRegexFields::SECOND, now.minute());
 
             if !((0..24).contains(&hour) && (0..60).contains(&minute)) {
                 return None;
@@ -147,7 +150,7 @@ pub fn parse_req(s: &str, msg: &Message) -> Option<db::Reminder> {
                 .with_day(day)
                 .and_then(|x| x.with_month(month))
                 .unwrap_or(now.date())
-                .and_hms(hour, minute, 0);
+                .and_hms(hour, minute, second);
             Some(db::Reminder {
                 id: 0,
                 user_id: msg.chat_id(),
