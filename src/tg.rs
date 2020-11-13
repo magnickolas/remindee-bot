@@ -224,38 +224,37 @@ pub fn parse_req(s: &str, msg: &Message) -> Option<db::Reminder> {
         ))
         .unwrap();
     }
-    match tz::get_user_timezone(msg.chat_id()) {
-        Ok(user_timezone) => RE.captures(s).and_then(|caps| {
-            let now = user_timezone.from_utc_datetime(&Utc::now().naive_utc());
-            let get_field_by_name_or = |name, default| {
-                caps.name(name)
-                    .and_then(|x| x.as_str().parse().ok())
-                    .unwrap_or(default)
-            };
-            let day = get_field_by_name_or(ReminderRegexFields::DAY, now.day());
-            let month = get_field_by_name_or(ReminderRegexFields::MONTH, now.month());
-            let hour = get_field_by_name_or(ReminderRegexFields::HOUR, now.hour());
-            let minute = get_field_by_name_or(ReminderRegexFields::MINUTE, now.minute());
-            let second = get_field_by_name_or(ReminderRegexFields::SECOND, 0);
 
-            if !((0..24).contains(&hour) && (0..60).contains(&minute)) {
-                return None;
-            }
+    let user_timezone = tz::get_user_timezone(msg.chat_id()).ok()?;
+    RE.captures(s).and_then(|caps| {
+        let now = user_timezone.from_utc_datetime(&Utc::now().naive_utc());
+        let get_field_by_name_or = |name, default| {
+            caps.name(name)
+                .and_then(|x| x.as_str().parse().ok())
+                .unwrap_or(default)
+        };
+        let day = get_field_by_name_or(ReminderRegexFields::DAY, now.day());
+        let month = get_field_by_name_or(ReminderRegexFields::MONTH, now.month());
+        let hour = get_field_by_name_or(ReminderRegexFields::HOUR, now.hour());
+        let minute = get_field_by_name_or(ReminderRegexFields::MINUTE, now.minute());
+        let second = get_field_by_name_or(ReminderRegexFields::SECOND, 0);
 
-            let time = now
-                .date()
-                .with_day(day)
-                .and_then(|x| x.with_month(month))
-                .unwrap_or(now.date())
-                .and_hms(hour, minute, second);
-            Some(db::Reminder {
-                id: 0,
-                user_id: msg.chat_id(),
-                time: time.with_timezone(&Utc),
-                desc: caps[ReminderRegexFields::DESCRIPTION].to_string(),
-                sent: false,
-            })
-        }),
-        _ => None,
-    }
+        if !((0..24).contains(&hour) && (0..60).contains(&minute)) {
+            return None;
+        }
+
+        let time = now
+            .date()
+            .with_day(day)
+            .and_then(|x| x.with_month(month))
+            .unwrap_or(now.date())
+            .and_hms(hour, minute, second);
+        Some(db::Reminder {
+            id: 0,
+            user_id: msg.chat_id(),
+            time: time.with_timezone(&Utc),
+            desc: caps[ReminderRegexFields::DESCRIPTION].to_string(),
+            sent: false,
+        })
+    })
 }
