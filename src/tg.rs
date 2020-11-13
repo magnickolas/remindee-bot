@@ -201,6 +201,7 @@ pub async fn send_markup(
     user_id: i64,
 ) -> Result<(), RequestError> {
     bot.send_message(user_id, text)
+        .parse_mode(MarkdownV2)
         .reply_markup(markup)
         .send()
         .await
