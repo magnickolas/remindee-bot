@@ -6,6 +6,7 @@ use chrono::prelude::*;
 use chrono::Utc;
 use regex::Regex;
 use teloxide::prelude::*;
+use teloxide::types::InlineKeyboardMarkup;
 use teloxide::types::ParseMode::MarkdownV2;
 use teloxide::utils::markdown::{bold, escape};
 
@@ -169,6 +170,19 @@ impl db::CronReminder {
 pub async fn send_message(text: &String, bot: &Bot, user_id: i64) -> Result<(), RequestError> {
     bot.send_message(user_id, text)
         .parse_mode(MarkdownV2)
+        .send()
+        .await
+        .map(|_| ())
+}
+
+pub async fn send_markup(
+    text: &String,
+    markup: InlineKeyboardMarkup,
+    bot: &Bot,
+    user_id: i64,
+) -> Result<(), RequestError> {
+    bot.send_message(user_id, text)
+        .reply_markup(markup)
         .send()
         .await
         .map(|_| ())

@@ -243,14 +243,13 @@ async fn run() {
                                         });
                                 }
                                 "tz" | "/tz" | "timezone" | "/timezone" => {
-                                    bot.send_message(
+                                    tg::send_markup(
+                                        &TgResponse::SelectTimezone.to_string(),
+                                        get_markup_for_page_idx(0),
+                                        &bot,
                                         user_id,
-                                        TgResponse::SelectTimezone.to_string(),
                                     )
-                                    .reply_markup(get_markup_for_page_idx(0))
-                                    .send()
                                     .await
-                                    .map(|_| ())
                                     .unwrap_or_else({
                                         |err| {
                                             dbg!(err);
@@ -274,16 +273,13 @@ async fn run() {
                                         });
                                 }
                                 "del" | "/del" | "delete" | "/delete" => {
-                                    bot.send_message(
+                                    tg::send_markup(
+                                        &TgResponse::ChooseDeleteReminder.to_string(),
+                                        get_markup_for_reminders_page_deletion(0, user_id),
+                                        &bot,
                                         user_id,
-                                        TgResponse::ChooseDeleteReminder.to_string(),
                                     )
-                                    .reply_markup(get_markup_for_reminders_page_deletion(
-                                        0, user_id,
-                                    ))
-                                    .send()
                                     .await
-                                    .map(|_| ())
                                     .unwrap_or_else({
                                         |err| {
                                             dbg!(err);
