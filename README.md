@@ -14,7 +14,7 @@ Telegram bot for managing reminders.
 ## How to use
 
 - As a preprequisite, install [Rust] and SQLite development package.
-- Install:
+- Install
     ```console
     cargo install --path .
     ```
