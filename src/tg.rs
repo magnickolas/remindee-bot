@@ -24,6 +24,8 @@ pub enum TgResponse {
     ChooseDeleteReminder,
     SuccessDelete,
     FailedDelete,
+    Hello,
+    CommandsHelp,
 }
 
 impl ToString for TgResponse {
@@ -35,13 +37,30 @@ impl ToString for TgResponse {
             Self::QueryingError => "Error occured while querying reminders...".to_string(),
             Self::RemindersListHeader => "List of reminders:".to_string(),
             Self::SelectTimezone => "Select your timezone:".to_string(),
-            Self::ChosenTimezone(tz_name) => format!("Selected timezone {}", tz_name),
+            Self::ChosenTimezone(tz_name) => format!(
+                concat!(
+                    "Selected timezone {}. Now you can set some reminders.\n\n",
+                    "You can get the commands I understand with /commands."
+                ),
+                tz_name
+            ),
             Self::NoChosenTimezone => "You've not selected timezone yet".to_string(),
             Self::FailedSetTimezone(tz_name) => format!("Failed to set timezone {}", tz_name),
-            Self::FailedGetTimezone => format!("Failed to get timezone for reminder"),
-            Self::ChooseDeleteReminder => format!("Choose a reminder to delete:"),
-            Self::SuccessDelete => format!("Deleted!"),
-            Self::FailedDelete => format!("Failed to delete..."),
+            Self::FailedGetTimezone => "Failed to get timezone for reminder".to_string(),
+            Self::ChooseDeleteReminder => "Choose a reminder to delete:".to_string(),
+            Self::SuccessDelete => "Deleted!".to_string(),
+            Self::FailedDelete => "Failed to delete...".to_string(),
+            Self::Hello => concat!(
+                "Hello! I'm Remindee. My purpose is to remind you of whatever you ask and ",
+                "whenever you ask.\n\nPlease, select your timezone with /tz command first."
+            )
+            .to_string(),
+            Self::CommandsHelp => concat!(
+                "/list — list the set reminders\n",
+                "/del — delete some reminders\n",
+                "/mytz — print your timezone"
+            )
+            .to_string(),
         };
         escape(&raw_text)
     }

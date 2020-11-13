@@ -215,6 +215,15 @@ async fn run() {
                         let user_id = msg.chat_id();
                         match msg.text() {
                             Some(text) => match text {
+                                "/start" => {
+                                    tg::send_message(&TgResponse::Hello.to_string(), &bot, user_id)
+                                        .await
+                                        .unwrap_or_else({
+                                            |err| {
+                                                dbg!(err);
+                                            }
+                                        });
+                                }
                                 "list" | "/list" => {
                                     let mut text = db::get_pending_user_reminders(user_id)
                                         .map(|v| {
@@ -276,6 +285,19 @@ async fn run() {
                                     tg::send_markup(
                                         &TgResponse::ChooseDeleteReminder.to_string(),
                                         get_markup_for_reminders_page_deletion(0, user_id),
+                                        &bot,
+                                        user_id,
+                                    )
+                                    .await
+                                    .unwrap_or_else({
+                                        |err| {
+                                            dbg!(err);
+                                        }
+                                    });
+                                }
+                                "/commands" => {
+                                    tg::send_message(
+                                        &TgResponse::CommandsHelp.to_string(),
                                         &bot,
                                         user_id,
                                     )
