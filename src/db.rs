@@ -154,7 +154,8 @@ pub fn create_cron_reminder_table() -> Result<()> {
 pub fn insert_cron_reminder(rem: &CronReminder) -> Result<()> {
     let conn = get_db_connection()?;
     conn.execute(
-        "insert into cron_reminder (user_id, cron_expr, time, desc, sent) values (?1, ?2, ?3, ?4, ?5)",
+        "insert into cron_reminder (user_id, cron_expr, time, desc, sent)
+        values (?1, ?2, ?3, ?4, ?5)",
         params![rem.user_id, rem.cron_expr, rem.time, rem.desc, rem.sent],
     )?;
     Ok(())

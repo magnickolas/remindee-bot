@@ -191,13 +191,17 @@ pub async fn send_markup(
 pub fn parse_req(s: &str, msg: &Message) -> Option<db::Reminder> {
     lazy_static! {
         static ref RE: Regex = Regex::new(&format!(
-            r"^\s*((?P<{}>\d{{1,2}})(\.(?P<{}>\d{{2}}))?\s+)?(?P<{}>\d{{1,2}}):(?P<{}>\d{{2}})(:(?P<{}>\d{{2}}))?\s*(?P<{}>.*?)\s*$",
-            ReminderRegexFields::DAY,
-            ReminderRegexFields::MONTH,
-            ReminderRegexFields::HOUR,
-            ReminderRegexFields::MINUTE,
-            ReminderRegexFields::SECOND,
-            ReminderRegexFields::DESCRIPTION
+            concat!(
+                r"^\s*((?P<{day}>\d{{1,2}})(\.(?P<{month}>\d{{2}}))?\s+)?",
+                r"(?P<{hour}>\d{{1,2}}):(?P<{minute}>\d{{2}})(:(?P<{second}>\d{{2}}))?\s*",
+                r"(?P<{description}>.*?)\s*$"
+            ),
+            day = ReminderRegexFields::DAY,
+            month = ReminderRegexFields::MONTH,
+            hour = ReminderRegexFields::HOUR,
+            minute = ReminderRegexFields::MINUTE,
+            second = ReminderRegexFields::SECOND,
+            description = ReminderRegexFields::DESCRIPTION
         ))
         .unwrap();
     }
