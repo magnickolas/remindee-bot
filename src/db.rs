@@ -1,9 +1,8 @@
 use chrono::{DateTime, Utc};
 use directories::BaseDirs;
 use rusqlite::{params, Connection, Result, NO_PARAMS};
-use teloxide::types::Message;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Reminder {
     pub id: u32,
     pub user_id: i64,
@@ -12,7 +11,7 @@ pub struct Reminder {
     pub sent: bool,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CronReminder {
     pub id: u32,
     pub user_id: i64,
@@ -51,9 +50,9 @@ pub fn insert_reminder(rem: &Reminder) -> Result<()> {
     Ok(())
 }
 
-pub fn mark_reminder_as_sent(rem: &Reminder) -> Result<()> {
+pub fn mark_reminder_as_sent(id: u32) -> Result<()> {
     let conn = get_db_connection()?;
-    conn.execute("update reminder set sent=true where id=?1", params![rem.id])?;
+    conn.execute("update reminder set sent=true where id=?1", params![id])?;
     Ok(())
 }
 
@@ -80,14 +79,14 @@ pub fn get_active_reminders() -> Result<Vec<Reminder>> {
     Ok(reminders)
 }
 
-pub fn get_pending_user_reminders(msg: &Message) -> Result<Vec<Reminder>> {
+pub fn get_pending_user_reminders(user_id: i64) -> Result<Vec<Reminder>> {
     let conn = get_db_connection()?;
     let mut stmt = conn.prepare(
         "select id, user_id, time, desc, sent
         from reminder
-        where user_id=?1 and datetime(time) >= datetime('now')",
+        where user_id=?1 and datetime(time) >= datetime('now') and sent=false",
     )?;
-    let rows = stmt.query_map(params![msg.chat_id()], |row| {
+    let rows = stmt.query_map(params![user_id], |row| {
         Ok(Reminder {
             id: row.get(0)?,
             user_id: row.get(1)?,
@@ -161,11 +160,11 @@ pub fn insert_cron_reminder(rem: &CronReminder) -> Result<()> {
     Ok(())
 }
 
-pub fn mark_cron_reminder_as_sent(rem: &CronReminder) -> Result<()> {
+pub fn mark_cron_reminder_as_sent(id: u32) -> Result<()> {
     let conn = get_db_connection()?;
     conn.execute(
         "update cron_reminder set sent=true where id=?1",
-        params![rem.id],
+        params![id],
     )?;
     Ok(())
 }
@@ -194,14 +193,14 @@ pub fn get_active_cron_reminders() -> Result<Vec<CronReminder>> {
     Ok(cron_reminders)
 }
 
-pub fn get_pending_user_cron_reminders(msg: &Message) -> Result<Vec<CronReminder>> {
+pub fn get_pending_user_cron_reminders(user_id: i64) -> Result<Vec<CronReminder>> {
     let conn = get_db_connection()?;
     let mut stmt = conn.prepare(
         "select id, user_id, cron_expr, time, desc, sent
         from cron_reminder
-        where user_id=?1 and datetime(time) >= datetime('now')",
+        where user_id=?1 and datetime(time) >= datetime('now') and sent=false",
     )?;
-    let rows = stmt.query_map(params![msg.chat_id()], |row| {
+    let rows = stmt.query_map(params![user_id], |row| {
         Ok(CronReminder {
             id: row.get(0)?,
             user_id: row.get(1)?,

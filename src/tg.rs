@@ -20,6 +20,9 @@ pub enum TgResponse {
     NoChosenTimezone,
     FailedSetTimezone(String),
     FailedGetTimezone,
+    ChooseDeleteReminder,
+    SuccessDelete,
+    FailedDelete,
 }
 
 impl ToString for TgResponse {
@@ -35,6 +38,9 @@ impl ToString for TgResponse {
             Self::NoChosenTimezone => "You've not selected timezone yet".to_string(),
             Self::FailedSetTimezone(tz_name) => format!("Failed to set timezone {}", tz_name),
             Self::FailedGetTimezone => format!("Failed to get timezone for reminder"),
+            Self::ChooseDeleteReminder => format!("Choose a reminder to delete:"),
+            Self::SuccessDelete => format!("Deleted!"),
+            Self::FailedDelete => format!("Failed to delete..."),
         };
         escape(&raw_text)
     }
@@ -78,6 +84,32 @@ impl ToString for db::Reminder {
     }
 }
 
+impl db::Reminder {
+    pub fn to_unescaped_string(&self) -> String {
+        match tz::get_user_timezone(self.user_id) {
+            Ok(user_timezone) => {
+                let time = user_timezone.from_utc_datetime(&self.time.naive_utc());
+                let now = Utc::now().with_timezone(&user_timezone);
+                let mut s = String::new();
+                if time.date() != now.date() {
+                    s = s
+                        + &format!("{:02}", time.day())
+                        + "."
+                        + &format!("{:02}", time.month())
+                        + " ";
+                }
+                s + &format!("{:02}", time.hour())
+                    + ":"
+                    + &format!("{:02}", time.minute())
+                    + " <"
+                    + &self.desc
+                    + ">"
+            }
+            _ => TgResponse::FailedGetTimezone.to_string(),
+        }
+    }
+}
+
 impl ToString for db::CronReminder {
     fn to_string(&self) -> String {
         match tz::get_user_timezone(self.user_id) {
@@ -100,6 +132,34 @@ impl ToString for db::CronReminder {
                     + &escape("> [")
                     + &escape(&self.cron_expr)
                     + &escape("]")
+            }
+            _ => TgResponse::FailedGetTimezone.to_string(),
+        }
+    }
+}
+
+impl db::CronReminder {
+    pub fn to_unescaped_string(&self) -> String {
+        match tz::get_user_timezone(self.user_id) {
+            Ok(user_timezone) => {
+                let time = user_timezone.from_utc_datetime(&self.time.naive_utc());
+                let now = Utc::now().with_timezone(&user_timezone);
+                let mut s = String::new();
+                if time.date() != now.date() {
+                    s = s
+                        + &format!("{:02}", time.day())
+                        + "."
+                        + &format!("{:02}", time.month())
+                        + " ";
+                }
+                s + &format!("{:02}", time.hour())
+                    + ":"
+                    + &format!("{:02}", time.minute())
+                    + " <"
+                    + &self.desc
+                    + "> ["
+                    + &self.cron_expr
+                    + "]"
             }
             _ => TgResponse::FailedGetTimezone.to_string(),
         }

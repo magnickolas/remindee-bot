@@ -25,7 +25,7 @@ async fn reminders_pooling(bot: &Bot) {
         let reminders = db::get_active_reminders().unwrap();
         for reminder in reminders {
             match tg::send_message(&reminder.to_string(), &bot, reminder.user_id).await {
-                Ok(_) => db::mark_reminder_as_sent(&reminder).unwrap_or_else(|err| {
+                Ok(_) => db::mark_reminder_as_sent(reminder.id).unwrap_or_else(|err| {
                     dbg!(err);
                 }),
                 Err(err) => {
@@ -37,7 +37,7 @@ async fn reminders_pooling(bot: &Bot) {
         for cron_reminder in cron_reminders {
             match tg::send_message(&cron_reminder.to_string(), &bot, cron_reminder.user_id).await {
                 Ok(_) => {
-                    db::mark_cron_reminder_as_sent(&cron_reminder).unwrap_or_else(|err| {
+                    db::mark_cron_reminder_as_sent(cron_reminder.id).unwrap_or_else(|err| {
                         dbg!(err);
                     });
                     let new_time =
@@ -88,7 +88,9 @@ fn get_markup_for_page_idx(num: usize) -> InlineKeyboardMarkup {
                     .map(|tz_name| {
                         InlineKeyboardButton::new(
                             tz_name,
-                            InlineKeyboardButtonKind::CallbackData("tz::".to_string() + tz_name),
+                            InlineKeyboardButtonKind::CallbackData(
+                                "seltz::tz::".to_string() + tz_name,
+                            ),
                         )
                     })
                     .collect(),
@@ -101,13 +103,89 @@ fn get_markup_for_page_idx(num: usize) -> InlineKeyboardMarkup {
     if num > 0 {
         move_buttons.push(InlineKeyboardButton::new(
             "⬅️",
-            InlineKeyboardButtonKind::CallbackData("page::".to_string() + &(num - 1).to_string()),
+            InlineKeyboardButtonKind::CallbackData(
+                "seltz::page::".to_string() + &(num - 1).to_string(),
+            ),
         ))
     }
     if !last_page {
         move_buttons.push(InlineKeyboardButton::new(
             "➡️",
-            InlineKeyboardButtonKind::CallbackData("page::".to_string() + &(num + 1).to_string()),
+            InlineKeyboardButtonKind::CallbackData(
+                "seltz::page::".to_string() + &(num + 1).to_string(),
+            ),
+        ))
+    }
+    markup.append_row(move_buttons)
+}
+
+fn get_markup_for_reminders_page_deletion(num: usize, user_id: i64) -> InlineKeyboardMarkup {
+    let mut markup = InlineKeyboardMarkup::default();
+    let mut last_rem_page: bool = false;
+    let mut last_cron_rem_page: bool = false;
+    if let Some(reminders) = db::get_pending_user_reminders(user_id)
+        .ok()
+        .as_ref()
+        .and_then(|rems| rems.chunks(45).into_iter().nth(num))
+    {
+        for chunk in reminders.chunks(1) {
+            markup = markup.append_row(
+                chunk
+                    .to_vec()
+                    .into_iter()
+                    .map(|rem| {
+                        InlineKeyboardButton::new(
+                            rem.to_unescaped_string(),
+                            InlineKeyboardButtonKind::CallbackData(
+                                "delrem::del::".to_string() + &rem.id.to_string(),
+                            ),
+                        )
+                    })
+                    .collect(),
+            );
+        }
+    } else {
+        last_rem_page = true;
+    }
+    if let Some(cron_reminders) = db::get_pending_user_cron_reminders(user_id)
+        .ok()
+        .as_ref()
+        .and_then(|cron_rems| cron_rems.chunks(45).into_iter().nth(num))
+    {
+        for chunk in cron_reminders.chunks(1) {
+            markup = markup.append_row(
+                chunk
+                    .to_vec()
+                    .into_iter()
+                    .map(|cron_rem| {
+                        InlineKeyboardButton::new(
+                            cron_rem.to_unescaped_string(),
+                            InlineKeyboardButtonKind::CallbackData(
+                                "delrem::cron_del::".to_string() + &cron_rem.id.to_string(),
+                            ),
+                        )
+                    })
+                    .collect(),
+            );
+        }
+    } else {
+        last_cron_rem_page = true;
+    }
+    let mut move_buttons = vec![];
+    if num > 0 {
+        move_buttons.push(InlineKeyboardButton::new(
+            "⬅️",
+            InlineKeyboardButtonKind::CallbackData(
+                "delrem::page::".to_string() + &(num - 1).to_string(),
+            ),
+        ))
+    }
+    if !last_rem_page || !last_cron_rem_page {
+        move_buttons.push(InlineKeyboardButton::new(
+            "➡️",
+            InlineKeyboardButtonKind::CallbackData(
+                "delrem::page::".to_string() + &(num + 1).to_string(),
+            ),
         ))
     }
     markup.append_row(move_buttons)
@@ -133,112 +211,88 @@ async fn run() {
         .for_each(|update| async {
             match update {
                 Ok(update) => match update.kind {
-                    UpdateKind::Message(msg) => match msg.text() {
-                        Some(text) => match text {
-                            "list" | "/list" => {
-                                let mut text = db::get_pending_user_reminders(&msg)
-                                    .map(|v| {
-                                        vec![TgResponse::RemindersListHeader.to_string()]
-                                            .into_iter()
-                                            .chain(v.into_iter().map(|x| x.to_string()))
-                                            .collect::<Vec<String>>()
-                                            .join("\n")
-                                    })
-                                    .unwrap_or(TgResponse::QueryingError.to_string());
-                                text = db::get_pending_user_cron_reminders(&msg)
-                                    .map(|v| {
-                                        vec![text]
-                                            .into_iter()
-                                            .chain(v.into_iter().map(|x| x.to_string()))
-                                            .collect::<Vec<String>>()
-                                            .join("\n")
-                                    })
-                                    .unwrap_or(TgResponse::QueryingError.to_string());
-                                tg::send_message(&text, &bot, msg.chat_id())
-                                    .await
-                                    .unwrap_or_else({
-                                        |err| {
-                                            dbg!(err);
-                                        }
-                                    });
-                            }
-                            "tz" | "/tz" | "timezone" | "/timezone" => {
-                                bot.send_message(
-                                    msg.chat_id(),
-                                    TgResponse::SelectTimezone.to_string(),
-                                )
-                                .reply_markup(get_markup_for_page_idx(0))
-                                .send()
-                                .await
-                                .map(|_| ())
-                                .unwrap_or_else({
-                                    |err| {
-                                        dbg!(err);
-                                    }
-                                });
-                            }
-                            "mytz" | "/mytz" | "mytimezone" | "/mytimezone" => {
-                                let response = match db::get_user_timezone_name(msg.chat_id()) {
-                                    Ok(tz_name) => TgResponse::ChosenTimezone(tz_name),
-                                    Err(err) => {
-                                        dbg!(err);
-                                        TgResponse::NoChosenTimezone
-                                    }
-                                };
-                                tg::send_message(&response.to_string(), &bot, msg.chat_id())
-                                    .await
-                                    .unwrap_or_else({
-                                        |err| {
-                                            dbg!(err);
-                                        }
-                                    });
-                            }
-                            text => {
-                                if let Some(reminder) = tg::parse_req(text, &msg) {
-                                    let response = match db::insert_reminder(&reminder) {
-                                        Ok(_) => TgResponse::SuccessInsert,
-                                        Err(err) => {
-                                            dbg!(err);
-                                            TgResponse::FailedInsert
-                                        }
-                                    };
-
-                                    tg::send_message(&response.to_string(), &bot, msg.chat_id())
+                    UpdateKind::Message(msg) => {
+                        let user_id = msg.chat_id();
+                        match msg.text() {
+                            Some(text) => match text {
+                                "list" | "/list" => {
+                                    let mut text = db::get_pending_user_reminders(user_id)
+                                        .map(|v| {
+                                            vec![TgResponse::RemindersListHeader.to_string()]
+                                                .into_iter()
+                                                .chain(v.into_iter().map(|x| x.to_string()))
+                                                .collect::<Vec<String>>()
+                                                .join("\n")
+                                        })
+                                        .unwrap_or(TgResponse::QueryingError.to_string());
+                                    text = db::get_pending_user_cron_reminders(user_id)
+                                        .map(|v| {
+                                            vec![text]
+                                                .into_iter()
+                                                .chain(v.into_iter().map(|x| x.to_string()))
+                                                .collect::<Vec<String>>()
+                                                .join("\n")
+                                        })
+                                        .unwrap_or(TgResponse::QueryingError.to_string());
+                                    tg::send_message(&text, &bot, user_id)
                                         .await
                                         .unwrap_or_else({
                                             |err| {
                                                 dbg!(err);
                                             }
                                         });
-                                } else if let Ok((cron_expr, time)) = {
-                                    let cron_fields: Vec<&str> =
-                                        text.split_whitespace().take(5).collect();
-                                    if cron_fields.len() < 5 {
-                                        Err(err::Error::CronFewFields)
-                                    } else {
-                                        let cron_expr = cron_fields.join(" ");
-                                        tz::get_user_timezone(msg.chat_id()).and_then(|timezone| {
-                                            let time = parse_cron(
-                                                &cron_expr,
-                                                &Utc::now().with_timezone(&timezone),
-                                            )?
-                                            .with_timezone(&Utc);
-                                            Ok((cron_expr, time))
-                                        })
-                                    }
-                                } {
-                                    let response =
-                                        match db::insert_cron_reminder(&db::CronReminder {
-                                            id: 0,
-                                            user_id: msg.chat_id(),
-                                            cron_expr: cron_expr.clone(),
-                                            time,
-                                            desc: text
-                                                .strip_prefix(&(cron_expr.to_string() + " "))
-                                                .unwrap_or("")
-                                                .to_string(),
-                                            sent: false,
-                                        }) {
+                                }
+                                "tz" | "/tz" | "timezone" | "/timezone" => {
+                                    bot.send_message(
+                                        user_id,
+                                        TgResponse::SelectTimezone.to_string(),
+                                    )
+                                    .reply_markup(get_markup_for_page_idx(0))
+                                    .send()
+                                    .await
+                                    .map(|_| ())
+                                    .unwrap_or_else({
+                                        |err| {
+                                            dbg!(err);
+                                        }
+                                    });
+                                }
+                                "mytz" | "/mytz" | "mytimezone" | "/mytimezone" => {
+                                    let response = match db::get_user_timezone_name(user_id) {
+                                        Ok(tz_name) => TgResponse::ChosenTimezone(tz_name),
+                                        Err(err) => {
+                                            dbg!(err);
+                                            TgResponse::NoChosenTimezone
+                                        }
+                                    };
+                                    tg::send_message(&response.to_string(), &bot, user_id)
+                                        .await
+                                        .unwrap_or_else({
+                                            |err| {
+                                                dbg!(err);
+                                            }
+                                        });
+                                }
+                                "del" | "/del" | "delete" | "/delete" => {
+                                    bot.send_message(
+                                        user_id,
+                                        TgResponse::ChooseDeleteReminder.to_string(),
+                                    )
+                                    .reply_markup(get_markup_for_reminders_page_deletion(
+                                        0, user_id,
+                                    ))
+                                    .send()
+                                    .await
+                                    .map(|_| ())
+                                    .unwrap_or_else({
+                                        |err| {
+                                            dbg!(err);
+                                        }
+                                    });
+                                }
+                                text => {
+                                    if let Some(reminder) = tg::parse_req(text, &msg) {
+                                        let response = match db::insert_reminder(&reminder) {
                                             Ok(_) => TgResponse::SuccessInsert,
                                             Err(err) => {
                                                 dbg!(err);
@@ -246,44 +300,88 @@ async fn run() {
                                             }
                                         };
 
-                                    tg::send_message(&response.to_string(), &bot, msg.chat_id())
-                                        .await
-                                        .unwrap_or_else({
-                                            |err| {
-                                                dbg!(err);
-                                            }
-                                        });
-                                } else {
-                                    match msg.from() {
-                                        Some(user) if user.id as i64 == msg.chat_id() => {
-                                            let response =
-                                                if tz::get_user_timezone(msg.chat_id()).is_err() {
-                                                    TgResponse::NoChosenTimezone
-                                                } else {
-                                                    TgResponse::IncorrectRequest
-                                                };
-                                            tg::send_message(
-                                                &response.to_string(),
-                                                &bot,
-                                                msg.chat_id(),
-                                            )
+                                        tg::send_message(&response.to_string(), &bot, user_id)
                                             .await
                                             .unwrap_or_else({
                                                 |err| {
                                                     dbg!(err);
                                                 }
                                             });
+                                    } else if let Ok((cron_expr, time)) = {
+                                        let cron_fields: Vec<&str> =
+                                            text.split_whitespace().take(5).collect();
+                                        if cron_fields.len() < 5 {
+                                            Err(err::Error::CronFewFields)
+                                        } else {
+                                            let cron_expr = cron_fields.join(" ");
+                                            tz::get_user_timezone(user_id).and_then(|timezone| {
+                                                let time = parse_cron(
+                                                    &cron_expr,
+                                                    &Utc::now().with_timezone(&timezone),
+                                                )?
+                                                .with_timezone(&Utc);
+                                                Ok((cron_expr, time))
+                                            })
                                         }
-                                        _ => {}
+                                    } {
+                                        let response =
+                                            match db::insert_cron_reminder(&db::CronReminder {
+                                                id: 0,
+                                                user_id,
+                                                cron_expr: cron_expr.clone(),
+                                                time,
+                                                desc: text
+                                                    .strip_prefix(&(cron_expr.to_string() + " "))
+                                                    .unwrap_or("")
+                                                    .to_string(),
+                                                sent: false,
+                                            }) {
+                                                Ok(_) => TgResponse::SuccessInsert,
+                                                Err(err) => {
+                                                    dbg!(err);
+                                                    TgResponse::FailedInsert
+                                                }
+                                            };
+
+                                        tg::send_message(&response.to_string(), &bot, user_id)
+                                            .await
+                                            .unwrap_or_else({
+                                                |err| {
+                                                    dbg!(err);
+                                                }
+                                            });
+                                    } else {
+                                        match msg.from() {
+                                            Some(user) if user.id as i64 == user_id => {
+                                                let response =
+                                                    if tz::get_user_timezone(user_id).is_err() {
+                                                        TgResponse::NoChosenTimezone
+                                                    } else {
+                                                        TgResponse::IncorrectRequest
+                                                    };
+                                                tg::send_message(
+                                                    &response.to_string(),
+                                                    &bot,
+                                                    user_id,
+                                                )
+                                                .await
+                                                .unwrap_or_else({
+                                                    |err| {
+                                                        dbg!(err);
+                                                    }
+                                                });
+                                            }
+                                            _ => {}
+                                        }
                                     }
                                 }
-                            }
-                        },
-                        None => {}
-                    },
+                            },
+                            None => {}
+                        }
+                    }
                     UpdateKind::CallbackQuery(cb_query) => {
                         if let Some(cb_data) = &cb_query.data {
-                            if let Some(page_num_str) = cb_data.strip_prefix("page::") {
+                            if let Some(page_num_str) = cb_data.strip_prefix("seltz::page::") {
                                 let page_num = page_num_str.parse::<usize>().unwrap();
                                 if let Some(msg) = cb_query.message {
                                     bot.edit_message_reply_markup(ChatOrInlineMessage::Chat {
@@ -298,7 +396,7 @@ async fn run() {
                                         dbg!(err);
                                     });
                                 }
-                            } else if let Some(tz_name) = cb_data.strip_prefix("tz::") {
+                            } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
                                 if let Some(msg) = cb_query.message {
                                     let response =
                                         match db::set_user_timezone_name(msg.chat_id(), tz_name) {
@@ -310,6 +408,65 @@ async fn run() {
                                                 TgResponse::FailedSetTimezone(tz_name.to_string())
                                             }
                                         };
+                                    tg::send_message(&response.to_string(), &bot, msg.chat_id())
+                                        .await
+                                        .unwrap_or_else({
+                                            |err| {
+                                                dbg!(err);
+                                            }
+                                        });
+                                }
+                            } else if let Some(page_num_str) =
+                                cb_data.strip_prefix("delrem::page::")
+                            {
+                                let page_num = page_num_str.parse::<usize>().unwrap();
+                                if let Some(msg) = cb_query.message {
+                                    bot.edit_message_reply_markup(ChatOrInlineMessage::Chat {
+                                        chat_id: ChatId::Id(msg.chat_id()),
+                                        message_id: msg.id,
+                                    })
+                                    .reply_markup(get_markup_for_reminders_page_deletion(
+                                        page_num,
+                                        msg.chat_id(),
+                                    ))
+                                    .send()
+                                    .await
+                                    .map(|_| ())
+                                    .unwrap_or_else(|err| {
+                                        dbg!(err);
+                                    });
+                                }
+                            } else if let Some(rem_id_str) = cb_data.strip_prefix("delrem::del::") {
+                                if let Some(msg) = cb_query.message {
+                                    let rem_id = rem_id_str.parse::<u32>().unwrap();
+                                    let response = match db::mark_reminder_as_sent(rem_id) {
+                                        Ok(_) => TgResponse::SuccessDelete,
+                                        Err(err) => {
+                                            dbg!(err);
+                                            TgResponse::FailedDelete
+                                        }
+                                    };
+                                    tg::send_message(&response.to_string(), &bot, msg.chat_id())
+                                        .await
+                                        .unwrap_or_else({
+                                            |err| {
+                                                dbg!(err);
+                                            }
+                                        });
+                                }
+                            } else if let Some(cron_rem_id_str) =
+                                cb_data.strip_prefix("delrem::cron_del::")
+                            {
+                                if let Some(msg) = cb_query.message {
+                                    let cron_rem_id = cron_rem_id_str.parse::<u32>().unwrap();
+                                    let response = match db::mark_cron_reminder_as_sent(cron_rem_id)
+                                    {
+                                        Ok(_) => TgResponse::SuccessDelete,
+                                        Err(err) => {
+                                            dbg!(err);
+                                            TgResponse::FailedDelete
+                                        }
+                                    };
                                     tg::send_message(&response.to_string(), &bot, msg.chat_id())
                                         .await
                                         .unwrap_or_else({
