@@ -36,7 +36,7 @@ pub fn create_reminder_table() -> Result<()> {
              desc       text not null,
              sent       boolean not null
         )",
-        params![],
+        NO_PARAMS,
     )?;
     Ok(())
 }
@@ -109,7 +109,7 @@ pub fn create_user_timezone_table() -> Result<()> {
              user_id    integer primary key,
              timezone   text not null
         )",
-        params![],
+        NO_PARAMS,
     )?;
     Ok(())
 }
@@ -146,7 +146,7 @@ pub fn create_cron_reminder_table() -> Result<()> {
              desc       text not null,
              sent       boolean not null
         )",
-        params![],
+        NO_PARAMS,
     )?;
     Ok(())
 }
