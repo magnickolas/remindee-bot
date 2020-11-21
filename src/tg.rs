@@ -6,8 +6,8 @@ use chrono::prelude::*;
 use chrono::Utc;
 use regex::Regex;
 use teloxide::prelude::*;
-use teloxide::types::InlineKeyboardMarkup;
 use teloxide::types::ParseMode::MarkdownV2;
+use teloxide::types::{ChatId, ChatOrInlineMessage, InlineKeyboardMarkup};
 use teloxide::utils::markdown::{bold, escape};
 
 pub enum TgResponse {
@@ -208,7 +208,23 @@ pub async fn send_markup(
         .map(|_| ())
 }
 
-pub fn parse_req(s: &str, msg: &Message) -> Option<db::Reminder> {
+pub async fn edit_markup(
+    markup: InlineKeyboardMarkup,
+    bot: &Bot,
+    msg_id: i32,
+    user_id: i64,
+) -> Result<(), RequestError> {
+    bot.edit_message_reply_markup(ChatOrInlineMessage::Chat {
+        chat_id: ChatId::Id(user_id),
+        message_id: msg_id,
+    })
+    .reply_markup(markup)
+    .send()
+    .await
+    .map(|_| ())
+}
+
+pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
     lazy_static! {
         static ref RE: Regex = Regex::new(&format!(
             concat!(
@@ -226,7 +242,7 @@ pub fn parse_req(s: &str, msg: &Message) -> Option<db::Reminder> {
         .unwrap();
     }
 
-    let user_timezone = tz::get_user_timezone(msg.chat_id()).ok()?;
+    let user_timezone = tz::get_user_timezone(user_id).ok()?;
     RE.captures(s).and_then(|caps| {
         let now = user_timezone.from_utc_datetime(&Utc::now().naive_utc());
         let get_field_by_name_or = |name, default| {
@@ -252,7 +268,7 @@ pub fn parse_req(s: &str, msg: &Message) -> Option<db::Reminder> {
             .and_hms(hour, minute, second);
         Some(db::Reminder {
             id: 0,
-            user_id: msg.chat_id(),
+            user_id,
             time: time.with_timezone(&Utc),
             desc: caps[ReminderRegexFields::DESCRIPTION].to_string(),
             sent: false,

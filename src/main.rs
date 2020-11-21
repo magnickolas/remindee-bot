@@ -14,8 +14,7 @@ use std::time::Duration;
 use teloxide::dispatching::update_listeners::polling_default;
 use teloxide::prelude::*;
 use teloxide::types::{
-    ChatId, ChatOrInlineMessage, InlineKeyboardButton, InlineKeyboardButtonKind,
-    InlineKeyboardMarkup, UpdateKind,
+    InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup, UpdateKind,
 };
 use tg::TgResponse;
 use tokio::runtime::Handle;
@@ -309,7 +308,7 @@ async fn run() {
                                     });
                                 }
                                 text => {
-                                    if let Some(reminder) = tg::parse_req(text, &msg) {
+                                    if let Some(reminder) = tg::parse_req(text, user_id) {
                                         let response = match db::insert_reminder(&reminder) {
                                             Ok(_) => TgResponse::SuccessInsert,
                                             Err(err) => {
@@ -402,14 +401,13 @@ async fn run() {
                             if let Some(page_num_str) = cb_data.strip_prefix("seltz::page::") {
                                 if let Ok(page_num) = page_num_str.parse::<usize>() {
                                     if let Some(msg) = cb_query.message {
-                                        bot.edit_message_reply_markup(ChatOrInlineMessage::Chat {
-                                            chat_id: ChatId::Id(msg.chat_id()),
-                                            message_id: msg.id,
-                                        })
-                                        .reply_markup(get_markup_for_page_idx(page_num))
-                                        .send()
+                                        tg::edit_markup(
+                                            get_markup_for_page_idx(page_num),
+                                            &bot,
+                                            msg.id,
+                                            msg.chat_id(),
+                                        )
                                         .await
-                                        .map(|_| ())
                                         .unwrap_or_else({
                                             |err| {
                                                 dbg!(err);
@@ -442,17 +440,16 @@ async fn run() {
                             {
                                 if let Ok(page_num) = page_num_str.parse::<usize>() {
                                     if let Some(msg) = cb_query.message {
-                                        bot.edit_message_reply_markup(ChatOrInlineMessage::Chat {
-                                            chat_id: ChatId::Id(msg.chat_id()),
-                                            message_id: msg.id,
-                                        })
-                                        .reply_markup(get_markup_for_reminders_page_deletion(
-                                            page_num,
+                                        tg::edit_markup(
+                                            get_markup_for_reminders_page_deletion(
+                                                page_num,
+                                                msg.chat_id(),
+                                            ),
+                                            &bot,
+                                            msg.id,
                                             msg.chat_id(),
-                                        ))
-                                        .send()
+                                        )
                                         .await
-                                        .map(|_| ())
                                         .unwrap_or_else({
                                             |err| {
                                                 dbg!(err);
@@ -470,6 +467,21 @@ async fn run() {
                                                 TgResponse::FailedDelete
                                             }
                                         };
+                                        tg::edit_markup(
+                                            get_markup_for_reminders_page_deletion(
+                                                0,
+                                                msg.chat_id(),
+                                            ),
+                                            &bot,
+                                            msg.id,
+                                            msg.chat_id(),
+                                        )
+                                        .await
+                                        .unwrap_or_else({
+                                            |err| {
+                                                dbg!(err);
+                                            }
+                                        });
                                         tg::send_message(
                                             &response.to_string(),
                                             &bot,
