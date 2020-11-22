@@ -9,12 +9,12 @@ mod tz;
 use async_std::task;
 use chrono::Utc;
 use cron_parser::parse as parse_cron;
-use std::panic;
 use std::time::Duration;
 use teloxide::dispatching::update_listeners::polling_default;
 use teloxide::prelude::*;
 use teloxide::types::{
-    InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup, UpdateKind,
+    InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup,
+    UpdateKind,
 };
 use tg::TgResponse;
 use tokio::runtime::Handle;
@@ -23,10 +23,18 @@ async fn reminders_pooling(bot: &Bot) {
     loop {
         let reminders = db::get_active_reminders().unwrap();
         for reminder in reminders {
-            match tg::send_message(&reminder.to_string(), &bot, reminder.user_id).await {
-                Ok(_) => db::mark_reminder_as_sent(reminder.id).unwrap_or_else(|err| {
-                    dbg!(err);
-                }),
+            match tg::send_message(
+                &reminder.to_string(),
+                &bot,
+                reminder.user_id,
+            )
+            .await
+            {
+                Ok(_) => db::mark_reminder_as_sent(reminder.id).unwrap_or_else(
+                    |err| {
+                        dbg!(err);
+                    },
+                ),
                 Err(err) => {
                     dbg!(err);
                 }
@@ -34,22 +42,25 @@ async fn reminders_pooling(bot: &Bot) {
         }
         let cron_reminders = db::get_active_cron_reminders().unwrap();
         for cron_reminder in cron_reminders {
-            match tg::send_message(&cron_reminder.to_string(), &bot, cron_reminder.user_id).await {
+            match tg::send_message(
+                &cron_reminder.to_string(),
+                &bot,
+                cron_reminder.user_id,
+            )
+            .await
+            {
                 Ok(_) => {
-                    db::mark_cron_reminder_as_sent(cron_reminder.id).unwrap_or_else(|err| {
-                        dbg!(err);
-                    });
-                    let new_time =
-                        tz::get_user_timezone(cron_reminder.user_id).and_then(|timezone| {
-                            panic::catch_unwind(|| {
-                                parse_cron(
-                                    &cron_reminder.cron_expr,
-                                    &Utc::now().with_timezone(&timezone),
-                                )
-                                .map(|time| time.with_timezone(&Utc))
-                                .map_err(From::from)
-                            })
-                            .unwrap_or(Err(err::Error::CronPanic))
+                    db::mark_cron_reminder_as_sent(cron_reminder.id)
+                        .unwrap_or_else(|err| {
+                            dbg!(err);
+                        });
+                    let new_time = tz::get_user_timezone(cron_reminder.user_id)
+                        .and_then(|timezone| {
+                            Ok(parse_cron(
+                                &cron_reminder.cron_expr,
+                                &Utc::now().with_timezone(&timezone),
+                            )?
+                            .with_timezone(&Utc))
                         });
                     match new_time {
                         Ok(new_time) => {
@@ -57,9 +68,10 @@ async fn reminders_pooling(bot: &Bot) {
                                 time: new_time,
                                 ..cron_reminder
                             };
-                            db::insert_cron_reminder(&new_cron_reminder).unwrap_or_else(|err| {
-                                dbg!(err);
-                            });
+                            db::insert_cron_reminder(&new_cron_reminder)
+                                .unwrap_or_else(|err| {
+                                    dbg!(err);
+                                });
                         }
                         Err(err) => {
                             dbg!(err);
@@ -118,7 +130,10 @@ fn get_markup_for_page_idx(num: usize) -> InlineKeyboardMarkup {
     markup.append_row(move_buttons)
 }
 
-fn get_markup_for_reminders_page_deletion(num: usize, user_id: i64) -> InlineKeyboardMarkup {
+fn get_markup_for_reminders_page_deletion(
+    num: usize,
+    user_id: i64,
+) -> InlineKeyboardMarkup {
     let mut markup = InlineKeyboardMarkup::default();
     let mut last_rem_page: bool = false;
     let mut last_cron_rem_page: bool = false;
@@ -136,7 +151,8 @@ fn get_markup_for_reminders_page_deletion(num: usize, user_id: i64) -> InlineKey
                         InlineKeyboardButton::new(
                             rem.to_unescaped_string(),
                             InlineKeyboardButtonKind::CallbackData(
-                                "delrem::del::".to_string() + &rem.id.to_string(),
+                                "delrem::del::".to_string()
+                                    + &rem.id.to_string(),
                             ),
                         )
                     })
@@ -160,7 +176,8 @@ fn get_markup_for_reminders_page_deletion(num: usize, user_id: i64) -> InlineKey
                         InlineKeyboardButton::new(
                             cron_rem.to_unescaped_string(),
                             InlineKeyboardButtonKind::CallbackData(
-                                "delrem::cron_del::".to_string() + &cron_rem.id.to_string(),
+                                "delrem::cron_del::".to_string()
+                                    + &cron_rem.id.to_string(),
                             ),
                         )
                     })
@@ -215,7 +232,10 @@ async fn run() {
                         match msg.text() {
                             Some(text) => match text {
                                 "/start" => {
-                                    tg::send_message(&TgResponse::Hello.to_string(), &bot, user_id)
+                                    tg::send_message(
+                                        &TgResponse::Hello.to_string(),
+                                        &bot,
+                                        user_id)
                                         .await
                                         .unwrap_or_else({
                                             |err| {

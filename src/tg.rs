@@ -82,7 +82,8 @@ impl ToString for db::Reminder {
     fn to_string(&self) -> String {
         match tz::get_user_timezone(self.user_id) {
             Ok(user_timezone) => {
-                let time = user_timezone.from_utc_datetime(&self.time.naive_utc());
+                let time =
+                    user_timezone.from_utc_datetime(&self.time.naive_utc());
                 let now = Utc::now().with_timezone(&user_timezone);
                 let mut s = String::new();
                 if time.date() != now.date() {
@@ -108,7 +109,8 @@ impl db::Reminder {
     pub fn to_unescaped_string(&self) -> String {
         match tz::get_user_timezone(self.user_id) {
             Ok(user_timezone) => {
-                let time = user_timezone.from_utc_datetime(&self.time.naive_utc());
+                let time =
+                    user_timezone.from_utc_datetime(&self.time.naive_utc());
                 let now = Utc::now().with_timezone(&user_timezone);
                 let mut s = String::new();
                 if time.date() != now.date() {
@@ -134,7 +136,8 @@ impl ToString for db::CronReminder {
     fn to_string(&self) -> String {
         match tz::get_user_timezone(self.user_id) {
             Ok(user_timezone) => {
-                let time = user_timezone.from_utc_datetime(&self.time.naive_utc());
+                let time =
+                    user_timezone.from_utc_datetime(&self.time.naive_utc());
                 let now = Utc::now().with_timezone(&user_timezone);
                 let mut s = String::new();
                 if time.date() != now.date() {
@@ -162,7 +165,8 @@ impl db::CronReminder {
     pub fn to_unescaped_string(&self) -> String {
         match tz::get_user_timezone(self.user_id) {
             Ok(user_timezone) => {
-                let time = user_timezone.from_utc_datetime(&self.time.naive_utc());
+                let time =
+                    user_timezone.from_utc_datetime(&self.time.naive_utc());
                 let now = Utc::now().with_timezone(&user_timezone);
                 let mut s = String::new();
                 if time.date() != now.date() {
@@ -186,7 +190,11 @@ impl db::CronReminder {
     }
 }
 
-pub async fn send_message(text: &String, bot: &Bot, user_id: i64) -> Result<(), RequestError> {
+pub async fn send_message(
+    text: &String,
+    bot: &Bot,
+    user_id: i64,
+) -> Result<(), RequestError> {
     bot.send_message(user_id, text)
         .parse_mode(MarkdownV2)
         .send()
@@ -251,9 +259,11 @@ pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
                 .unwrap_or(default)
         };
         let day = get_field_by_name_or(ReminderRegexFields::DAY, now.day());
-        let month = get_field_by_name_or(ReminderRegexFields::MONTH, now.month());
+        let month =
+            get_field_by_name_or(ReminderRegexFields::MONTH, now.month());
         let hour = get_field_by_name_or(ReminderRegexFields::HOUR, now.hour());
-        let minute = get_field_by_name_or(ReminderRegexFields::MINUTE, now.minute());
+        let minute =
+            get_field_by_name_or(ReminderRegexFields::MINUTE, now.minute());
         let second = get_field_by_name_or(ReminderRegexFields::SECOND, 0);
 
         if !((0..24).contains(&hour) && (0..60).contains(&minute)) {

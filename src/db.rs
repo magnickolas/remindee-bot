@@ -44,7 +44,8 @@ pub fn create_reminder_table() -> Result<()> {
 pub fn insert_reminder(rem: &Reminder) -> Result<()> {
     let conn = get_db_connection()?;
     conn.execute(
-        "insert into reminder (user_id, time, desc, sent) values (?1, ?2, ?3, ?4)",
+        "insert into reminder (user_id, time, desc, sent)
+        values (?1, ?2, ?3, ?4)",
         params![rem.user_id, rem.time, rem.desc, rem.sent],
     )?;
     Ok(())
@@ -121,7 +122,8 @@ pub fn get_user_timezone_name(user_id: i64) -> Result<String> {
         from user_timezone
         where user_id=?1",
     )?;
-    let row = stmt.query_row(params![user_id], |row| Ok(row.get("timezone")?))?;
+    let row =
+        stmt.query_row(params![user_id], |row| Ok(row.get("timezone")?))?;
     Ok(row)
 }
 
@@ -194,7 +196,9 @@ pub fn get_active_cron_reminders() -> Result<Vec<CronReminder>> {
     Ok(cron_reminders)
 }
 
-pub fn get_pending_user_cron_reminders(user_id: i64) -> Result<Vec<CronReminder>> {
+pub fn get_pending_user_cron_reminders(
+    user_id: i64,
+) -> Result<Vec<CronReminder>> {
     let conn = get_db_connection()?;
     let mut stmt = conn.prepare(
         "select id, user_id, cron_expr, time, desc, sent
