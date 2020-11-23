@@ -228,13 +228,10 @@ async fn run() {
                 Ok(update) => match update.kind {
                     UpdateKind::Message(msg) => {
                         let user_id = msg.chat_id();
-                        match msg.text() {
-                            Some(text) => match text {
+                        if let Some(text) = msg.text() {
+                            match text {
                                 "/start" => {
-                                    tg::send_message(
-                                        &TgResponse::Hello.to_string(),
-                                        &bot,
-                                        user_id)
+                                    tg::send_message(&TgResponse::Hello.to_string(), &bot, user_id)
                                         .await
                                         .unwrap_or_else({
                                             |err| {
@@ -243,24 +240,27 @@ async fn run() {
                                         });
                                 }
                                 "list" | "/list" => {
-                                    let mut text = db::get_pending_user_reminders(user_id)
-                                        .map(|v| {
+                                    let reminders_str_fut = db::get_pending_user_reminders(user_id)
+                                        .map(|v| v.into_iter().map(|x| x.to_string()));
+                                    let cron_reminders_str_fut =
+                                        db::get_pending_user_cron_reminders(user_id)
+                                            .map(|v| v.into_iter().map(|x| x.to_string()));
+                                    let all_reminders_str =
+                                        reminders_str_fut.and_then(|rems_str| {
+                                            cron_reminders_str_fut
+                                                .map(|cron_rems_str| rems_str.chain(cron_rems_str))
+                                        });
+
+                                    let text = all_reminders_str
+                                        .map(|rems_str| {
                                             vec![TgResponse::RemindersListHeader.to_string()]
                                                 .into_iter()
-                                                .chain(v.into_iter().map(|x| x.to_string()))
+                                                .chain(rems_str)
                                                 .collect::<Vec<String>>()
                                                 .join("\n")
                                         })
-                                        .unwrap_or(TgResponse::QueryingError.to_string());
-                                    text = db::get_pending_user_cron_reminders(user_id)
-                                        .map(|v| {
-                                            vec![text]
-                                                .into_iter()
-                                                .chain(v.into_iter().map(|x| x.to_string()))
-                                                .collect::<Vec<String>>()
-                                                .join("\n")
-                                        })
-                                        .unwrap_or(TgResponse::QueryingError.to_string());
+                                        .unwrap_or_else(|_| TgResponse::QueryingError.to_string());
+
                                     tg::send_message(&text, &bot, user_id)
                                         .await
                                         .unwrap_or_else({
@@ -411,8 +411,7 @@ async fn run() {
                                         }
                                     }
                                 }
-                            },
-                            None => {}
+                            }
                         }
                     }
                     UpdateKind::CallbackQuery(cb_query) => {
@@ -527,6 +526,21 @@ async fn run() {
                                                     TgResponse::FailedDelete
                                                 }
                                             };
+                                        tg::edit_markup(
+                                            get_markup_for_reminders_page_deletion(
+                                                0,
+                                                msg.chat_id(),
+                                            ),
+                                            &bot,
+                                            msg.id,
+                                            msg.chat_id(),
+                                        )
+                                        .await
+                                        .unwrap_or_else({
+                                            |err| {
+                                                dbg!(err);
+                                            }
+                                        });
                                         tg::send_message(
                                             &response.to_string(),
                                             &bot,

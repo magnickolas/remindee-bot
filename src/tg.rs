@@ -191,7 +191,7 @@ impl db::CronReminder {
 }
 
 pub async fn send_message(
-    text: &String,
+    text: &str,
     bot: &Bot,
     user_id: i64,
 ) -> Result<(), RequestError> {
@@ -203,7 +203,7 @@ pub async fn send_message(
 }
 
 pub async fn send_markup(
-    text: &String,
+    text: &str,
     markup: InlineKeyboardMarkup,
     bot: &Bot,
     user_id: i64,
@@ -274,7 +274,7 @@ pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
             .date()
             .with_day(day)
             .and_then(|x| x.with_month(month))
-            .unwrap_or(now.date())
+            .unwrap_or_else(|| now.date())
             .and_hms(hour, minute, second);
         Some(db::Reminder {
             id: 0,
