@@ -18,7 +18,7 @@ use teloxide::types::{
 };
 use tg::TgResponse;
 
-async fn reminders_pooling(bot: &Bot) {
+async fn reminders_pooling(bot: Bot) {
     loop {
         let reminders = db::get_active_reminders().unwrap();
         for reminder in reminders {
@@ -210,16 +210,18 @@ async fn run() {
     teloxide::enable_logging!();
     log::info!("Starting remindee bot!");
 
-    let bot = Bot::from_env();
-    let updater = polling_default(bot.clone());
-
+    // Create necessary database tables if they do not exist
     db::create_reminder_table().unwrap();
     db::create_cron_reminder_table().unwrap();
     db::create_user_timezone_table().unwrap();
 
-    let bot_clone = bot.clone();
-    tokio::spawn(async move { reminders_pooling(&bot_clone).await });
+    let bot = Bot::from_env();
+    let updater = polling_default(bot.clone());
 
+    // Run a database polling loop checking pending reminders asynchronously
+    tokio::spawn(reminders_pooling(bot.clone()));
+
+    // Run a telegram polling loop waiting messages from users and responding to them
     updater
         .for_each(|update| async {
             match update {
