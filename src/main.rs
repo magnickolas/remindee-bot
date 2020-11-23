@@ -17,7 +17,6 @@ use teloxide::types::{
     UpdateKind,
 };
 use tg::TgResponse;
-use tokio::runtime::Handle;
 
 async fn reminders_pooling(bot: &Bot) {
     loop {
@@ -218,10 +217,8 @@ async fn run() {
     db::create_cron_reminder_table().unwrap();
     db::create_user_timezone_table().unwrap();
 
-    let handle = Handle::current();
-
     let bot_clone = bot.clone();
-    handle.spawn(async move { reminders_pooling(&bot_clone).await });
+    tokio::spawn(async move { reminders_pooling(&bot_clone).await });
 
     updater
         .for_each(|update| async {

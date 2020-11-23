@@ -7,18 +7,18 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-std = "1.6.5"
-chrono = "0.4"
+async-std = "1.7.0"
+chrono = "0.4.19"
 chrono-tz = "0.5.3"
 cron-parser = "0.7.7"
-directories = "1.0.1"
+directories = "3.0.1"
 lazy_static = "1.4.0"
-regex = "1"
+regex = "1.4.2"
 rusqlite = { version = "0.24.1", features = ["chrono"] }
-teloxide = "0.3"
-teloxide-macros = "0.3"
+teloxide = "0.3.3"
+teloxide-macros = "0.3.2"
 
-log = "0.4.8"
+log = "0.4.11"
 pretty_env_logger = "0.4.0"
 
-tokio = { version = "0.2.11", features = ["rt-threaded", "macros"] }
+tokio = { version = "0.2.23", features = ["rt-threaded", "macros"] }
