@@ -83,6 +83,10 @@ async fn reminders_pooling(bot: Bot) {
     }
 }
 
+fn set_token(token: &str) {
+    std::env::set_var("TELOXIDE_TOKEN", token);
+}
+
 async fn run() {
     teloxide::enable_logging!();
     log::info!("Starting remindee bot!");
@@ -92,6 +96,13 @@ async fn run() {
     db::create_cron_reminder_table().unwrap();
     db::create_user_timezone_table().unwrap();
 
+    // Set token from an environment variable
+    let token = std::env::var("BOT_TOKEN")
+        .map_err(|err| {
+            log::error!("{}", err);
+        })
+        .unwrap();
+    set_token(&token);
     let bot = Bot::from_env();
     let updater = polling_default(bot.clone());
 

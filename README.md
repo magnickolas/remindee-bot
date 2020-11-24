@@ -13,14 +13,14 @@ Telegram bot for managing reminders.
 
 ## How to use
 
-- As a preprequisite, install [Rust] and SQLite development package.
+- As a prerequisite, install [Rust] and SQLite development package.
 - Install
     ```console
     cargo install --path .
     ```
 - Start the bot
     ```console
-    TELOXIDE_TOKEN=<your bot token> remindee-bot
+    BOT_TOKEN=<your bot token> remindee-bot
     ```
 - Send `/start`
 
