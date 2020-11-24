@@ -7,6 +7,10 @@ pub enum Error {
     CronParse(cron_parser::ParseError),
     CronFewFields,
     CronPanic,
+    RequestError(teloxide::RequestError),
+    UnmatchedQuery(teloxide::types::CallbackQuery),
+    NoQueryData(teloxide::types::CallbackQuery),
+    NoQueryMessage(teloxide::types::CallbackQuery),
 }
 
 impl fmt::Display for Error {
@@ -19,6 +23,18 @@ impl fmt::Display for Error {
                 write!(f, "Can't parse cron since no enough fields")
             }
             Self::CronPanic => write!(f, "Cron parse error"),
+            Self::RequestError(ref err) => {
+                write!(f, "Telegram request error: {}", err)
+            }
+            Self::UnmatchedQuery(ref cb_query) => {
+                write!(f, "Could not match callback query: {:?}", cb_query)
+            }
+            Self::NoQueryData(ref cb_query) => {
+                write!(f, "Could not get query data: {:?}", cb_query)
+            }
+            Self::NoQueryMessage(ref cb_query) => {
+                write!(f, "Could not get query message: {:?}", cb_query)
+            }
         }
     }
 }
@@ -32,5 +48,11 @@ impl From<rusqlite::Error> for Error {
 impl From<cron_parser::ParseError> for Error {
     fn from(err: cron_parser::ParseError) -> Self {
         Self::CronParse(err)
+    }
+}
+
+impl From<teloxide::RequestError> for Error {
+    fn from(err: teloxide::RequestError) -> Self {
+        Self::RequestError(err)
     }
 }

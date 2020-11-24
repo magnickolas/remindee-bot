@@ -9,14 +9,11 @@ mod tz;
 
 use async_std::task;
 use chrono::Utc;
-use controller::get_markup_for_page_idx;
-use controller::get_markup_for_reminders_page_deletion;
 use cron_parser::parse as parse_cron;
 use std::time::Duration;
 use teloxide::dispatching::update_listeners::polling_default;
 use teloxide::prelude::*;
 use teloxide::types::UpdateKind;
-use tg::TgResponse;
 
 async fn reminders_pooling(bot: Bot) {
     loop {
@@ -86,12 +83,6 @@ async fn reminders_pooling(bot: Bot) {
     }
 }
 
-pub async fn unwrap_endpoint(f: Result<(), RequestError>) {
-    f.unwrap_or_else(|err| {
-        dbg!(err);
-    });
-}
-
 async fn run() {
     teloxide::enable_logging!();
     log::info!("Starting remindee bot!");
@@ -123,170 +114,112 @@ async fn run() {
                                     controller::list(&bot, user_id).await
                                 }
                                 "tz" | "/tz" | "timezone" | "/timezone" => {
-                                    controller::choose_timezone(&bot, user_id).await
+                                    controller::choose_timezone(&bot, user_id)
+                                        .await
                                 }
-                                "mytz" | "/mytz" | "mytimezone" | "/mytimezone" => {
-                                    controller::get_timezone(&bot, user_id).await
+                                "mytz" | "/mytz" | "mytimezone"
+                                | "/mytimezone" => {
+                                    controller::get_timezone(&bot, user_id)
+                                        .await
                                 }
                                 "del" | "/del" | "delete" | "/delete" => {
-                                    controller::start_delete(&bot, user_id).await
+                                    controller::start_delete(&bot, user_id)
+                                        .await
                                 }
                                 "/commands" => {
-                                    controller::list_commands(&bot, user_id).await
+                                    controller::list_commands(&bot, user_id)
+                                        .await
                                 }
                                 text => {
                                     controller::set_reminder(
                                         &text,
                                         &bot,
                                         user_id,
-                                        msg.from().map(|user| user.id)
-                                    ).await
+                                        msg.from().map(|user| user.id),
+                                    )
+                                    .await
                                 }
-                            }.unwrap_or_else(|err| {dbg!(err);})
+                            }
+                            .unwrap_or_else(
+                                |err| {
+                                    dbg!(err);
+                                },
+                            )
                         }
                     }
                     UpdateKind::CallbackQuery(cb_query) => {
                         if let Some(cb_data) = &cb_query.data {
-                            if let Some(page_num_str) = cb_data.strip_prefix("seltz::page::") {
-                                if let Ok(page_num) = page_num_str.parse::<usize>() {
-                                    if let Some(msg) = cb_query.message {
-                                        tg::edit_markup(
-                                            get_markup_for_page_idx(page_num),
-                                            &bot,
-                                            msg.id,
-                                            msg.chat_id(),
-                                        )
-                                        .await
-                                        .unwrap_or_else({
-                                            |err| {
-                                                dbg!(err);
-                                            }
-                                        });
-                                    }
+                            if let Some(msg) = &cb_query.message {
+                                if let Some(page_num) = cb_data
+                                    .strip_prefix("seltz::page::")
+                                    .and_then(|x| x.parse::<usize>().ok())
+                                {
+                                    controller::select_timezone_set_page(
+                                        &bot,
+                                        msg.chat_id(),
+                                        page_num,
+                                        msg.id,
+                                    )
+                                    .await
+                                    .map_err(From::from)
+                                } else if let Some(tz_name) =
+                                    cb_data.strip_prefix("seltz::tz::")
+                                {
+                                    controller::set_timezone(
+                                        &bot,
+                                        msg.chat_id(),
+                                        tz_name,
+                                    )
+                                    .await
+                                    .map_err(From::from)
+                                } else if let Some(page_num) = cb_data
+                                    .strip_prefix("delrem::page::")
+                                    .and_then(|x| x.parse::<usize>().ok())
+                                {
+                                    controller::delete_reminder_set_page(
+                                        &bot,
+                                        msg.chat_id(),
+                                        page_num,
+                                        msg.id,
+                                    )
+                                    .await
+                                    .map_err(From::from)
+                                } else if let Some(rem_id) = cb_data
+                                    .strip_prefix("delrem::del::")
+                                    .and_then(|x| x.parse::<u32>().ok())
+                                {
+                                    controller::delete_reminder(
+                                        &bot,
+                                        msg.chat_id(),
+                                        rem_id,
+                                        msg.id,
+                                    )
+                                    .await
+                                    .map_err(From::from)
+                                } else if let Some(cron_rem_id) = cb_data
+                                    .strip_prefix("delrem::cron_del::")
+                                    .and_then(|x| x.parse::<u32>().ok())
+                                {
+                                    controller::delete_cron_reminder(
+                                        &bot,
+                                        msg.chat_id(),
+                                        cron_rem_id,
+                                        msg.id,
+                                    )
+                                    .await
+                                    .map_err(From::from)
+                                } else {
+                                    Err(err::Error::UnmatchedQuery(cb_query))
                                 }
-                            } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
-                                if let Some(msg) = cb_query.message {
-                                    let response =
-                                        match db::set_user_timezone_name(msg.chat_id(), tz_name) {
-                                            Ok(_) => {
-                                                TgResponse::ChosenTimezone(tz_name.to_string())
-                                            }
-                                            Err(err) => {
-                                                dbg!(err);
-                                                TgResponse::FailedSetTimezone(tz_name.to_string())
-                                            }
-                                        };
-                                    tg::send_message(&response.to_string(), &bot, msg.chat_id())
-                                        .await
-                                        .unwrap_or_else({
-                                            |err| {
-                                                dbg!(err);
-                                            }
-                                        });
-                                }
-                            } else if let Some(page_num_str) =
-                                cb_data.strip_prefix("delrem::page::")
-                            {
-                                if let Ok(page_num) = page_num_str.parse::<usize>() {
-                                    if let Some(msg) = cb_query.message {
-                                        tg::edit_markup(
-                                            get_markup_for_reminders_page_deletion(
-                                                page_num,
-                                                msg.chat_id(),
-                                            ),
-                                            &bot,
-                                            msg.id,
-                                            msg.chat_id(),
-                                        )
-                                        .await
-                                        .unwrap_or_else({
-                                            |err| {
-                                                dbg!(err);
-                                            }
-                                        });
-                                    }
-                                }
-                            } else if let Some(rem_id_str) = cb_data.strip_prefix("delrem::del::") {
-                                if let Ok(rem_id) = rem_id_str.parse::<u32>() {
-                                    if let Some(msg) = cb_query.message {
-                                        let response = match db::mark_reminder_as_sent(rem_id) {
-                                            Ok(_) => TgResponse::SuccessDelete,
-                                            Err(err) => {
-                                                dbg!(err);
-                                                TgResponse::FailedDelete
-                                            }
-                                        };
-                                        tg::edit_markup(
-                                            get_markup_for_reminders_page_deletion(
-                                                0,
-                                                msg.chat_id(),
-                                            ),
-                                            &bot,
-                                            msg.id,
-                                            msg.chat_id(),
-                                        )
-                                        .await
-                                        .unwrap_or_else({
-                                            |err| {
-                                                dbg!(err);
-                                            }
-                                        });
-                                        tg::send_message(
-                                            &response.to_string(),
-                                            &bot,
-                                            msg.chat_id(),
-                                        )
-                                        .await
-                                        .unwrap_or_else({
-                                            |err| {
-                                                dbg!(err);
-                                            }
-                                        });
-                                    }
-                                }
-                            } else if let Some(cron_rem_id_str) =
-                                cb_data.strip_prefix("delrem::cron_del::")
-                            {
-                                if let Ok(cron_rem_id) = cron_rem_id_str.parse::<u32>() {
-                                    if let Some(msg) = cb_query.message {
-                                        let response =
-                                            match db::mark_cron_reminder_as_sent(cron_rem_id) {
-                                                Ok(_) => TgResponse::SuccessDelete,
-                                                Err(err) => {
-                                                    dbg!(err);
-                                                    TgResponse::FailedDelete
-                                                }
-                                            };
-                                        tg::edit_markup(
-                                            get_markup_for_reminders_page_deletion(
-                                                0,
-                                                msg.chat_id(),
-                                            ),
-                                            &bot,
-                                            msg.id,
-                                            msg.chat_id(),
-                                        )
-                                        .await
-                                        .unwrap_or_else({
-                                            |err| {
-                                                dbg!(err);
-                                            }
-                                        });
-                                        tg::send_message(
-                                            &response.to_string(),
-                                            &bot,
-                                            msg.chat_id(),
-                                        )
-                                        .await
-                                        .unwrap_or_else({
-                                            |err| {
-                                                dbg!(err);
-                                            }
-                                        });
-                                    }
-                                }
+                            } else {
+                                Err(err::Error::NoQueryMessage(cb_query))
                             }
+                        } else {
+                            Err(err::Error::NoQueryData(cb_query))
                         }
+                        .unwrap_or_else(|err| {
+                            dbg!(err);
+                        })
                     }
                     _ => {}
                 },

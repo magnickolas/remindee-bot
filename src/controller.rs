@@ -147,6 +147,92 @@ pub async fn set_reminder(
     }
 }
 
+pub async fn select_timezone_set_page(
+    bot: &Bot,
+    user_id: i64,
+    page_num: usize,
+    msg_id: i32,
+) -> Result<(), RequestError> {
+    tg::edit_markup(get_markup_for_page_idx(page_num), &bot, msg_id, user_id)
+        .await
+}
+
+pub async fn set_timezone(
+    bot: &Bot,
+    user_id: i64,
+    tz_name: &str,
+) -> Result<(), RequestError> {
+    let response = match db::set_user_timezone_name(user_id, tz_name) {
+        Ok(_) => TgResponse::ChosenTimezone(tz_name.to_string()),
+        Err(err) => {
+            dbg!(err);
+            TgResponse::FailedSetTimezone(tz_name.to_string())
+        }
+    };
+    tg::send_message(&response.to_string(), &bot, user_id).await
+}
+
+pub async fn delete_reminder_set_page(
+    bot: &Bot,
+    user_id: i64,
+    page_num: usize,
+    msg_id: i32,
+) -> Result<(), RequestError> {
+    tg::edit_markup(
+        get_markup_for_reminders_page_deletion(page_num, user_id),
+        &bot,
+        msg_id,
+        user_id,
+    )
+    .await
+}
+
+pub async fn delete_reminder(
+    bot: &Bot,
+    user_id: i64,
+    rem_id: u32,
+    msg_id: i32,
+) -> Result<(), RequestError> {
+    let response = match db::mark_reminder_as_sent(rem_id) {
+        Ok(_) => TgResponse::SuccessDelete,
+        Err(err) => {
+            dbg!(err);
+            TgResponse::FailedDelete
+        }
+    };
+    tg::edit_markup(
+        get_markup_for_reminders_page_deletion(0, user_id),
+        &bot,
+        msg_id,
+        user_id,
+    )
+    .await?;
+    tg::send_message(&response.to_string(), &bot, user_id).await
+}
+
+pub async fn delete_cron_reminder(
+    bot: &Bot,
+    user_id: i64,
+    cron_rem_id: u32,
+    msg_id: i32,
+) -> Result<(), RequestError> {
+    let response = match db::mark_cron_reminder_as_sent(cron_rem_id) {
+        Ok(_) => TgResponse::SuccessDelete,
+        Err(err) => {
+            dbg!(err);
+            TgResponse::FailedDelete
+        }
+    };
+    tg::edit_markup(
+        get_markup_for_reminders_page_deletion(0, user_id),
+        &bot,
+        msg_id,
+        user_id,
+    )
+    .await?;
+    tg::send_message(&response.to_string(), &bot, user_id).await
+}
+
 pub fn get_markup_for_page_idx(num: usize) -> InlineKeyboardMarkup {
     let mut markup = InlineKeyboardMarkup::default();
     let mut last_page: bool = false;
