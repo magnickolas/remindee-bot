@@ -12,7 +12,6 @@ use chrono::Utc;
 use controller::get_markup_for_page_idx;
 use controller::get_markup_for_reminders_page_deletion;
 use cron_parser::parse as parse_cron;
-use std::future::Future;
 use std::time::Duration;
 use teloxide::dispatching::update_listeners::polling_default;
 use teloxide::prelude::*;
@@ -87,11 +86,8 @@ async fn reminders_pooling(bot: Bot) {
     }
 }
 
-pub async fn unwrap_endpoint<Fut>(f: Fut)
-where
-    Fut: Future<Output = Result<(), RequestError>>,
-{
-    f.await.unwrap_or_else(|err| {
+pub async fn unwrap_endpoint(f: Result<(), RequestError>) {
+    f.unwrap_or_else(|err| {
         dbg!(err);
     });
 }
@@ -120,33 +116,33 @@ async fn run() {
                         let user_id = msg.chat_id();
                         if let Some(text) = msg.text() {
                             match text {
-                                "/start" => unwrap_endpoint(controller::start(&bot, user_id)).await,
+                                "/start" => {
+                                    controller::start(&bot, user_id).await
+                                }
                                 "list" | "/list" => {
-                                    unwrap_endpoint(controller::list(&bot, user_id)).await
+                                    controller::list(&bot, user_id).await
                                 }
                                 "tz" | "/tz" | "timezone" | "/timezone" => {
-                                    unwrap_endpoint(controller::choose_timezone(&bot, user_id))
-                                        .await
+                                    controller::choose_timezone(&bot, user_id).await
                                 }
                                 "mytz" | "/mytz" | "mytimezone" | "/mytimezone" => {
-                                    unwrap_endpoint(controller::get_timezone(&bot, user_id)).await
+                                    controller::get_timezone(&bot, user_id).await
                                 }
                                 "del" | "/del" | "delete" | "/delete" => {
-                                    unwrap_endpoint(controller::start_delete(&bot, user_id)).await
+                                    controller::start_delete(&bot, user_id).await
                                 }
                                 "/commands" => {
-                                    unwrap_endpoint(controller::list_commands(&bot, user_id)).await
+                                    controller::list_commands(&bot, user_id).await
                                 }
                                 text => {
-                                    unwrap_endpoint(controller::set_reminder(
+                                    controller::set_reminder(
                                         &text,
                                         &bot,
                                         user_id,
-                                        msg.from().map(|user| user.id),
-                                    ))
-                                    .await
+                                        msg.from().map(|user| user.id)
+                                    ).await
                                 }
-                            }
+                            }.unwrap_or_else(|err| {dbg!(err);})
                         }
                     }
                     UpdateKind::CallbackQuery(cb_query) => {
