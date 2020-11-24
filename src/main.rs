@@ -140,12 +140,10 @@ async fn run() {
                                     .await
                                 }
                             }
-                            .unwrap_or_else(
-                                |err| {
-                                    dbg!(err);
-                                },
-                            )
+                        } else {
+                            Ok(())
                         }
+                        .map_err(err::Error::RequestError)
                     }
                     UpdateKind::CallbackQuery(cb_query) => {
                         if let Some(cb_data) = &cb_query.data {
@@ -217,16 +215,14 @@ async fn run() {
                         } else {
                             Err(err::Error::NoQueryData(cb_query))
                         }
-                        .unwrap_or_else(|err| {
-                            dbg!(err);
-                        })
                     }
-                    _ => {}
+                    _ => Ok(()),
                 },
-                Err(error) => {
-                    dbg!(error);
-                }
+                Err(err) => Err(err::Error::RequestError(err)),
             }
+            .unwrap_or_else(|err| {
+                dbg!(err);
+            })
         })
         .await;
 }
