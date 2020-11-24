@@ -141,9 +141,9 @@ async fn run() {
                                 }
                             }
                         } else {
-                            Ok(())
+                            controller::incorrect_request(&bot, user_id).await
                         }
-                        .map_err(err::Error::RequestError)
+                        .map_err(From::from)
                     }
                     UpdateKind::CallbackQuery(cb_query) => {
                         if let Some(cb_data) = &cb_query.data {
@@ -218,7 +218,7 @@ async fn run() {
                     }
                     _ => Ok(()),
                 },
-                Err(err) => Err(err::Error::RequestError(err)),
+                Err(err) => Err(From::from(err)),
             }
             .unwrap_or_else(|err| {
                 dbg!(err);

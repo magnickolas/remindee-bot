@@ -147,6 +147,14 @@ pub async fn set_reminder(
     }
 }
 
+pub async fn incorrect_request(
+    bot: &Bot,
+    user_id: i64,
+) -> Result<(), RequestError> {
+    tg::send_message(&TgResponse::IncorrectRequest.to_string(), &bot, user_id)
+        .await
+}
+
 pub async fn select_timezone_set_page(
     bot: &Bot,
     user_id: i64,
