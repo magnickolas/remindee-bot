@@ -13,6 +13,8 @@ jobs:
 
       - name: Get the release version from the tag
         if: env.SL_VERSION == ''
+        env:
+          ACTIONS_ALLOW_UNSECURE_COMMANDS: "true"
         run: |
           echo "::set-env name=SL_VERSION::${GITHUB_REF#refs/tags/}"
           echo "version is: ${{ env.SL_VERSION }}"
@@ -74,6 +76,15 @@ jobs:
         override: true
         target: ${{ matrix.target }}
 
+    - name: Use Cross
+      env:
+        ACTIONS_ALLOW_UNSECURE_COMMANDS: "true"
+      run: |
+        cargo install cross
+        echo "::set-env name=CARGO::cross"
+        echo "::set-env name=TARGET_FLAGS::--target ${{ matrix.target }}"
+        echo "::set-env name=TARGET_DIR::./target/${{ matrix.target }}"
+
     - name: Show command used for Cargo
       run: |
         echo "cargo command is: ${{ env.CARGO }}"
@@ -88,6 +99,8 @@ jobs:
 
     - name: Set release upload URL and release version
       shell: bash
+      env:
+        ACTIONS_ALLOW_UNSECURE_COMMANDS: "true"
       run: |
         release_upload_url="$(cat artifacts/release-upload-url)"
         echo "::set-env name=RELEASE_UPLOAD_URL::$release_upload_url"
@@ -104,10 +117,12 @@ jobs:
 
     - name: Build archive
       shell: bash
+      env:
+        ACTIONS_ALLOW_UNSECURE_COMMANDS: "true"
       run: |
         outdir=${{ env.TARGET_DIR }}
-        staging="StreamLogger-${{ env.RELEASE_VERSION }}-${{ matrix.target }}"
-        mkdir -p "$staging"/{complete,doc}
+        staging="remindee-${{ env.RELEASE_VERSION }}-${{ matrix.target }}"
+        mkdir -p "$staging"
 
         cp "target/${{ matrix.target }}/release/remindee-bot" "$staging/"
         tar czf "$staging.tar.gz" "$staging"
