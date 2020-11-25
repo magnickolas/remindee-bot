@@ -16,16 +16,13 @@ jobs:
         action:
           - build
           - test
-        build: [linux, macos, windows]
+        build: [linux, macos]
         include:
           - build: linux
             os: ubuntu-latest
             rust: stable
           - build: macos
             os: macos-latest
-            rust: stable
-          - build: windows
-            os: windows-latest
             rust: stable
 
     steps:
