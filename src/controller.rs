@@ -129,21 +129,19 @@ pub async fn set_reminder(
             }
         };
         tg::send_message(&response.to_string(), &bot, user_id).await
-    } else {
-        if let Some(id) = from_id {
-            if id as i64 == user_id {
-                let response = if tz::get_user_timezone(user_id).is_err() {
-                    TgResponse::NoChosenTimezone
-                } else {
-                    TgResponse::IncorrectRequest
-                };
-                tg::send_message(&response.to_string(), &bot, user_id).await
+    } else if let Some(id) = from_id {
+        if id as i64 == user_id {
+            let response = if tz::get_user_timezone(user_id).is_err() {
+                TgResponse::NoChosenTimezone
             } else {
-                Ok(())
-            }
+                TgResponse::IncorrectRequest
+            };
+            tg::send_message(&response.to_string(), &bot, user_id).await
         } else {
             Ok(())
         }
+    } else {
+        Ok(())
     }
 }
 
