@@ -83,7 +83,7 @@ pub async fn set_reminder(
     text: &str,
     bot: &Bot,
     user_id: i64,
-    from_id: Option<i32>,
+    from_id_opt: Option<i32>,
 ) -> Result<(), RequestError> {
     if let Some(reminder) = tg::parse_req(text, user_id) {
         let response = match db::insert_reminder(&reminder) {
@@ -129,17 +129,16 @@ pub async fn set_reminder(
             }
         };
         tg::send_message(&response.to_string(), &bot, user_id).await
-    } else if let Some(id) = from_id {
-        if id as i64 == user_id {
-            let response = if tz::get_user_timezone(user_id).is_err() {
-                TgResponse::NoChosenTimezone
-            } else {
-                TgResponse::IncorrectRequest
-            };
-            tg::send_message(&response.to_string(), &bot, user_id).await
+    } else if from_id_opt
+        .filter(|&from_id| from_id as i64 == user_id)
+        .is_some()
+    {
+        let response = if tz::get_user_timezone(user_id).is_err() {
+            TgResponse::NoChosenTimezone
         } else {
-            Ok(())
-        }
+            TgResponse::IncorrectRequest
+        };
+        tg::send_message(&response.to_string(), &bot, user_id).await
     } else {
         Ok(())
     }

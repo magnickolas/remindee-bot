@@ -151,8 +151,14 @@ async fn run() {
                                     .await
                                 }
                             }
-                        } else {
+                        } else if msg
+                            .from()
+                            .filter(|user| user.id as i64 == user_id)
+                            .is_some()
+                        {
                             controller::incorrect_request(&bot, user_id).await
+                        } else {
+                            Ok(())
                         }
                         .map_err(From::from)
                     }
