@@ -72,6 +72,7 @@ struct ReminderRegexFields;
 impl ReminderRegexFields {
     const DAY: &'static str = "day";
     const MONTH: &'static str = "month";
+    const YEAR: &'static str = "year";
     const HOUR: &'static str = "hour";
     const MINUTE: &'static str = "minute";
     const SECOND: &'static str = "second";
@@ -236,12 +237,13 @@ pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
     lazy_static! {
         static ref RE: Regex = Regex::new(&format!(
             concat!(
-                r"^\s*((?P<{day}>\d{{1,2}})(\.(?P<{month}>\d{{2}}))?\s+)?",
+                r"^\s*((?P<{day}>\d{{1,2}})(\.(?P<{month}>\d{{2}}))(\.(?P<{year}>\d{{4}}))?\s+)?",
                 r"(?P<{hour}>\d{{1,2}}):(?P<{minute}>\d{{2}})(:(?P<{second}>\d{{2}}))?\s*",
                 r"(?P<{description}>.*?)\s*$"
             ),
             day = ReminderRegexFields::DAY,
             month = ReminderRegexFields::MONTH,
+            year = ReminderRegexFields::YEAR,
             hour = ReminderRegexFields::HOUR,
             minute = ReminderRegexFields::MINUTE,
             second = ReminderRegexFields::SECOND,
@@ -261,6 +263,9 @@ pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
         let day = get_field_by_name_or(ReminderRegexFields::DAY, now.day());
         let month =
             get_field_by_name_or(ReminderRegexFields::MONTH, now.month());
+        let year =
+            get_field_by_name_or(ReminderRegexFields::YEAR, now.year() as u32)
+                as i32;
         let hour = get_field_by_name_or(ReminderRegexFields::HOUR, now.hour());
         let minute =
             get_field_by_name_or(ReminderRegexFields::MINUTE, now.minute());
@@ -274,6 +279,7 @@ pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
             .date()
             .with_day(day)
             .and_then(|x| x.with_month(month))
+            .and_then(|x| x.with_year(year))
             .unwrap_or_else(|| now.date())
             .and_hms(hour, minute, second);
         Some(db::Reminder {
