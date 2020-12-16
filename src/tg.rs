@@ -271,7 +271,10 @@ pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
             get_field_by_name_or(ReminderRegexFields::MINUTE, now.minute());
         let second = get_field_by_name_or(ReminderRegexFields::SECOND, 0);
 
-        if !((0..24).contains(&hour) && (0..60).contains(&minute)) {
+        if !((0..24).contains(&hour)
+            && (0..60).contains(&minute)
+            && (0..60).contains(&second))
+        {
             return None;
         }
 
