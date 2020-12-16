@@ -3,7 +3,7 @@ use crate::tz;
 
 use chrono::offset::TimeZone;
 use chrono::prelude::*;
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use regex::Regex;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode::MarkdownV2;
@@ -275,13 +275,16 @@ pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
             return None;
         }
 
-        let time = now
+        let mut time = now
             .date()
             .with_day(day)
             .and_then(|x| x.with_month(month))
             .and_then(|x| x.with_year(year))
             .unwrap_or_else(|| now.date())
             .and_hms(hour, minute, second);
+        if time < now {
+            time = time + Duration::days(1);
+        }
         Some(db::Reminder {
             id: 0,
             user_id,
