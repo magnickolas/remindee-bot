@@ -1,3 +1,4 @@
+use crate::date;
 use crate::db;
 use crate::tz;
 
@@ -285,8 +286,18 @@ pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
             .and_then(|x| x.with_year(year))
             .unwrap_or_else(|| now.date())
             .and_hms(hour, minute, second);
+        let durs = vec![
+            Duration::days(1),
+            Duration::days(date::days_in_month(month, year).into()),
+            Duration::days(date::days_in_year(year)),
+        ];
         if time < now {
-            time = time + Duration::days(1);
+            for dur in durs {
+                if time + dur >= now {
+                    time = time + dur;
+                    break;
+                }
+            }
         }
         Some(db::Reminder {
             id: 0,
