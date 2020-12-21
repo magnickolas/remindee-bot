@@ -286,15 +286,17 @@ pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
             .and_then(|x| x.with_year(year))
             .unwrap_or_else(|| now.date())
             .and_hms(hour, minute, second);
-        let durs = vec![
-            Duration::days(1),
-            Duration::days(date::days_in_month(month, year).into()),
-            Duration::days(date::days_in_year(year)),
-        ];
         if time < now {
-            for dur in durs {
-                if time + dur >= now {
-                    time = time + dur;
+            for duration in [
+                1,
+                date::days_in_month(month, year),
+                date::days_in_year(year),
+            ]
+            .iter()
+            .map(|&x| Duration::days(x))
+            {
+                if time + duration >= now {
+                    time = time + duration;
                     break;
                 }
             }
