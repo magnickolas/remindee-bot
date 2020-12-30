@@ -240,7 +240,7 @@ pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
             concat!(
                 r"^\s*((?P<{day}>\d{{1,2}})(\.(?P<{month}>\d{{2}}))?(\.(?P<{year}>\d{{4}}))?\s+)?",
                 r"(?P<{hour}>\d{{1,2}}):(?P<{minute}>\d{{2}})(:(?P<{second}>\d{{2}}))?\s*",
-                r"(?P<{description}>.*?)\s*$"
+                r"(?P<{description}>(?s:.)*?)\s*$"
             ),
             day = ReminderRegexFields::DAY,
             month = ReminderRegexFields::MONTH,
