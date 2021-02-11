@@ -9,6 +9,7 @@ pub struct Reminder {
     pub time: DateTime<Utc>,
     pub desc: String,
     pub sent: bool,
+    pub edit: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -19,6 +20,7 @@ pub struct CronReminder {
     pub time: DateTime<Utc>,
     pub desc: String,
     pub sent: bool,
+    pub edit: bool,
 }
 
 pub fn get_db_connection() -> Result<Connection> {
@@ -34,7 +36,8 @@ pub fn create_reminder_table() -> Result<()> {
              user_id    integer not null,
              time       timestamp not null,
              desc       text not null,
-             sent       boolean not null
+             sent       boolean not null,
+             edit       boolean not null
         )",
         NO_PARAMS,
     )?;
@@ -44,9 +47,9 @@ pub fn create_reminder_table() -> Result<()> {
 pub fn insert_reminder(rem: &Reminder) -> Result<()> {
     let conn = get_db_connection()?;
     conn.execute(
-        "insert into reminder (user_id, time, desc, sent)
-        values (?1, ?2, ?3, ?4)",
-        params![rem.user_id, rem.time, rem.desc, rem.sent],
+        "insert into reminder (user_id, time, desc, sent, edit)
+        values (?1, ?2, ?3, ?4, ?5)",
+        params![rem.user_id, rem.time, rem.desc, rem.sent, rem.edit],
     )?;
     Ok(())
 }
@@ -57,10 +60,47 @@ pub fn mark_reminder_as_sent(id: u32) -> Result<()> {
     Ok(())
 }
 
+pub fn mark_reminder_as_edit(id: u32) -> Result<()> {
+    let conn = get_db_connection()?;
+    conn.execute("update reminder set edit=true where id=?1", params![id])?;
+    Ok(())
+}
+
+pub fn reset_reminders_edit(user_id: i64) -> Result<()> {
+    let conn = get_db_connection()?;
+    conn.execute(
+        "update reminder set edit=false where user_id=?1",
+        params![user_id],
+    )?;
+    Ok(())
+}
+
+pub fn get_edit_reminder(user_id: i64) -> Result<Option<Reminder>> {
+    let conn = get_db_connection()?;
+    let mut stmt = conn.prepare(
+        "select id, user_id, time, desc, sent, edit
+        from reminder
+        where user_id=?1 and edit=true and sent=false",
+    )?;
+    return stmt
+        .query_map(params![user_id], |row| {
+            Ok(Reminder {
+                id: row.get(0)?,
+                user_id: row.get(1)?,
+                time: row.get(2)?,
+                desc: row.get(3)?,
+                sent: row.get(4)?,
+                edit: row.get(5)?,
+            })
+        })?
+        .nth(0)
+        .transpose();
+}
+
 pub fn get_active_reminders() -> Result<Vec<Reminder>> {
     let conn = get_db_connection()?;
     let mut stmt = conn.prepare(
-        "select id, user_id, time, desc, sent
+        "select id, user_id, time, desc, sent, edit
         from reminder
         where sent=false and datetime(time) < datetime('now')",
     )?;
@@ -71,6 +111,7 @@ pub fn get_active_reminders() -> Result<Vec<Reminder>> {
             time: row.get(2)?,
             desc: row.get(3)?,
             sent: row.get(4)?,
+            edit: row.get(5)?,
         })
     })?;
     let mut reminders = Vec::new();
@@ -83,7 +124,7 @@ pub fn get_active_reminders() -> Result<Vec<Reminder>> {
 pub fn get_pending_user_reminders(user_id: i64) -> Result<Vec<Reminder>> {
     let conn = get_db_connection()?;
     let mut stmt = conn.prepare(
-        "select id, user_id, time, desc, sent
+        "select id, user_id, time, desc, sent, edit
         from reminder
         where user_id=?1 and datetime(time) >= datetime('now') and sent=false",
     )?;
@@ -94,6 +135,7 @@ pub fn get_pending_user_reminders(user_id: i64) -> Result<Vec<Reminder>> {
             time: row.get(2)?,
             desc: row.get(3)?,
             sent: row.get(4)?,
+            edit: row.get(5)?,
         })
     })?;
     let mut reminders = Vec::new();
@@ -146,7 +188,8 @@ pub fn create_cron_reminder_table() -> Result<()> {
              cron_expr  text not null,
              time       timestamp not null,
              desc       text not null,
-             sent       boolean not null
+             sent       boolean not null,
+             edit       boolean not null
         )",
         NO_PARAMS,
     )?;
@@ -156,9 +199,16 @@ pub fn create_cron_reminder_table() -> Result<()> {
 pub fn insert_cron_reminder(rem: &CronReminder) -> Result<()> {
     let conn = get_db_connection()?;
     conn.execute(
-        "insert into cron_reminder (user_id, cron_expr, time, desc, sent)
-        values (?1, ?2, ?3, ?4, ?5)",
-        params![rem.user_id, rem.cron_expr, rem.time, rem.desc, rem.sent],
+        "insert into cron_reminder (user_id, cron_expr, time, desc, sent, edit)
+        values (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            rem.user_id,
+            rem.cron_expr,
+            rem.time,
+            rem.desc,
+            rem.sent,
+            rem.edit
+        ],
     )?;
     Ok(())
 }
@@ -172,10 +222,51 @@ pub fn mark_cron_reminder_as_sent(id: u32) -> Result<()> {
     Ok(())
 }
 
+pub fn mark_cron_reminder_as_edit(id: u32) -> Result<()> {
+    let conn = get_db_connection()?;
+    conn.execute(
+        "update cron_reminder set edit=true where id=?1",
+        params![id],
+    )?;
+    Ok(())
+}
+
+pub fn reset_cron_reminders_edit(user_id: i64) -> Result<()> {
+    let conn = get_db_connection()?;
+    conn.execute(
+        "update cron_reminder set edit=false where user_id=?1",
+        params![user_id],
+    )?;
+    Ok(())
+}
+
+pub fn get_edit_cron_reminder(user_id: i64) -> Result<Option<CronReminder>> {
+    let conn = get_db_connection()?;
+    let mut stmt = conn.prepare(
+        "select id, user_id, cron_expr, time, desc, sent, edit
+        from cron_reminder
+        where user_id=?1 and edit=true and sent=false",
+    )?;
+    return stmt
+        .query_map(params![user_id], |row| {
+            Ok(CronReminder {
+                id: row.get(0)?,
+                user_id: row.get(1)?,
+                cron_expr: row.get(2)?,
+                time: row.get(3)?,
+                desc: row.get(4)?,
+                sent: row.get(5)?,
+                edit: row.get(6)?,
+            })
+        })?
+        .nth(0)
+        .transpose();
+}
+
 pub fn get_active_cron_reminders() -> Result<Vec<CronReminder>> {
     let conn = get_db_connection()?;
     let mut stmt = conn.prepare(
-        "select id, user_id, cron_expr, time, desc, sent
+        "select id, user_id, cron_expr, time, desc, sent, edit
         from cron_reminder
         where sent=false and datetime(time) < datetime('now')",
     )?;
@@ -187,6 +278,7 @@ pub fn get_active_cron_reminders() -> Result<Vec<CronReminder>> {
             time: row.get(3)?,
             desc: row.get(4)?,
             sent: row.get(5)?,
+            edit: row.get(6)?,
         })
     })?;
     let mut cron_reminders = Vec::new();
@@ -201,7 +293,7 @@ pub fn get_pending_user_cron_reminders(
 ) -> Result<Vec<CronReminder>> {
     let conn = get_db_connection()?;
     let mut stmt = conn.prepare(
-        "select id, user_id, cron_expr, time, desc, sent
+        "select id, user_id, cron_expr, time, desc, sent, edit
         from cron_reminder
         where user_id=?1 and datetime(time) >= datetime('now') and sent=false",
     )?;
@@ -213,6 +305,7 @@ pub fn get_pending_user_cron_reminders(
             time: row.get(3)?,
             desc: row.get(4)?,
             sent: row.get(5)?,
+            edit: row.get(6)?,
         })
     })?;
     let mut cron_reminders = Vec::new();

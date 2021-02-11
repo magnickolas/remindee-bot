@@ -138,19 +138,47 @@ async fn run() {
                                     controller::start_delete(&bot, user_id)
                                         .await
                                 }
+                                "edit" | "/edit" => {
+                                    controller::start_edit(&bot, user_id).await
+                                }
                                 "/commands" => {
                                     controller::list_commands(&bot, user_id)
                                         .await
                                 }
-                                text => {
-                                    controller::set_reminder(
+                                text => match (
+                                    db::get_edit_reminder(user_id),
+                                    db::get_edit_cron_reminder(user_id),
+                                ) {
+                                    (Ok(Some(edit_reminder)), _) => {
+                                        controller::replace_reminder(
+                                            &text,
+                                            &bot,
+                                            user_id,
+                                            edit_reminder.id,
+                                            msg.from().map(|user| user.id),
+                                        )
+                                        .await
+                                    }
+                                    (_, Ok(Some(edit_cron_reminder))) => {
+                                        controller::replace_cron_reminder(
+                                            &text,
+                                            &bot,
+                                            user_id,
+                                            edit_cron_reminder.id,
+                                            msg.from().map(|user| user.id),
+                                        )
+                                        .await
+                                    }
+                                    _ => controller::set_reminder(
                                         &text,
                                         &bot,
                                         user_id,
                                         msg.from().map(|user| user.id),
+                                        false,
                                     )
                                     .await
-                                }
+                                    .map(|_| ()),
+                                },
                             }
                         } else if msg
                             .from()
@@ -201,7 +229,7 @@ async fn run() {
                                     .await
                                     .map_err(From::from)
                                 } else if let Some(rem_id) = cb_data
-                                    .strip_prefix("delrem::del::")
+                                    .strip_prefix("delrem::alt::")
                                     .and_then(|x| x.parse::<u32>().ok())
                                 {
                                     controller::delete_reminder(
@@ -213,7 +241,7 @@ async fn run() {
                                     .await
                                     .map_err(From::from)
                                 } else if let Some(cron_rem_id) = cb_data
-                                    .strip_prefix("delrem::cron_del::")
+                                    .strip_prefix("delrem::cron_alt::")
                                     .and_then(|x| x.parse::<u32>().ok())
                                 {
                                     controller::delete_cron_reminder(
@@ -221,6 +249,40 @@ async fn run() {
                                         msg.chat_id(),
                                         cron_rem_id,
                                         msg.id,
+                                    )
+                                    .await
+                                    .map_err(From::from)
+                                } else if let Some(page_num) = cb_data
+                                    .strip_prefix("editrem::page::")
+                                    .and_then(|x| x.parse::<usize>().ok())
+                                {
+                                    controller::edit_reminder_set_page(
+                                        &bot,
+                                        msg.chat_id(),
+                                        page_num,
+                                        msg.id,
+                                    )
+                                    .await
+                                    .map_err(From::from)
+                                } else if let Some(rem_id) = cb_data
+                                    .strip_prefix("editrem::alt::")
+                                    .and_then(|x| x.parse::<u32>().ok())
+                                {
+                                    controller::edit_reminder(
+                                        &bot,
+                                        msg.chat_id(),
+                                        rem_id,
+                                    )
+                                    .await
+                                    .map_err(From::from)
+                                } else if let Some(cron_rem_id) = cb_data
+                                    .strip_prefix("editrem::cron_alt::")
+                                    .and_then(|x| x.parse::<u32>().ok())
+                                {
+                                    controller::edit_cron_reminder(
+                                        &bot,
+                                        msg.chat_id(),
+                                        cron_rem_id,
                                     )
                                     .await
                                     .map_err(From::from)

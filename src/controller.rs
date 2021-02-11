@@ -33,7 +33,10 @@ pub async fn list(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
                 .collect::<Vec<String>>()
                 .join("\n")
         })
-        .unwrap_or_else(|_| TgResponse::QueryingError.to_string());
+        .unwrap_or_else(|err| {
+            dbg!(err);
+            TgResponse::QueryingError.to_string()
+        });
 
     tg::send_message(&text, &bot, user_id).await
 }
@@ -44,7 +47,7 @@ pub async fn choose_timezone(
 ) -> Result<(), RequestError> {
     tg::send_markup(
         &TgResponse::SelectTimezone.to_string(),
-        get_markup_for_page_idx(0),
+        get_markup_for_tz_page_idx(0),
         &bot,
         user_id,
     )
@@ -62,12 +65,37 @@ pub async fn get_timezone(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
     tg::send_message(&response.to_string(), &bot, user_id).await
 }
 
-pub async fn start_delete(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
+async fn start_alter(
+    bot: &Bot,
+    user_id: i64,
+    response: TgResponse,
+    get_markup: fn(usize, i64) -> InlineKeyboardMarkup,
+) -> Result<(), RequestError> {
     tg::send_markup(
-        &TgResponse::ChooseDeleteReminder.to_string(),
-        get_markup_for_reminders_page_deletion(0, user_id),
+        &response.to_string(),
+        get_markup(0, user_id),
         &bot,
         user_id,
+    )
+    .await
+}
+
+pub async fn start_delete(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
+    start_alter(
+        bot,
+        user_id,
+        TgResponse::ChooseDeleteReminder,
+        get_markup_for_reminders_page_deletion,
+    )
+    .await
+}
+
+pub async fn start_edit(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
+    start_alter(
+        bot,
+        user_id,
+        TgResponse::ChooseEditReminder,
+        get_markup_for_reminders_page_editing,
     )
     .await
 }
@@ -84,17 +112,23 @@ pub async fn set_reminder(
     bot: &Bot,
     user_id: i64,
     from_id_opt: Option<i32>,
-) -> Result<(), RequestError> {
+    silent_success: bool,
+) -> Result<bool, RequestError> {
     if let Some(reminder) = tg::parse_req(text, user_id) {
+        let mut ok = true;
         let response = match db::insert_reminder(&reminder) {
             Ok(_) => TgResponse::SuccessInsert,
             Err(err) => {
+                ok = false;
                 dbg!(err);
                 TgResponse::FailedInsert
             }
         };
 
-        tg::send_message(&response.to_string(), &bot, user_id).await
+        if !silent_success {
+            tg::send_message(&response.to_string(), &bot, user_id).await?
+        }
+        Ok(ok)
     } else if let Ok((cron_expr, time)) = {
         let cron_fields: Vec<&str> = text.split_whitespace().take(5).collect();
         if cron_fields.len() < 5 {
@@ -111,24 +145,28 @@ pub async fn set_reminder(
             })
         }
     } {
+        let mut ok = true;
         let response = match db::insert_cron_reminder(&db::CronReminder {
             id: 0,
             user_id,
             cron_expr: cron_expr.clone(),
             time,
             desc: text
-                .strip_prefix(&(cron_expr.to_string() + " "))
+                .strip_prefix(&(cron_expr.to_owned() + " "))
                 .unwrap_or("")
-                .to_string(),
+                .to_owned(),
             sent: false,
+            edit: false,
         }) {
             Ok(_) => TgResponse::SuccessInsert,
             Err(err) => {
+                ok = false;
                 dbg!(err);
                 TgResponse::FailedInsert
             }
         };
-        tg::send_message(&response.to_string(), &bot, user_id).await
+        tg::send_message(&response.to_string(), &bot, user_id).await?;
+        Ok(ok)
     } else if from_id_opt
         .filter(|&from_id| from_id as i64 == user_id)
         .is_some()
@@ -138,9 +176,10 @@ pub async fn set_reminder(
         } else {
             TgResponse::IncorrectRequest
         };
-        tg::send_message(&response.to_string(), &bot, user_id).await
+        tg::send_message(&response.to_string(), &bot, user_id).await?;
+        Ok(false)
     } else {
-        Ok(())
+        Ok(false)
     }
 }
 
@@ -158,7 +197,7 @@ pub async fn select_timezone_set_page(
     page_num: usize,
     msg_id: i32,
 ) -> Result<(), RequestError> {
-    tg::edit_markup(get_markup_for_page_idx(page_num), &bot, msg_id, user_id)
+    tg::edit_markup(get_markup_for_tz_page_idx(page_num), &bot, msg_id, user_id)
         .await
 }
 
@@ -168,13 +207,23 @@ pub async fn set_timezone(
     tz_name: &str,
 ) -> Result<(), RequestError> {
     let response = match db::set_user_timezone_name(user_id, tz_name) {
-        Ok(_) => TgResponse::ChosenTimezone(tz_name.to_string()),
+        Ok(_) => TgResponse::ChosenTimezone(tz_name.to_owned()),
         Err(err) => {
             dbg!(err);
-            TgResponse::FailedSetTimezone(tz_name.to_string())
+            TgResponse::FailedSetTimezone(tz_name.to_owned())
         }
     };
     tg::send_message(&response.to_string(), &bot, user_id).await
+}
+
+async fn alter_reminder_set_page(
+    bot: &Bot,
+    user_id: i64,
+    page_num: usize,
+    msg_id: i32,
+    get_markup: fn(usize, i64) -> InlineKeyboardMarkup,
+) -> Result<(), RequestError> {
+    tg::edit_markup(get_markup(page_num, user_id), &bot, msg_id, user_id).await
 }
 
 pub async fn delete_reminder_set_page(
@@ -183,13 +232,48 @@ pub async fn delete_reminder_set_page(
     page_num: usize,
     msg_id: i32,
 ) -> Result<(), RequestError> {
-    tg::edit_markup(
-        get_markup_for_reminders_page_deletion(page_num, user_id),
-        &bot,
-        msg_id,
+    alter_reminder_set_page(
+        bot,
         user_id,
+        page_num,
+        msg_id,
+        get_markup_for_reminders_page_deletion,
     )
     .await
+}
+
+pub async fn edit_reminder_set_page(
+    bot: &Bot,
+    user_id: i64,
+    page_num: usize,
+    msg_id: i32,
+) -> Result<(), RequestError> {
+    alter_reminder_set_page(
+        bot,
+        user_id,
+        page_num,
+        msg_id,
+        get_markup_for_reminders_page_editing,
+    )
+    .await
+}
+
+async fn delete_arbitrary_reminder(
+    bot: &Bot,
+    user_id: i64,
+    rem_id: u32,
+    msg_id: i32,
+    mark_sent: fn(u32) -> Result<(), rusqlite::Error>,
+) -> Result<(), RequestError> {
+    let response = match mark_sent(rem_id) {
+        Ok(_) => TgResponse::SuccessDelete,
+        Err(err) => {
+            dbg!(err);
+            TgResponse::FailedDelete
+        }
+    };
+    delete_reminder_set_page(bot, user_id, 0, msg_id).await?;
+    tg::send_message(&response.to_string(), &bot, user_id).await
 }
 
 pub async fn delete_reminder(
@@ -198,21 +282,14 @@ pub async fn delete_reminder(
     rem_id: u32,
     msg_id: i32,
 ) -> Result<(), RequestError> {
-    let response = match db::mark_reminder_as_sent(rem_id) {
-        Ok(_) => TgResponse::SuccessDelete,
-        Err(err) => {
-            dbg!(err);
-            TgResponse::FailedDelete
-        }
-    };
-    tg::edit_markup(
-        get_markup_for_reminders_page_deletion(0, user_id),
-        &bot,
-        msg_id,
+    delete_arbitrary_reminder(
+        bot,
         user_id,
+        rem_id,
+        msg_id,
+        db::mark_reminder_as_sent,
     )
-    .await?;
-    tg::send_message(&response.to_string(), &bot, user_id).await
+    .await
 }
 
 pub async fn delete_cron_reminder(
@@ -221,24 +298,103 @@ pub async fn delete_cron_reminder(
     cron_rem_id: u32,
     msg_id: i32,
 ) -> Result<(), RequestError> {
-    let response = match db::mark_cron_reminder_as_sent(cron_rem_id) {
-        Ok(_) => TgResponse::SuccessDelete,
+    delete_arbitrary_reminder(
+        bot,
+        user_id,
+        cron_rem_id,
+        msg_id,
+        db::mark_cron_reminder_as_sent,
+    )
+    .await
+}
+
+async fn edit_arbitrary_reminder(
+    bot: &Bot,
+    user_id: i64,
+    rem_id: u32,
+    mark_edit: fn(u32) -> Result<(), rusqlite::Error>,
+) -> Result<(), RequestError> {
+    let response = match db::reset_reminders_edit(user_id)
+        .and(db::reset_cron_reminders_edit(user_id))
+        .and(mark_edit(rem_id))
+    {
+        Ok(_) => TgResponse::EnterNewReminder,
         Err(err) => {
             dbg!(err);
-            TgResponse::FailedDelete
+            TgResponse::FailedEdit
         }
     };
-    tg::edit_markup(
-        get_markup_for_reminders_page_deletion(0, user_id),
-        &bot,
-        msg_id,
-        user_id,
-    )
-    .await?;
     tg::send_message(&response.to_string(), &bot, user_id).await
 }
 
-pub fn get_markup_for_page_idx(num: usize) -> InlineKeyboardMarkup {
+pub async fn edit_reminder(
+    bot: &Bot,
+    user_id: i64,
+    rem_id: u32,
+) -> Result<(), RequestError> {
+    edit_arbitrary_reminder(bot, user_id, rem_id, db::mark_reminder_as_edit)
+        .await
+}
+
+pub async fn edit_cron_reminder(
+    bot: &Bot,
+    user_id: i64,
+    cron_rem_id: u32,
+) -> Result<(), RequestError> {
+    edit_arbitrary_reminder(
+        bot,
+        user_id,
+        cron_rem_id,
+        db::mark_cron_reminder_as_edit,
+    )
+    .await
+}
+
+pub async fn replace_reminder(
+    text: &str,
+    bot: &Bot,
+    user_id: i64,
+    rem_id: u32,
+    from_id_opt: Option<i32>,
+) -> Result<(), RequestError> {
+    if set_reminder(text, bot, user_id, from_id_opt, true).await? {
+        let response = match db::mark_reminder_as_sent(rem_id) {
+            Ok(_) => TgResponse::SuccessEdit,
+            Err(err) => {
+                dbg!(err);
+                TgResponse::FailedEdit
+            }
+        };
+        tg::send_message(&response.to_string(), &bot, user_id).await
+    } else {
+        tg::send_message(&TgResponse::FailedEdit.to_string(), &bot, user_id)
+            .await
+    }
+}
+
+pub async fn replace_cron_reminder(
+    text: &str,
+    bot: &Bot,
+    user_id: i64,
+    rem_id: u32,
+    from_id_opt: Option<i32>,
+) -> Result<(), RequestError> {
+    if set_reminder(text, bot, user_id, from_id_opt, true).await? {
+        let response = match db::mark_cron_reminder_as_sent(rem_id) {
+            Ok(_) => TgResponse::SuccessEdit,
+            Err(err) => {
+                dbg!(err);
+                TgResponse::FailedEdit
+            }
+        };
+        tg::send_message(&response.to_string(), &bot, user_id).await
+    } else {
+        tg::send_message(&TgResponse::FailedEdit.to_string(), &bot, user_id)
+            .await
+    }
+}
+
+pub fn get_markup_for_tz_page_idx(num: usize) -> InlineKeyboardMarkup {
     let mut markup = InlineKeyboardMarkup::default();
     let mut last_page: bool = false;
     if let Some(tz_names) = tz::get_tz_names_for_page_idx(num) {
@@ -251,7 +407,7 @@ pub fn get_markup_for_page_idx(num: usize) -> InlineKeyboardMarkup {
                         InlineKeyboardButton::new(
                             tz_name,
                             InlineKeyboardButtonKind::CallbackData(
-                                "seltz::tz::".to_string() + tz_name,
+                                "seltz::tz::".to_owned() + tz_name,
                             ),
                         )
                     })
@@ -266,7 +422,7 @@ pub fn get_markup_for_page_idx(num: usize) -> InlineKeyboardMarkup {
         move_buttons.push(InlineKeyboardButton::new(
             "⬅️",
             InlineKeyboardButtonKind::CallbackData(
-                "seltz::page::".to_string() + &(num - 1).to_string(),
+                "seltz::page::".to_owned() + &(num - 1).to_string(),
             ),
         ))
     }
@@ -274,16 +430,17 @@ pub fn get_markup_for_page_idx(num: usize) -> InlineKeyboardMarkup {
         move_buttons.push(InlineKeyboardButton::new(
             "➡️",
             InlineKeyboardButtonKind::CallbackData(
-                "seltz::page::".to_string() + &(num + 1).to_string(),
+                "seltz::page::".to_owned() + &(num + 1).to_string(),
             ),
         ))
     }
     markup.append_row(move_buttons)
 }
 
-pub fn get_markup_for_reminders_page_deletion(
+fn get_markup_for_reminders_page_alteration(
     num: usize,
     user_id: i64,
+    cb_prefix: &str,
 ) -> InlineKeyboardMarkup {
     let mut markup = InlineKeyboardMarkup::default();
     let mut last_rem_page: bool = false;
@@ -302,7 +459,8 @@ pub fn get_markup_for_reminders_page_deletion(
                         InlineKeyboardButton::new(
                             rem.to_unescaped_string(),
                             InlineKeyboardButtonKind::CallbackData(
-                                "delrem::del::".to_string()
+                                cb_prefix.to_owned()
+                                    + "::alt::"
                                     + &rem.id.to_string(),
                             ),
                         )
@@ -327,7 +485,8 @@ pub fn get_markup_for_reminders_page_deletion(
                         InlineKeyboardButton::new(
                             cron_rem.to_unescaped_string(),
                             InlineKeyboardButtonKind::CallbackData(
-                                "delrem::cron_del::".to_string()
+                                cb_prefix.to_owned()
+                                    + "::cron_alt::"
                                     + &cron_rem.id.to_string(),
                             ),
                         )
@@ -343,7 +502,7 @@ pub fn get_markup_for_reminders_page_deletion(
         move_buttons.push(InlineKeyboardButton::new(
             "⬅️",
             InlineKeyboardButtonKind::CallbackData(
-                "delrem::page::".to_string() + &(num - 1).to_string(),
+                cb_prefix.to_owned() + "::page::" + &(num - 1).to_string(),
             ),
         ))
     }
@@ -351,9 +510,23 @@ pub fn get_markup_for_reminders_page_deletion(
         move_buttons.push(InlineKeyboardButton::new(
             "➡️",
             InlineKeyboardButtonKind::CallbackData(
-                "delrem::page::".to_string() + &(num + 1).to_string(),
+                cb_prefix.to_owned() + "::page::" + &(num + 1).to_string(),
             ),
         ))
     }
     markup.append_row(move_buttons)
+}
+
+pub fn get_markup_for_reminders_page_deletion(
+    num: usize,
+    user_id: i64,
+) -> InlineKeyboardMarkup {
+    get_markup_for_reminders_page_alteration(num, user_id, "delrem")
+}
+
+pub fn get_markup_for_reminders_page_editing(
+    num: usize,
+    user_id: i64,
+) -> InlineKeyboardMarkup {
+    get_markup_for_reminders_page_alteration(num, user_id, "editrem")
 }

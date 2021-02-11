@@ -25,6 +25,10 @@ pub enum TgResponse {
     ChooseDeleteReminder,
     SuccessDelete,
     FailedDelete,
+    ChooseEditReminder,
+    EnterNewReminder,
+    SuccessEdit,
+    FailedEdit,
     Hello,
     CommandsHelp,
 }
@@ -51,6 +55,10 @@ impl ToString for TgResponse {
             Self::ChooseDeleteReminder => "Choose a reminder to delete:".to_string(),
             Self::SuccessDelete => "Deleted!".to_string(),
             Self::FailedDelete => "Failed to delete...".to_string(),
+            Self::ChooseEditReminder => "Choose a reminder to edit:".to_string(),
+            Self::EnterNewReminder => "Enter reminder to replace with:".to_string(),
+            Self::SuccessEdit => "Edited!".to_string(),
+            Self::FailedEdit => "Failed to edit...".to_string(),
             Self::Hello => concat!(
                 "Hello! I'm Remindee. My purpose is to remind you of whatever you ask and ",
                 "whenever you ask.\n\nPlease, select your timezone with /tz command first."
@@ -58,7 +66,8 @@ impl ToString for TgResponse {
             .to_string(),
             Self::CommandsHelp => concat!(
                 "/list — list the set reminders\n",
-                "/del — delete some reminders\n",
+                "/del — choose reminders to delete\n",
+                "/edit — choose reminders to edit\n",
                 "/mytz — print your timezone"
             )
             .to_string(),
@@ -307,6 +316,7 @@ pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
             time: time.with_timezone(&Utc),
             desc: caps[ReminderRegexFields::DESCRIPTION].to_string(),
             sent: false,
+            edit: false,
         })
     })
 }
