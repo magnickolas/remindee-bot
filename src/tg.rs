@@ -68,6 +68,7 @@ impl ToString for TgResponse {
                 "/list — list the set reminders\n",
                 "/del — choose reminders to delete\n",
                 "/edit — choose reminders to edit\n",
+                "/tz — select timezone\n",
                 "/mytz — print your timezone"
             )
             .to_string(),
