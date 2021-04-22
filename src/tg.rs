@@ -209,6 +209,7 @@ pub async fn send_message(
 ) -> Result<(), RequestError> {
     bot.send_message(user_id, text)
         .parse_mode(MarkdownV2)
+        .disable_web_page_preview(true)
         .send()
         .await
         .map(|_| ())
@@ -222,6 +223,7 @@ pub async fn send_markup(
 ) -> Result<(), RequestError> {
     bot.send_message(user_id, text)
         .parse_mode(MarkdownV2)
+        .disable_web_page_preview(true)
         .reply_markup(markup)
         .send()
         .await
