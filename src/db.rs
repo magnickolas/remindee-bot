@@ -93,7 +93,7 @@ pub fn get_edit_reminder(user_id: i64) -> Result<Option<Reminder>> {
                 edit: row.get(5)?,
             })
         })?
-        .nth(0)
+        .next()
         .transpose();
 }
 
@@ -164,8 +164,7 @@ pub fn get_user_timezone_name(user_id: i64) -> Result<String> {
         from user_timezone
         where user_id=?1",
     )?;
-    let row =
-        stmt.query_row(params![user_id], |row| Ok(row.get("timezone")?))?;
+    let row = stmt.query_row(params![user_id], |row| row.get("timezone"))?;
     Ok(row)
 }
 
@@ -259,7 +258,7 @@ pub fn get_edit_cron_reminder(user_id: i64) -> Result<Option<CronReminder>> {
                 edit: row.get(6)?,
             })
         })?
-        .nth(0)
+        .next()
         .transpose();
 }
 

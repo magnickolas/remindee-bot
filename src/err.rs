@@ -6,7 +6,6 @@ pub enum Error {
     Parse(String),
     CronParse(cron_parser::ParseError),
     CronFewFields,
-    CronPanic,
     RequestError(teloxide::RequestError),
     UnmatchedQuery(teloxide::types::CallbackQuery),
     NoQueryData(teloxide::types::CallbackQuery),
@@ -22,7 +21,6 @@ impl fmt::Display for Error {
             Self::CronFewFields => {
                 write!(f, "Can't parse cron since no enough fields")
             }
-            Self::CronPanic => write!(f, "Cron parse error"),
             Self::RequestError(ref err) => {
                 write!(f, "Telegram request error: {}", err)
             }

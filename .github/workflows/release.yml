@@ -51,7 +51,7 @@ jobs:
       RUST_BACKTRACE: 1
     strategy:
       matrix:
-        build: [linux, macos]
+        build: [linux, macos, armv7]
         include:
         - build: linux
           os: ubuntu-latest
@@ -61,6 +61,10 @@ jobs:
           os: macos-latest
           rust: stable
           target: x86_64-apple-darwin
+        - build: armv7
+          os: ubuntu-latest
+          rust: stable
+          target: armv7-unknown-linux-gnueabihf
 
     steps:
     - name: Checkout repository
@@ -113,7 +117,14 @@ jobs:
       run: ${{ env.CARGO }} build --verbose --release ${{ env.TARGET_FLAGS }}
 
     - name: Strip release binary
+      if: startsWith(matrix.target, 'armv7') != true
       run: strip "target/${{ matrix.target }}/release/remindee-bot"
+
+    - name: Strip ARM release binary
+      if: startsWith(matrix.target, 'armv7')
+      run: |
+        sudo apt-get install -y binutils-arm-linux-gnueabihf
+        arm-linux-gnueabihf-strip "target/${{ matrix.target }}/release/remindee-bot"
 
     - name: Build archive
       shell: bash
