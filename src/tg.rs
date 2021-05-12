@@ -298,15 +298,22 @@ pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
             .and_then(|x| x.with_year(year))
             .unwrap_or_else(|| now.date())
             .and_hms(hour, minute, second);
+
         if time < now {
-            for duration in [
-                1,
-                date::days_in_month(month, year),
-                date::days_in_year(year),
-            ]
-            .iter()
-            .map(|&x| Duration::days(x))
-            {
+            let specified_month =
+                caps.name(ReminderRegexFields::MONTH).is_some();
+            let durations = if specified_month {
+                [
+                    1,
+                    date::days_in_month(month, year),
+                    date::days_in_year(year),
+                ]
+                .to_vec()
+            } else {
+                [date::days_in_month(month, year), date::days_in_year(year)]
+                    .to_vec()
+            };
+            for duration in durations.iter().map(|&x| Duration::days(x)) {
                 if time + duration >= now {
                     time = time + duration;
                     break;
