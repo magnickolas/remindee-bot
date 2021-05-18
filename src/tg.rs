@@ -300,9 +300,10 @@ pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
             .and_hms(hour, minute, second);
 
         if time < now {
+            let specified_day = caps.name(ReminderRegexFields::DAY).is_some();
             let specified_month =
                 caps.name(ReminderRegexFields::MONTH).is_some();
-            let durations = if specified_month {
+            let durations = if !specified_day || specified_month {
                 [
                     1,
                     date::days_in_month(month, year),

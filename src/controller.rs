@@ -15,21 +15,22 @@ pub async fn start(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
     tg::send_message(&TgResponse::Hello.to_string(), &bot, user_id).await
 }
 
+/// Send a list of all notifications
 pub async fn list(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
-    let reminders_str_fut = db::get_pending_user_reminders(user_id)
+    let reminders_future = db::get_pending_user_reminders(user_id)
         .map(|v| v.into_iter().map(|x| x.to_string()));
-    let cron_reminders_str_fut = db::get_pending_user_cron_reminders(user_id)
+    let cron_reminders_future = db::get_pending_user_cron_reminders(user_id)
         .map(|v| v.into_iter().map(|x| x.to_string()));
-    let all_reminders_str = reminders_str_fut.and_then(|rems_str| {
-        cron_reminders_str_fut
-            .map(|cron_rems_str| rems_str.chain(cron_rems_str))
+    // Merge one-time and periodic reminders
+    let all_reminders = reminders_future.and_then(|rems| {
+        cron_reminders_future.map(|cron_rems| rems.chain(cron_rems))
     });
-
-    let text = all_reminders_str
-        .map(|rems_str| {
+    // Format reminders
+    let text = all_reminders
+        .map(|rems| {
             vec![TgResponse::RemindersListHeader.to_string()]
                 .into_iter()
-                .chain(rems_str)
+                .chain(rems)
                 .collect::<Vec<String>>()
                 .join("\n")
         })
@@ -37,10 +38,10 @@ pub async fn list(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
             dbg!(err);
             TgResponse::QueryingError.to_string()
         });
-
     tg::send_message(&text, &bot, user_id).await
 }
 
+/// Send a markup with all timezones to select
 pub async fn choose_timezone(
     bot: &Bot,
     user_id: i64,
@@ -54,6 +55,7 @@ pub async fn choose_timezone(
     .await
 }
 
+/// Send user's timezone
 pub async fn get_timezone(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
     let response = match db::get_user_timezone_name(user_id) {
         Ok(tz_name) => TgResponse::ChosenTimezone(tz_name),
@@ -65,6 +67,7 @@ pub async fn get_timezone(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
     tg::send_message(&response.to_string(), &bot, user_id).await
 }
 
+/// General way to send a markup to select a reminder for some operation
 async fn start_alter(
     bot: &Bot,
     user_id: i64,
@@ -80,6 +83,7 @@ async fn start_alter(
     .await
 }
 
+/// Send a markup to select a reminder for deleting
 pub async fn start_delete(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
     start_alter(
         bot,
@@ -90,6 +94,7 @@ pub async fn start_delete(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
     .await
 }
 
+/// Send a markup to select a reminder for editing
 pub async fn start_edit(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
     start_alter(
         bot,
@@ -100,6 +105,7 @@ pub async fn start_edit(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
     .await
 }
 
+/// Send a list of supported commands
 pub async fn list_commands(
     bot: &Bot,
     user_id: i64,
@@ -107,6 +113,7 @@ pub async fn list_commands(
     tg::send_message(&TgResponse::CommandsHelp.to_string(), &bot, user_id).await
 }
 
+/// Try to parse user's message into a one-time or periodic reminder and set it
 pub async fn set_reminder(
     text: &str,
     bot: &Bot,
@@ -191,6 +198,7 @@ pub async fn incorrect_request(
         .await
 }
 
+/// Switch the markup's page
 pub async fn select_timezone_set_page(
     bot: &Bot,
     user_id: i64,

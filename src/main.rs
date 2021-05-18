@@ -16,6 +16,7 @@ use teloxide::dispatching::update_listeners::polling_default;
 use teloxide::prelude::*;
 use teloxide::types::UpdateKind;
 
+/// Iterate every second all reminders and send notifications if time's come
 async fn reminders_pooling(bot: Bot) {
     loop {
         let reminders = db::get_active_reminders().unwrap();
