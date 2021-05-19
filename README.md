@@ -23,9 +23,17 @@ Telegram bot for managing reminders.
     | /tz       | Select timezone         |
     | /mytz     | Show current timezone   |
 
+## Quickstart
+
+1. Install [Rust].
+2. Setup your bot with [@botfather](https://t.me/botfather).
+3. ```console
+   BOT_TOKEN=<your bot token> cargo run --release
+   ```
+
 ## How to use
 
-- As a prerequisite, install [Rust] and SQLite development package.
+- As a prerequisite, install [Rust].
 - Install
     ```console
     cargo install --path .
