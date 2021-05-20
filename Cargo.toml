@@ -1,25 +1,25 @@
 [package]
 name = "remindee-bot"
-version = "0.1.4"
+version = "0.1.6"
 authors = ["Nikolai Oplachko <magnickolas@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-std = "1.7.0"
+async-std = "1.9.0"
 chrono = "0.4.19"
 chrono-tz = "0.5.3"
-cron-parser = "0.7.7"
+cron-parser = "0.7.9"
 directories = "3.0.1"
 lazy_static = "1.4.0"
-regex = "1.4.2"
-rusqlite = { version = "0.24.1", features = ["chrono", "bundled"] }
-teloxide = "0.3.3"
+regex = "1.4.3"
+rusqlite = { version = "0.24.2", features = ["chrono", "bundled"] }
+teloxide = "0.3.4"
 teloxide-macros = "0.3.2"
-openssl = { version = "0.10.30", features = ["vendored"] }
+openssl = { version = "0.10.32", features = ["vendored"] }
 
-log = "0.4.11"
+log = "0.4.14"
 pretty_env_logger = "0.4.0"
 
-tokio = { version = "0.2.23", features = ["rt-threaded", "macros"] }
+tokio = { version = "0.2.24", features = ["rt-threaded", "macros"] }
