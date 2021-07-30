@@ -25,7 +25,11 @@ pub struct CronReminder {
 
 pub fn get_db_connection() -> Result<Connection> {
     let base_dirs = BaseDirs::new().unwrap();
-    Connection::open(base_dirs.data_dir().join("remindee_db.sqlite"))
+    if std::env::consts::OS != "android" {
+        Connection::open(base_dirs.data_dir().join("remindee_db.sqlite"))
+    } else {
+        Connection::open("remindee_db.sqlite")
+    }
 }
 
 pub fn create_reminder_table() -> Result<()> {

@@ -1,6 +1,6 @@
 [package]
 name = "remindee-bot"
-version = "0.1.6"
+version = "0.1.7"
 authors = ["Nikolai Oplachko <magnickolas@gmail.com>"]
 edition = "2018"
 
