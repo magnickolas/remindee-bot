@@ -12,7 +12,7 @@ use teloxide::types::{
 use tg::TgResponse;
 
 pub async fn start(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
-    tg::send_message(&TgResponse::Hello.to_string(), &bot, user_id).await
+    tg::send_message(&TgResponse::Hello.to_string(), bot, user_id).await
 }
 
 /// Send a list of all notifications
@@ -38,7 +38,7 @@ pub async fn list(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
             dbg!(err);
             TgResponse::QueryingError.to_string()
         });
-    tg::send_message(&text, &bot, user_id).await
+    tg::send_message(&text, bot, user_id).await
 }
 
 /// Send a markup with all timezones to select
@@ -49,7 +49,7 @@ pub async fn choose_timezone(
     tg::send_markup(
         &TgResponse::SelectTimezone.to_string(),
         get_markup_for_tz_page_idx(0),
-        &bot,
+        bot,
         user_id,
     )
     .await
@@ -64,7 +64,7 @@ pub async fn get_timezone(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
             TgResponse::NoChosenTimezone
         }
     };
-    tg::send_message(&response.to_string(), &bot, user_id).await
+    tg::send_message(&response.to_string(), bot, user_id).await
 }
 
 /// General way to send a markup to select a reminder for some operation
@@ -77,7 +77,7 @@ async fn start_alter(
     tg::send_markup(
         &response.to_string(),
         get_markup(0, user_id),
-        &bot,
+        bot,
         user_id,
     )
     .await
@@ -110,7 +110,7 @@ pub async fn list_commands(
     bot: &Bot,
     user_id: i64,
 ) -> Result<(), RequestError> {
-    tg::send_message(&TgResponse::CommandsHelp.to_string(), &bot, user_id).await
+    tg::send_message(&TgResponse::CommandsHelp.to_string(), bot, user_id).await
 }
 
 /// Try to parse user's message into a one-time or periodic reminder and set it
@@ -133,7 +133,7 @@ pub async fn set_reminder(
         };
 
         if !silent_success {
-            tg::send_message(&response.to_string(), &bot, user_id).await?
+            tg::send_message(&response.to_string(), bot, user_id).await?
         }
         Ok(ok)
     } else if let Ok((cron_expr, time)) = {
@@ -172,7 +172,7 @@ pub async fn set_reminder(
                 TgResponse::FailedInsert
             }
         };
-        tg::send_message(&response.to_string(), &bot, user_id).await?;
+        tg::send_message(&response.to_string(), bot, user_id).await?;
         Ok(ok)
     } else if from_id_opt
         .filter(|&from_id| from_id as i64 == user_id)
@@ -183,7 +183,7 @@ pub async fn set_reminder(
         } else {
             TgResponse::IncorrectRequest
         };
-        tg::send_message(&response.to_string(), &bot, user_id).await?;
+        tg::send_message(&response.to_string(), bot, user_id).await?;
         Ok(false)
     } else {
         Ok(false)
@@ -194,7 +194,7 @@ pub async fn incorrect_request(
     bot: &Bot,
     user_id: i64,
 ) -> Result<(), RequestError> {
-    tg::send_message(&TgResponse::IncorrectRequest.to_string(), &bot, user_id)
+    tg::send_message(&TgResponse::IncorrectRequest.to_string(), bot, user_id)
         .await
 }
 
@@ -205,7 +205,7 @@ pub async fn select_timezone_set_page(
     page_num: usize,
     msg_id: i32,
 ) -> Result<(), RequestError> {
-    tg::edit_markup(get_markup_for_tz_page_idx(page_num), &bot, msg_id, user_id)
+    tg::edit_markup(get_markup_for_tz_page_idx(page_num), bot, msg_id, user_id)
         .await
 }
 
@@ -221,7 +221,7 @@ pub async fn set_timezone(
             TgResponse::FailedSetTimezone(tz_name.to_owned())
         }
     };
-    tg::send_message(&response.to_string(), &bot, user_id).await
+    tg::send_message(&response.to_string(), bot, user_id).await
 }
 
 async fn alter_reminder_set_page(
@@ -231,7 +231,7 @@ async fn alter_reminder_set_page(
     msg_id: i32,
     get_markup: fn(usize, i64) -> InlineKeyboardMarkup,
 ) -> Result<(), RequestError> {
-    tg::edit_markup(get_markup(page_num, user_id), &bot, msg_id, user_id).await
+    tg::edit_markup(get_markup(page_num, user_id), bot, msg_id, user_id).await
 }
 
 pub async fn delete_reminder_set_page(
@@ -281,7 +281,7 @@ async fn delete_arbitrary_reminder(
         }
     };
     delete_reminder_set_page(bot, user_id, 0, msg_id).await?;
-    tg::send_message(&response.to_string(), &bot, user_id).await
+    tg::send_message(&response.to_string(), bot, user_id).await
 }
 
 pub async fn delete_reminder(
@@ -332,7 +332,7 @@ async fn edit_arbitrary_reminder(
             TgResponse::FailedEdit
         }
     };
-    tg::send_message(&response.to_string(), &bot, user_id).await
+    tg::send_message(&response.to_string(), bot, user_id).await
 }
 
 pub async fn edit_reminder(
@@ -373,9 +373,9 @@ pub async fn replace_reminder(
                 TgResponse::FailedEdit
             }
         };
-        tg::send_message(&response.to_string(), &bot, user_id).await
+        tg::send_message(&response.to_string(), bot, user_id).await
     } else {
-        tg::send_message(&TgResponse::FailedEdit.to_string(), &bot, user_id)
+        tg::send_message(&TgResponse::FailedEdit.to_string(), bot, user_id)
             .await
     }
 }
@@ -395,9 +395,9 @@ pub async fn replace_cron_reminder(
                 TgResponse::FailedEdit
             }
         };
-        tg::send_message(&response.to_string(), &bot, user_id).await
+        tg::send_message(&response.to_string(), bot, user_id).await
     } else {
-        tg::send_message(&TgResponse::FailedEdit.to_string(), &bot, user_id)
+        tg::send_message(&TgResponse::FailedEdit.to_string(), bot, user_id)
             .await
     }
 }

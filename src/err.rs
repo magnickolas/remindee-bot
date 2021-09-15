@@ -6,7 +6,7 @@ pub enum Error {
     Parse(String),
     CronParse(cron_parser::ParseError),
     CronFewFields,
-    RequestError(teloxide::RequestError),
+    TeloxideRequest(teloxide::RequestError),
     UnmatchedQuery(teloxide::types::CallbackQuery),
     NoQueryData(teloxide::types::CallbackQuery),
     NoQueryMessage(teloxide::types::CallbackQuery),
@@ -21,7 +21,7 @@ impl fmt::Display for Error {
             Self::CronFewFields => {
                 write!(f, "Can't parse cron since no enough fields")
             }
-            Self::RequestError(ref err) => {
+            Self::TeloxideRequest(ref err) => {
                 write!(f, "Telegram request error: {}", err)
             }
             Self::UnmatchedQuery(ref cb_query) => {
@@ -51,6 +51,6 @@ impl From<cron_parser::ParseError> for Error {
 
 impl From<teloxide::RequestError> for Error {
     fn from(err: teloxide::RequestError) -> Self {
-        Self::RequestError(err)
+        Self::TeloxideRequest(err)
     }
 }

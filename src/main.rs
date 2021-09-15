@@ -152,7 +152,7 @@ async fn run() {
                                 ) {
                                     (Ok(Some(edit_reminder)), _) => {
                                         controller::replace_reminder(
-                                            &text,
+                                            text,
                                             &bot,
                                             user_id,
                                             edit_reminder.id,
@@ -162,7 +162,7 @@ async fn run() {
                                     }
                                     (_, Ok(Some(edit_cron_reminder))) => {
                                         controller::replace_cron_reminder(
-                                            &text,
+                                            text,
                                             &bot,
                                             user_id,
                                             edit_cron_reminder.id,
@@ -171,7 +171,7 @@ async fn run() {
                                         .await
                                     }
                                     _ => controller::set_reminder(
-                                        &text,
+                                        text,
                                         &bot,
                                         user_id,
                                         msg.from().map(|user| user.id),
