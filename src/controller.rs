@@ -74,13 +74,8 @@ async fn start_alter(
     response: TgResponse,
     get_markup: fn(usize, i64) -> InlineKeyboardMarkup,
 ) -> Result<(), RequestError> {
-    tg::send_markup(
-        &response.to_string(),
-        get_markup(0, user_id),
-        bot,
-        user_id,
-    )
-    .await
+    tg::send_markup(&response.to_string(), get_markup(0, user_id), bot, user_id)
+        .await
 }
 
 /// Send a markup to select a reminder for deleting
