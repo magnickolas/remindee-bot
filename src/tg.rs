@@ -6,6 +6,8 @@ use chrono::offset::TimeZone;
 use chrono::prelude::*;
 use chrono::{Duration, Utc};
 use regex::Regex;
+use std::cmp::Ord;
+use std::cmp::Ordering;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode::MarkdownV2;
 use teloxide::types::{ChatId, ChatOrInlineMessage, InlineKeyboardMarkup};
@@ -90,6 +92,10 @@ impl ReminderRegexFields {
     const DESCRIPTION: &'static str = "description";
 }
 
+pub trait GenericReminder: ToString {
+    fn get_time(&self) -> &DateTime<Utc>;
+}
+
 impl ToString for db::Reminder {
     fn to_string(&self) -> String {
         match tz::get_user_timezone(self.user_id) {
@@ -114,6 +120,12 @@ impl ToString for db::Reminder {
             }
             _ => TgResponse::FailedGetTimezone.to_string(),
         }
+    }
+}
+
+impl GenericReminder for db::Reminder {
+    fn get_time(&self) -> &DateTime<Utc> {
+        &self.time
     }
 }
 
@@ -172,6 +184,32 @@ impl ToString for db::CronReminder {
         }
     }
 }
+
+impl GenericReminder for db::CronReminder {
+    fn get_time(&self) -> &DateTime<Utc> {
+        &self.time
+    }
+}
+
+impl Ord for dyn GenericReminder {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.get_time().cmp(other.get_time())
+    }
+}
+
+impl PartialOrd for dyn GenericReminder {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for dyn GenericReminder {
+    fn eq(&self, other: &Self) -> bool {
+        self.get_time() == other.get_time()
+    }
+}
+
+impl Eq for dyn GenericReminder {}
 
 impl db::CronReminder {
     pub fn to_unescaped_string(&self) -> String {

@@ -5,6 +5,7 @@ use crate::tz;
 
 use chrono::Utc;
 use cron_parser::parse as parse_cron;
+use itertools::Itertools;
 use teloxide::prelude::*;
 use teloxide::types::{
     InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup,
@@ -17,16 +18,24 @@ pub async fn start(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
 
 /// Send a list of all notifications
 pub async fn list(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
-    let reminders_future = db::get_pending_user_reminders(user_id)
-        .map(|v| v.into_iter().map(|x| x.to_string()));
+    let reminders_future = db::get_pending_user_reminders(user_id).map(|v| {
+        v.into_iter()
+            .map::<Box<dyn tg::GenericReminder>, _>(|x| Box::new(x))
+    });
     let cron_reminders_future = db::get_pending_user_cron_reminders(user_id)
-        .map(|v| v.into_iter().map(|x| x.to_string()));
+        .map(|v| {
+            v.into_iter()
+                .map::<Box<dyn tg::GenericReminder>, _>(|x| Box::new(x))
+        });
     // Merge one-time and periodic reminders
     let all_reminders = reminders_future.and_then(|rems| {
         cron_reminders_future.map(|cron_rems| rems.chain(cron_rems))
     });
+    // Sort all reminders ascending of their time appearance
+    let sorted_reminders =
+        all_reminders.map(|rems| rems.sorted().map(|x| x.to_string()));
     // Format reminders
-    let text = all_reminders
+    let text = sorted_reminders
         .map(|rems| {
             vec![TgResponse::RemindersListHeader.to_string()]
                 .into_iter()
