@@ -95,6 +95,8 @@ impl ReminderRegexFields {
 
 pub trait GenericReminder: ToString {
     fn get_time(&self) -> &DateTime<Utc>;
+    fn get_id(&self) -> u32;
+    fn to_unescaped_string(&self) -> String;
 }
 
 impl ToString for db::Reminder {
@@ -128,10 +130,12 @@ impl GenericReminder for db::Reminder {
     fn get_time(&self) -> &DateTime<Utc> {
         &self.time
     }
-}
 
-impl db::Reminder {
-    pub fn to_unescaped_string(&self) -> String {
+    fn get_id(&self) -> u32 {
+        self.id
+    }
+
+    fn to_unescaped_string(&self) -> String {
         match tz::get_user_timezone(self.user_id) {
             Ok(user_timezone) => {
                 let time =
@@ -190,30 +194,12 @@ impl GenericReminder for db::CronReminder {
     fn get_time(&self) -> &DateTime<Utc> {
         &self.time
     }
-}
 
-impl Ord for dyn GenericReminder {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.get_time().cmp(other.get_time())
+    fn get_id(&self) -> u32 {
+        self.id
     }
-}
 
-impl PartialOrd for dyn GenericReminder {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for dyn GenericReminder {
-    fn eq(&self, other: &Self) -> bool {
-        self.get_time() == other.get_time()
-    }
-}
-
-impl Eq for dyn GenericReminder {}
-
-impl db::CronReminder {
-    pub fn to_unescaped_string(&self) -> String {
+    fn to_unescaped_string(&self) -> String {
         match tz::get_user_timezone(self.user_id) {
             Ok(user_timezone) => {
                 let time =
@@ -240,6 +226,26 @@ impl db::CronReminder {
         }
     }
 }
+
+impl Ord for dyn GenericReminder {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.get_time().cmp(other.get_time())
+    }
+}
+
+impl PartialOrd for dyn GenericReminder {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for dyn GenericReminder {
+    fn eq(&self, other: &Self) -> bool {
+        self.get_time() == other.get_time()
+    }
+}
+
+impl Eq for dyn GenericReminder {}
 
 pub async fn send_message(
     text: &str,

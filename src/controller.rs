@@ -17,30 +17,33 @@ pub async fn start(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
     tg::send_message(&TgResponse::Hello.to_string(), bot, user_id).await
 }
 
-/// Send a list of all notifications
-pub async fn list(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
-    let reminders_future = db::get_pending_user_reminders(user_id).map(|v| {
+fn get_sorted_reminders(
+    user_id: i64,
+) -> Result<std::vec::IntoIter<Box<dyn tg::GenericReminder>>, rusqlite::Error> {
+    let reminders_future = db::get_pending_user_reminders(user_id);
+    let cron_reminders_future = db::get_pending_user_cron_reminders(user_id);
+    let gen_rems = reminders_future.map(|v| {
         v.into_iter()
             .map::<Box<dyn tg::GenericReminder>, _>(|x| Box::new(x))
     });
-    let cron_reminders_future = db::get_pending_user_cron_reminders(user_id)
-        .map(|v| {
-            v.into_iter()
-                .map::<Box<dyn tg::GenericReminder>, _>(|x| Box::new(x))
-        });
-    // Merge one-time and periodic reminders
-    let all_reminders = reminders_future.and_then(|rems| {
-        cron_reminders_future.map(|cron_rems| rems.chain(cron_rems))
+    let gen_cron_rems = cron_reminders_future.map(|v| {
+        v.into_iter()
+            .map::<Box<dyn tg::GenericReminder>, _>(|x| Box::new(x))
     });
-    // Sort all reminders ascending of their time appearance
-    let sorted_reminders =
-        all_reminders.map(|rems| rems.sorted().map(|x| x.to_string()));
+    gen_rems
+        .and_then(|rems| gen_cron_rems.map(|cron_rems| rems.chain(cron_rems)))
+        .map(|rems| rems.sorted())
+}
+
+/// Send a list of all notifications
+pub async fn list(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
+    let sorted_reminders = get_sorted_reminders(user_id);
     // Format reminders
     let text = sorted_reminders
         .map(|rems| {
             vec![TgResponse::RemindersListHeader.to_string()]
                 .into_iter()
-                .chain(rems)
+                .chain(rems.map(|rem| rem.to_string()))
                 .collect::<Vec<String>>()
                 .join("\n")
         })
@@ -454,8 +457,9 @@ fn get_markup_for_reminders_page_alteration(
 ) -> InlineKeyboardMarkup {
     let mut markup = InlineKeyboardMarkup::default();
     let mut last_rem_page: bool = false;
-    let mut last_cron_rem_page: bool = false;
-    if let Some(reminders) = db::get_pending_user_reminders(user_id)
+    let sorted_reminders =
+        get_sorted_reminders(user_id).map(|rems| rems.collect::<Vec<_>>());
+    if let Some(reminders) = sorted_reminders
         .ok()
         .as_ref()
         .and_then(|rems| rems.chunks(45).into_iter().nth(num))
@@ -463,15 +467,14 @@ fn get_markup_for_reminders_page_alteration(
         for chunk in reminders.chunks(1) {
             markup = markup.append_row(
                 chunk
-                    .to_vec()
-                    .into_iter()
+                    .iter()
                     .map(|rem| {
                         InlineKeyboardButton::new(
                             rem.to_unescaped_string(),
                             InlineKeyboardButtonKind::CallbackData(
                                 cb_prefix.to_owned()
                                     + "::alt::"
-                                    + &rem.id.to_string(),
+                                    + &rem.get_id().to_string(),
                             ),
                         )
                     })
@@ -480,32 +483,6 @@ fn get_markup_for_reminders_page_alteration(
         }
     } else {
         last_rem_page = true;
-    }
-    if let Some(cron_reminders) = db::get_pending_user_cron_reminders(user_id)
-        .ok()
-        .as_ref()
-        .and_then(|cron_rems| cron_rems.chunks(45).into_iter().nth(num))
-    {
-        for chunk in cron_reminders.chunks(1) {
-            markup = markup.append_row(
-                chunk
-                    .to_vec()
-                    .into_iter()
-                    .map(|cron_rem| {
-                        InlineKeyboardButton::new(
-                            cron_rem.to_unescaped_string(),
-                            InlineKeyboardButtonKind::CallbackData(
-                                cb_prefix.to_owned()
-                                    + "::cron_alt::"
-                                    + &cron_rem.id.to_string(),
-                            ),
-                        )
-                    })
-                    .collect::<Vec<_>>(),
-            );
-        }
-    } else {
-        last_cron_rem_page = true;
     }
     let mut move_buttons = vec![];
     if num > 0 {
@@ -516,7 +493,7 @@ fn get_markup_for_reminders_page_alteration(
             ),
         ))
     }
-    if !last_rem_page || !last_cron_rem_page {
+    if !last_rem_page {
         move_buttons.push(InlineKeyboardButton::new(
             "➡️",
             InlineKeyboardButtonKind::CallbackData(
