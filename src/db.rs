@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use directories::BaseDirs;
-use rusqlite::{params, Connection, Result, NO_PARAMS};
+use rusqlite::{params, Connection, Result};
 
 #[derive(Clone, Debug)]
 pub struct Reminder {
@@ -43,7 +43,7 @@ pub fn create_reminder_table() -> Result<()> {
              sent       boolean not null,
              edit       boolean not null
         )",
-        NO_PARAMS,
+        [],
     )?;
     Ok(())
 }
@@ -108,7 +108,7 @@ pub fn get_active_reminders() -> Result<Vec<Reminder>> {
         from reminder
         where sent=false and datetime(time) < datetime('now')",
     )?;
-    let rows = stmt.query_map(NO_PARAMS, |row| {
+    let rows = stmt.query_map([], |row| {
         Ok(Reminder {
             id: row.get(0)?,
             user_id: row.get(1)?,
@@ -156,7 +156,7 @@ pub fn create_user_timezone_table() -> Result<()> {
              user_id    integer primary key,
              timezone   text not null
         )",
-        NO_PARAMS,
+        [],
     )?;
     Ok(())
 }
@@ -194,7 +194,7 @@ pub fn create_cron_reminder_table() -> Result<()> {
              sent       boolean not null,
              edit       boolean not null
         )",
-        NO_PARAMS,
+        [],
     )?;
     Ok(())
 }
@@ -273,7 +273,7 @@ pub fn get_active_cron_reminders() -> Result<Vec<CronReminder>> {
         from cron_reminder
         where sent=false and datetime(time) < datetime('now')",
     )?;
-    let rows = stmt.query_map(NO_PARAMS, |row| {
+    let rows = stmt.query_map([], |row| {
         Ok(CronReminder {
             id: row.get(0)?,
             user_id: row.get(1)?,

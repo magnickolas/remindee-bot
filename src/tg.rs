@@ -10,8 +10,9 @@ use std::cmp::Ord;
 use std::cmp::Ordering;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode::MarkdownV2;
-use teloxide::types::{ChatId, ChatOrInlineMessage, InlineKeyboardMarkup};
+use teloxide::types::{ChatId, InlineKeyboardMarkup};
 use teloxide::utils::markdown::{bold, escape};
+use teloxide::RequestError;
 
 pub enum TgResponse {
     SuccessInsert,
@@ -274,14 +275,11 @@ pub async fn edit_markup(
     msg_id: i32,
     user_id: i64,
 ) -> Result<(), RequestError> {
-    bot.edit_message_reply_markup(ChatOrInlineMessage::Chat {
-        chat_id: ChatId::Id(user_id),
-        message_id: msg_id,
-    })
-    .reply_markup(markup)
-    .send()
-    .await
-    .map(|_| ())
+    bot.edit_message_reply_markup(ChatId::Id(user_id), msg_id)
+        .reply_markup(markup)
+        .send()
+        .await
+        .map(|_| ())
 }
 
 pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {

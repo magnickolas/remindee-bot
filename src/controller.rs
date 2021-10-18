@@ -10,6 +10,7 @@ use teloxide::prelude::*;
 use teloxide::types::{
     InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup,
 };
+use teloxide::RequestError;
 use tg::TgResponse;
 
 pub async fn start(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
@@ -122,7 +123,7 @@ pub async fn set_reminder(
     text: &str,
     bot: &Bot,
     user_id: i64,
-    from_id_opt: Option<i32>,
+    from_id_opt: Option<i64>,
     silent_success: bool,
 ) -> Result<bool, RequestError> {
     if let Some(reminder) = tg::parse_req(text, user_id) {
@@ -178,10 +179,7 @@ pub async fn set_reminder(
         };
         tg::send_message(&response.to_string(), bot, user_id).await?;
         Ok(ok)
-    } else if from_id_opt
-        .filter(|&from_id| from_id as i64 == user_id)
-        .is_some()
-    {
+    } else if from_id_opt.filter(|&from_id| from_id == user_id).is_some() {
         let response = if tz::get_user_timezone(user_id).is_err() {
             TgResponse::NoChosenTimezone
         } else {
@@ -367,7 +365,7 @@ pub async fn replace_reminder(
     bot: &Bot,
     user_id: i64,
     rem_id: u32,
-    from_id_opt: Option<i32>,
+    from_id_opt: Option<i64>,
 ) -> Result<(), RequestError> {
     if set_reminder(text, bot, user_id, from_id_opt, true).await? {
         let response = match db::mark_reminder_as_sent(rem_id) {
@@ -389,7 +387,7 @@ pub async fn replace_cron_reminder(
     bot: &Bot,
     user_id: i64,
     rem_id: u32,
-    from_id_opt: Option<i32>,
+    from_id_opt: Option<i64>,
 ) -> Result<(), RequestError> {
     if set_reminder(text, bot, user_id, from_id_opt, true).await? {
         let response = match db::mark_cron_reminder_as_sent(rem_id) {
@@ -423,7 +421,7 @@ pub fn get_markup_for_tz_page_idx(num: usize) -> InlineKeyboardMarkup {
                             ),
                         )
                     })
-                    .collect(),
+                    .collect::<Vec<_>>(),
             );
         }
     } else {
@@ -477,7 +475,7 @@ fn get_markup_for_reminders_page_alteration(
                             ),
                         )
                     })
-                    .collect(),
+                    .collect::<Vec<_>>(),
             );
         }
     } else {
@@ -503,7 +501,7 @@ fn get_markup_for_reminders_page_alteration(
                             ),
                         )
                     })
-                    .collect(),
+                    .collect::<Vec<_>>(),
             );
         }
     } else {

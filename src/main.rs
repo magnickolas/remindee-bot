@@ -12,7 +12,9 @@ use async_std::task;
 use chrono::Utc;
 use cron_parser::parse as parse_cron;
 use std::time::Duration;
-use teloxide::dispatching::update_listeners::polling_default;
+use teloxide::dispatching::update_listeners::{
+    polling_default, AsUpdateStream,
+};
 use teloxide::prelude::*;
 use teloxide::types::UpdateKind;
 
@@ -113,6 +115,8 @@ async fn run() {
 
     // Run a telegram polling loop waiting messages from users and responding to them
     updater
+        .await
+        .as_stream()
         .for_each(|update| async {
             match update {
                 Ok(update) => match update.kind {
