@@ -473,7 +473,7 @@ fn get_markup_for_reminders_page_alteration(
                             rem.to_unescaped_string(),
                             InlineKeyboardButtonKind::CallbackData(
                                 cb_prefix.to_owned()
-                                    + "::alt::"
+                                    + if rem.is_cron_reminder() { "::cron_alt::" } else { "::alt::" }
                                     + &rem.get_id().to_string(),
                             ),
                         )
