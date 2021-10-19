@@ -96,6 +96,7 @@ impl ReminderRegexFields {
 pub trait GenericReminder: ToString {
     fn get_time(&self) -> &DateTime<Utc>;
     fn get_id(&self) -> u32;
+    fn is_cron_reminder(&self) -> bool;
     fn to_unescaped_string(&self) -> String;
 }
 
@@ -133,6 +134,10 @@ impl GenericReminder for db::Reminder {
 
     fn get_id(&self) -> u32 {
         self.id
+    }
+
+    fn is_cron_reminder(&self) -> bool {
+        false
     }
 
     fn to_unescaped_string(&self) -> String {
@@ -197,6 +202,10 @@ impl GenericReminder for db::CronReminder {
 
     fn get_id(&self) -> u32 {
         self.id
+    }
+
+    fn is_cron_reminder(&self) -> bool {
+        true
     }
 
     fn to_unescaped_string(&self) -> String {
