@@ -1,4 +1,5 @@
 # remindee-bot
+<img src="https://raw.githubusercontent.com/magnickolas/remindee-bot/master/extra/logo/remindee.svg" width="150">
 
 Telegram bot for managing reminders.
 
