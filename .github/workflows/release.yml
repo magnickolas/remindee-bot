@@ -123,6 +123,7 @@ jobs:
     - name: Strip ARM release binary
       if: startsWith(matrix.target, 'armv7')
       run: |
+        sudo apt-get update
         sudo apt-get install -y binutils-arm-linux-gnueabihf
         arm-linux-gnueabihf-strip "target/${{ matrix.target }}/release/remindee-bot"
 

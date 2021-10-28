@@ -102,10 +102,7 @@ async fn run() {
 
     // Set token from an environment variable
     let token = std::env::var("BOT_TOKEN")
-        .map_err(|err| {
-            log::error!("{}", err);
-        })
-        .unwrap();
+        .expect("Environment variable BOT_TOKEN is not set");
     set_token(&token);
     let bot = Bot::from_env();
     let updater = polling_default(bot.clone());

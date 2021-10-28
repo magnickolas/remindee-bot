@@ -1,6 +1,6 @@
 [package]
 name = "remindee-bot"
-version = "0.1.10"
+version = "0.1.11"
 authors = ["Nikolai Oplachko <magnickolas@gmail.com>"]
 edition = "2018"
 license = "GPL-3.0-only"
@@ -21,10 +21,10 @@ cron-parser = "0.7.9"
 directories = "4.0.1"
 lazy_static = "1.4.0"
 regex = "1.5.4"
-rusqlite = { version = "0.26.0", features = ["chrono", "bundled"] }
-teloxide = "0.5.2"
+rusqlite = { version = "0.26.1", features = ["chrono", "bundled"] }
+teloxide = "0.5.3"
 teloxide-macros = "0.4.1"
-openssl = { version = "0.10.36", features = ["vendored"] }
+openssl = { version = "0.10.37", features = ["vendored"] }
 
 log = "0.4.14"
 pretty_env_logger = "0.4.0"
