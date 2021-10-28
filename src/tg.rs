@@ -52,7 +52,7 @@ impl ToString for TgResponse {
                 ),
                 tz_name
             ),
-            Self::NoChosenTimezone => "You've not selected timezone yet".to_string(),
+            Self::NoChosenTimezone => "You've not selected timezone yet, please do it with /tz command".to_string(),
             Self::FailedSetTimezone(tz_name) => format!("Failed to set timezone {}", tz_name),
             Self::FailedGetTimezone => "Failed to get timezone for reminder".to_string(),
             Self::ChooseDeleteReminder => "Choose a reminder to delete:".to_string(),
