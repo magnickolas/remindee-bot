@@ -3,6 +3,21 @@
 
 Telegram bot for managing reminders.
 
+## Quickstart
+
+1. Install [Rust].
+2. Setup your bot with [@botfather](https://t.me/botfather).
+3. Build crate:
+```console
+cargo install remindee-bot
+```
+4. Start the bot:
+```console
+export BOT_TOKEN=<your bot token>
+remindee-bot
+```
+5. Send `/start` to it
+
 ## Features
 - You can set reminders with/without some description on today or another date:
     - `17:30 go to meeting` (today at 5:30 PM)
@@ -23,27 +38,6 @@ Telegram bot for managing reminders.
     | /edit     | Change reminders        |
     | /tz       | Select timezone         |
     | /mytz     | Show current timezone   |
-
-## Quickstart
-
-1. Install [Rust].
-2. Setup your bot with [@botfather](https://t.me/botfather).
-3. ```console
-   BOT_TOKEN=<your bot token> cargo run --release
-   ```
-
-## How to use
-
-- As a prerequisite, install [Rust].
-- Install
-    ```console
-    cargo install --path .
-    ```
-- Start the bot
-    ```console
-    BOT_TOKEN=<your bot token> remindee-bot
-    ```
-- Send `/start`
 
 [rust]: https://doc.rust-lang.org/cargo/getting-started/installation.html
 [cron]: https://en.wikipedia.org/wiki/Cron#CRON_expression
