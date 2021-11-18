@@ -2,7 +2,7 @@
 name = "remindee-bot"
 version = "0.1.11"
 authors = ["Nikolai Oplachko <magnickolas@gmail.com>"]
-edition = "2018"
+edition = "2021"
 license = "GPL-3.0-only"
 description = "Reminder bot for Telegram without bullshit"
 homepage = "https://oplachko.com"
@@ -24,10 +24,10 @@ regex = "1.5.4"
 rusqlite = { version = "0.26.1", features = ["chrono", "bundled"] }
 teloxide = "0.5.3"
 teloxide-macros = "0.4.1"
-openssl = { version = "0.10.37", features = ["vendored"] }
+openssl = { version = "0.10.38", features = ["vendored"] }
 
 log = "0.4.14"
 pretty_env_logger = "0.4.0"
 
-tokio = { version = "1.12.0", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.14.0", features = ["rt-multi-thread", "macros"] }
 itertools = "0.10.1"
