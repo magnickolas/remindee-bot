@@ -32,7 +32,7 @@ remindee-bot
 - Supported commands:
     | Command   | Action                  |
     | --------- | ----------------------- |
-    | /commands | List supported commands |
+    | /help | List supported commands |
     | /list     | List the set reminders  |
     | /del      | Delete reminders        |
     | /edit     | Change reminders        |

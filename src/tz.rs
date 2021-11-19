@@ -358,7 +358,9 @@ pub fn get_tz_names_for_page_idx(num: usize) -> Option<Vec<&'static str>> {
     TZ_NAMES.chunks(90).into_iter().nth(num).map(|v| v.to_vec())
 }
 
-pub fn get_user_timezone(user_id: i64) -> Result<Tz, err::Error> {
-    let tz_name = db::get_user_timezone_name(user_id)?;
-    tz_name.parse::<Tz>().map_err(err::Error::Parse)
+pub async fn get_user_timezone(user_id: i64) -> Result<Option<Tz>, err::Error> {
+    let tz_name_opt = db::get_user_timezone_name(user_id).await?;
+    tz_name_opt
+        .map(|tz_name| tz_name.parse::<Tz>().map_err(err::Error::Parse))
+        .transpose()
 }

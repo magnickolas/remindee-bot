@@ -1,319 +1,434 @@
-use chrono::{DateTime, Utc};
+use chrono::{NaiveDateTime, Utc};
 use directories::BaseDirs;
-use rusqlite::{params, Connection, Result};
+use sea_query::{
+    ColumnDef, Expr, Iden, Query, SqliteQueryBuilder, Table, Values,
+};
+use sqlx::{sqlite::SqliteQueryResult, Connection, SqliteConnection};
 
-#[derive(Clone, Debug)]
-pub struct Reminder {
-    pub id: u32,
-    pub user_id: i64,
-    pub time: DateTime<Utc>,
-    pub desc: String,
-    pub sent: bool,
-    pub edit: bool,
+sea_query::sea_query_driver_sqlite!();
+use sea_query_driver_sqlite::{bind_query, bind_query_as};
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
+
+#[derive(Debug)]
+pub enum Error {
+    Database(sqlx::Error),
+    Query(sea_query::error::Error),
 }
 
-#[derive(Clone, Debug)]
-pub struct CronReminder {
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            Self::Database(ref err) => write!(f, "Database error: {}", err),
+            Self::Query(ref err) => write!(f, "Query error: {}", err),
+        }
+    }
+}
+
+impl From<sqlx::Error> for Error {
+    fn from(err: sqlx::Error) -> Self {
+        Self::Database(err)
+    }
+}
+
+impl From<sea_query::error::Error> for Error {
+    fn from(err: sea_query::error::Error) -> Self {
+        Self::Query(err)
+    }
+}
+
+#[derive(Iden, EnumIter)]
+enum CronReminder {
+    Table,
+    Id,
+    UserId,
+    CronExpr,
+    Time,
+    Desc,
+    Sent,
+    Edit,
+}
+
+#[derive(sqlx::FromRow, Debug, Clone)]
+pub struct CronReminderStruct {
     pub id: u32,
     pub user_id: i64,
     pub cron_expr: String,
-    pub time: DateTime<Utc>,
+    pub time: NaiveDateTime,
     pub desc: String,
     pub sent: bool,
     pub edit: bool,
 }
 
-pub fn get_db_connection() -> Result<Connection> {
+#[derive(Iden, EnumIter)]
+enum Reminder {
+    Table,
+    Id,
+    UserId,
+    Time,
+    Desc,
+    Sent,
+    Edit,
+}
+
+#[derive(sqlx::FromRow, Debug, Clone)]
+pub struct ReminderStruct {
+    pub id: u32,
+    pub user_id: i64,
+    pub time: NaiveDateTime,
+    pub desc: String,
+    pub sent: bool,
+    pub edit: bool,
+}
+
+#[derive(Iden)]
+enum UserTimezone {
+    Table,
+    UserId,
+    Timezone,
+}
+
+#[derive(sqlx::FromRow, Debug, Clone)]
+pub struct UserTimezoneStruct {
+    pub user_id: i64,
+    pub timezone: String,
+}
+
+pub async fn get_db_connection() -> Result<SqliteConnection, Error> {
     let base_dirs = BaseDirs::new().unwrap();
     if std::env::consts::OS != "android" {
-        Connection::open(base_dirs.data_dir().join("remindee_db.sqlite"))
+        SqliteConnection::connect(
+            base_dirs
+                .data_dir()
+                .join("remindee_db.sqlite")
+                .to_str()
+                .unwrap(),
+        )
+        .await
+        .map_err(From::from)
     } else {
-        Connection::open("remindee_db.sqlite")
+        SqliteConnection::connect("remindee_db.sqlite")
+            .await
+            .map_err(From::from)
     }
 }
 
-pub fn create_reminder_table() -> Result<()> {
-    let conn = get_db_connection()?;
-    conn.execute(
-        "create table if not exists reminder (
-             id         integer primary key,
-             user_id    integer not null,
-             time       timestamp not null,
-             desc       text not null,
-             sent       boolean not null,
-             edit       boolean not null
-        )",
-        [],
-    )?;
+pub async fn create_reminder_table() -> Result<(), Error> {
+    let mut conn = get_db_connection().await?;
+    let sql = Table::create()
+        .table(Reminder::Table)
+        .if_not_exists()
+        .col(
+            ColumnDef::new(Reminder::Id)
+                .integer()
+                .primary_key()
+                .auto_increment(),
+        )
+        .col(ColumnDef::new(Reminder::UserId).integer().not_null())
+        .col(ColumnDef::new(Reminder::Time).date_time().not_null())
+        .col(ColumnDef::new(Reminder::Desc).text().not_null())
+        .col(ColumnDef::new(Reminder::Sent).boolean().not_null())
+        .col(ColumnDef::new(Reminder::Edit).boolean().not_null())
+        .build(SqliteQueryBuilder);
+    sqlx::query(&sql).execute(&mut conn).await?;
     Ok(())
 }
 
-pub fn insert_reminder(rem: &Reminder) -> Result<()> {
-    let conn = get_db_connection()?;
-    conn.execute(
-        "insert into reminder (user_id, time, desc, sent, edit)
-        values (?1, ?2, ?3, ?4, ?5)",
-        params![rem.user_id, rem.time, rem.desc, rem.sent, rem.edit],
-    )?;
+async fn execute(
+    sql: &str,
+    values: &Values,
+    conn: &mut SqliteConnection,
+) -> Result<SqliteQueryResult, Error> {
+    let result = bind_query(sqlx::query(sql), values).execute(conn).await?;
+    Ok(result)
+}
+
+pub async fn insert_reminder(rem: &ReminderStruct) -> Result<(), Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::insert()
+        .into_table(Reminder::Table)
+        .columns(Reminder::iter().skip(2))
+        .values(vec![
+            rem.user_id.into(),
+            rem.time.into(),
+            rem.desc.clone().into(),
+            rem.sent.into(),
+            rem.edit.into(),
+        ])?
+        .build(SqliteQueryBuilder);
+    execute(&sql, &values, &mut conn).await?;
     Ok(())
 }
 
-pub fn mark_reminder_as_sent(id: u32) -> Result<()> {
-    let conn = get_db_connection()?;
-    conn.execute("update reminder set sent=true where id=?1", params![id])?;
+pub async fn mark_reminder_as_sent(id: u32) -> Result<(), Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::update()
+        .table(Reminder::Table)
+        .value(Reminder::Sent, true.into())
+        .and_where(Expr::col(Reminder::Id).eq(id))
+        .build(SqliteQueryBuilder);
+    execute(&sql, &values, &mut conn).await?;
     Ok(())
 }
 
-pub fn mark_reminder_as_edit(id: u32) -> Result<()> {
-    let conn = get_db_connection()?;
-    conn.execute("update reminder set edit=true where id=?1", params![id])?;
+pub async fn mark_reminder_as_edit(id: u32) -> Result<(), Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::update()
+        .table(Reminder::Table)
+        .value(Reminder::Edit, true.into())
+        .and_where(Expr::col(Reminder::Id).eq(id))
+        .build(SqliteQueryBuilder);
+    execute(&sql, &values, &mut conn).await?;
     Ok(())
 }
 
-pub fn reset_reminders_edit(user_id: i64) -> Result<()> {
-    let conn = get_db_connection()?;
-    conn.execute(
-        "update reminder set edit=false where user_id=?1",
-        params![user_id],
-    )?;
+pub async fn reset_reminders_edit(user_id: i64) -> Result<(), Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::update()
+        .table(Reminder::Table)
+        .value(Reminder::Edit, false.into())
+        .and_where(Expr::col(Reminder::UserId).eq(user_id))
+        .build(SqliteQueryBuilder);
+    execute(&sql, &values, &mut conn).await?;
     Ok(())
 }
 
-pub fn get_edit_reminder(user_id: i64) -> Result<Option<Reminder>> {
-    let conn = get_db_connection()?;
-    let mut stmt = conn.prepare(
-        "select id, user_id, time, desc, sent, edit
-        from reminder
-        where user_id=?1 and edit=true and sent=false",
-    )?;
-    return stmt
-        .query_map(params![user_id], |row| {
-            Ok(Reminder {
-                id: row.get(0)?,
-                user_id: row.get(1)?,
-                time: row.get(2)?,
-                desc: row.get(3)?,
-                sent: row.get(4)?,
-                edit: row.get(5)?,
-            })
-        })?
-        .next()
-        .transpose();
-}
-
-pub fn get_active_reminders() -> Result<Vec<Reminder>> {
-    let conn = get_db_connection()?;
-    let mut stmt = conn.prepare(
-        "select id, user_id, time, desc, sent, edit
-        from reminder
-        where sent=false and datetime(time) < datetime('now')",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(Reminder {
-            id: row.get(0)?,
-            user_id: row.get(1)?,
-            time: row.get(2)?,
-            desc: row.get(3)?,
-            sent: row.get(4)?,
-            edit: row.get(5)?,
-        })
-    })?;
-    let mut reminders = Vec::new();
-    for reminder in rows {
-        reminders.push(reminder?);
-    }
-    Ok(reminders)
-}
-
-pub fn get_pending_user_reminders(user_id: i64) -> Result<Vec<Reminder>> {
-    let conn = get_db_connection()?;
-    let mut stmt = conn.prepare(
-        "select id, user_id, time, desc, sent, edit
-        from reminder
-        where user_id=?1 and datetime(time) >= datetime('now') and sent=false",
-    )?;
-    let rows = stmt.query_map(params![user_id], |row| {
-        Ok(Reminder {
-            id: row.get(0)?,
-            user_id: row.get(1)?,
-            time: row.get(2)?,
-            desc: row.get(3)?,
-            sent: row.get(4)?,
-            edit: row.get(5)?,
-        })
-    })?;
-    let mut reminders = Vec::new();
-    for reminder in rows {
-        reminders.push(reminder?);
-    }
-    Ok(reminders)
-}
-
-pub fn create_user_timezone_table() -> Result<()> {
-    let conn = get_db_connection()?;
-    conn.execute(
-        "create table if not exists user_timezone (
-             user_id    integer primary key,
-             timezone   text not null
-        )",
-        [],
-    )?;
-    Ok(())
-}
-
-pub fn get_user_timezone_name(user_id: i64) -> Result<String> {
-    let conn = get_db_connection()?;
-    let mut stmt = conn.prepare(
-        "select timezone
-        from user_timezone
-        where user_id=?1",
-    )?;
-    let row = stmt.query_row(params![user_id], |row| row.get("timezone"))?;
-    Ok(row)
-}
-
-pub fn set_user_timezone_name(user_id: i64, timezone: &str) -> Result<()> {
-    let conn = get_db_connection()?;
-    conn.execute(
-        "insert or replace into user_timezone (user_id, timezone)
-        values (?1, ?2)",
-        params![user_id, timezone],
-    )?;
-    Ok(())
-}
-
-pub fn create_cron_reminder_table() -> Result<()> {
-    let conn = get_db_connection()?;
-    conn.execute(
-        "create table if not exists cron_reminder (
-             id         integer primary key,
-             user_id    integer not null,
-             cron_expr  text not null,
-             time       timestamp not null,
-             desc       text not null,
-             sent       boolean not null,
-             edit       boolean not null
-        )",
-        [],
-    )?;
-    Ok(())
-}
-
-pub fn insert_cron_reminder(rem: &CronReminder) -> Result<()> {
-    let conn = get_db_connection()?;
-    conn.execute(
-        "insert into cron_reminder (user_id, cron_expr, time, desc, sent, edit)
-        values (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![
-            rem.user_id,
-            rem.cron_expr,
-            rem.time,
-            rem.desc,
-            rem.sent,
-            rem.edit
-        ],
-    )?;
-    Ok(())
-}
-
-pub fn mark_cron_reminder_as_sent(id: u32) -> Result<()> {
-    let conn = get_db_connection()?;
-    conn.execute(
-        "update cron_reminder set sent=true where id=?1",
-        params![id],
-    )?;
-    Ok(())
-}
-
-pub fn mark_cron_reminder_as_edit(id: u32) -> Result<()> {
-    let conn = get_db_connection()?;
-    conn.execute(
-        "update cron_reminder set edit=true where id=?1",
-        params![id],
-    )?;
-    Ok(())
-}
-
-pub fn reset_cron_reminders_edit(user_id: i64) -> Result<()> {
-    let conn = get_db_connection()?;
-    conn.execute(
-        "update cron_reminder set edit=false where user_id=?1",
-        params![user_id],
-    )?;
-    Ok(())
-}
-
-pub fn get_edit_cron_reminder(user_id: i64) -> Result<Option<CronReminder>> {
-    let conn = get_db_connection()?;
-    let mut stmt = conn.prepare(
-        "select id, user_id, cron_expr, time, desc, sent, edit
-        from cron_reminder
-        where user_id=?1 and edit=true and sent=false",
-    )?;
-    return stmt
-        .query_map(params![user_id], |row| {
-            Ok(CronReminder {
-                id: row.get(0)?,
-                user_id: row.get(1)?,
-                cron_expr: row.get(2)?,
-                time: row.get(3)?,
-                desc: row.get(4)?,
-                sent: row.get(5)?,
-                edit: row.get(6)?,
-            })
-        })?
-        .next()
-        .transpose();
-}
-
-pub fn get_active_cron_reminders() -> Result<Vec<CronReminder>> {
-    let conn = get_db_connection()?;
-    let mut stmt = conn.prepare(
-        "select id, user_id, cron_expr, time, desc, sent, edit
-        from cron_reminder
-        where sent=false and datetime(time) < datetime('now')",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(CronReminder {
-            id: row.get(0)?,
-            user_id: row.get(1)?,
-            cron_expr: row.get(2)?,
-            time: row.get(3)?,
-            desc: row.get(4)?,
-            sent: row.get(5)?,
-            edit: row.get(6)?,
-        })
-    })?;
-    let mut cron_reminders = Vec::new();
-    for cron_reminder in rows {
-        cron_reminders.push(cron_reminder?);
-    }
-    Ok(cron_reminders)
-}
-
-pub fn get_pending_user_cron_reminders(
+pub async fn get_edit_reminder(
     user_id: i64,
-) -> Result<Vec<CronReminder>> {
-    let conn = get_db_connection()?;
-    let mut stmt = conn.prepare(
-        "select id, user_id, cron_expr, time, desc, sent, edit
-        from cron_reminder
-        where user_id=?1 and datetime(time) >= datetime('now') and sent=false",
-    )?;
-    let rows = stmt.query_map(params![user_id], |row| {
-        Ok(CronReminder {
-            id: row.get(0)?,
-            user_id: row.get(1)?,
-            cron_expr: row.get(2)?,
-            time: row.get(3)?,
-            desc: row.get(4)?,
-            sent: row.get(5)?,
-            edit: row.get(6)?,
-        })
-    })?;
-    let mut cron_reminders = Vec::new();
-    for cron_reminder in rows {
-        cron_reminders.push(cron_reminder?);
+) -> Result<Option<ReminderStruct>, Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::select()
+        .columns(Reminder::iter().skip(1))
+        .from(Reminder::Table)
+        .and_where(Expr::col(Reminder::UserId).eq(user_id))
+        .and_where(Expr::col(Reminder::Edit).eq(true))
+        .and_where(Expr::col(Reminder::Sent).eq(false))
+        .build(SqliteQueryBuilder);
+    bind_query_as(sqlx::query_as::<_, ReminderStruct>(&sql), &values)
+        .fetch_optional(&mut conn)
+        .await
+        .map_err(From::from)
+}
+
+pub async fn get_active_reminders() -> Result<Vec<ReminderStruct>, Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::select()
+        .columns(Reminder::iter().skip(1))
+        .from(Reminder::Table)
+        .and_where(Expr::col(Reminder::Sent).eq(false))
+        .and_where(Expr::col(Reminder::Time).lt(Utc::now().naive_utc()))
+        .build(SqliteQueryBuilder);
+    bind_query_as(sqlx::query_as::<_, ReminderStruct>(&sql), &values)
+        .fetch_all(&mut conn)
+        .await
+        .map_err(From::from)
+}
+
+pub async fn get_pending_user_reminders(
+    user_id: i64,
+) -> Result<Vec<ReminderStruct>, Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::select()
+        .columns(Reminder::iter().skip(1))
+        .from(Reminder::Table)
+        .and_where(Expr::col(Reminder::UserId).eq(user_id))
+        .and_where(Expr::col(Reminder::Time).gte(Utc::now().naive_utc()))
+        .and_where(Expr::col(Reminder::Sent).eq(false))
+        .build(SqliteQueryBuilder);
+    bind_query_as(sqlx::query_as::<_, ReminderStruct>(&sql), &values)
+        .fetch_all(&mut conn)
+        .await
+        .map_err(From::from)
+}
+
+pub async fn create_user_timezone_table() -> Result<(), Error> {
+    let mut conn = get_db_connection().await?;
+    let sql = Table::create()
+        .table(UserTimezone::Table)
+        .if_not_exists()
+        .col(ColumnDef::new(UserTimezone::UserId).integer().primary_key())
+        .col(ColumnDef::new(UserTimezone::Timezone).text().not_null())
+        .build(SqliteQueryBuilder);
+    sqlx::query(&sql).execute(&mut conn).await?;
+    Ok(())
+}
+
+pub async fn get_user_timezone_name(
+    user_id: i64,
+) -> Result<Option<String>, Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::select()
+        .columns(vec![UserTimezone::UserId, UserTimezone::Timezone])
+        .from(UserTimezone::Table)
+        .and_where(Expr::col(UserTimezone::UserId).eq(user_id))
+        .build(SqliteQueryBuilder);
+    bind_query_as(sqlx::query_as::<_, UserTimezoneStruct>(&sql), &values)
+        .fetch_optional(&mut conn)
+        .await
+        .map(|row_opt| row_opt.map(|row| row.timezone))
+        .map_err(From::from)
+}
+
+async fn update_user_timezone_name(
+    conn: &mut SqliteConnection,
+    user_id: i64,
+    timezone: &str,
+) -> Result<(), Error> {
+    let (sql, values) = Query::update()
+        .table(UserTimezone::Table)
+        .value(UserTimezone::Timezone, timezone.to_string().into())
+        .and_where(Expr::col(UserTimezone::UserId).eq(user_id))
+        .build(SqliteQueryBuilder);
+    execute(&sql, &values, conn).await?;
+    Ok(())
+}
+
+async fn insert_user_timezone_name(
+    conn: &mut SqliteConnection,
+    user_id: i64,
+    timezone: &str,
+) -> Result<(), Error> {
+    let (sql, values) = Query::insert()
+        .into_table(UserTimezone::Table)
+        .columns(vec![UserTimezone::UserId, UserTimezone::Timezone])
+        .values(vec![user_id.into(), timezone.into()])?
+        .build(SqliteQueryBuilder);
+    execute(&sql, &values, conn).await?;
+    Ok(())
+}
+
+pub async fn set_user_timezone_name(
+    user_id: i64,
+    timezone: &str,
+) -> Result<(), Error> {
+    let mut conn = get_db_connection().await?;
+    match get_user_timezone_name(user_id).await? {
+        None => insert_user_timezone_name(&mut conn, user_id, timezone).await?,
+        _ => update_user_timezone_name(&mut conn, user_id, timezone).await?,
     }
-    Ok(cron_reminders)
+    Ok(())
+}
+
+pub async fn create_cron_reminder_table() -> Result<(), Error> {
+    let mut conn = get_db_connection().await?;
+    let sql = Table::create()
+        .table(CronReminder::Table)
+        .if_not_exists()
+        .col(
+            ColumnDef::new(CronReminder::Id)
+                .integer()
+                .primary_key()
+                .auto_increment(),
+        )
+        .col(ColumnDef::new(CronReminder::UserId).integer().not_null())
+        .col(ColumnDef::new(CronReminder::CronExpr).text().not_null())
+        .col(ColumnDef::new(CronReminder::Time).date_time().not_null())
+        .col(ColumnDef::new(CronReminder::Desc).text().not_null())
+        .col(ColumnDef::new(CronReminder::Sent).boolean().not_null())
+        .col(ColumnDef::new(CronReminder::Edit).boolean().not_null())
+        .build(SqliteQueryBuilder);
+    sqlx::query(&sql).execute(&mut conn).await?;
+    Ok(())
+}
+
+pub async fn insert_cron_reminder(
+    rem: &CronReminderStruct,
+) -> Result<(), Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::insert()
+        .into_table(CronReminder::Table)
+        .columns(CronReminder::iter().skip(2))
+        .values(vec![
+            rem.user_id.into(),
+            rem.cron_expr.clone().into(),
+            rem.time.into(),
+            rem.desc.clone().into(),
+            rem.sent.into(),
+            rem.edit.into(),
+        ])?
+        .build(SqliteQueryBuilder);
+    execute(&sql, &values, &mut conn).await?;
+    Ok(())
+}
+
+pub async fn mark_cron_reminder_as_sent(id: u32) -> Result<(), Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::update()
+        .table(CronReminder::Table)
+        .value(CronReminder::Sent, true.into())
+        .and_where(Expr::col(CronReminder::Id).eq(id))
+        .build(SqliteQueryBuilder);
+    execute(&sql, &values, &mut conn).await?;
+    Ok(())
+}
+
+pub async fn mark_cron_reminder_as_edit(id: u32) -> Result<(), Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::update()
+        .table(CronReminder::Table)
+        .value(CronReminder::Edit, true.into())
+        .and_where(Expr::col(CronReminder::Id).eq(id))
+        .build(SqliteQueryBuilder);
+    execute(&sql, &values, &mut conn).await?;
+    Ok(())
+}
+
+pub async fn reset_cron_reminders_edit(user_id: i64) -> Result<(), Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::update()
+        .table(CronReminder::Table)
+        .value(CronReminder::Edit, false.into())
+        .and_where(Expr::col(CronReminder::UserId).eq(user_id))
+        .build(SqliteQueryBuilder);
+    execute(&sql, &values, &mut conn).await?;
+    Ok(())
+}
+
+pub async fn get_edit_cron_reminder(
+    user_id: i64,
+) -> Result<Option<CronReminderStruct>, Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::select()
+        .columns(CronReminder::iter().skip(1))
+        .from(CronReminder::Table)
+        .and_where(Expr::col(CronReminder::UserId).eq(user_id))
+        .and_where(Expr::col(CronReminder::Edit).eq(true))
+        .and_where(Expr::col(CronReminder::Sent).eq(false))
+        .build(SqliteQueryBuilder);
+    bind_query_as(sqlx::query_as::<_, CronReminderStruct>(&sql), &values)
+        .fetch_optional(&mut conn)
+        .await
+        .map_err(From::from)
+}
+
+pub async fn get_active_cron_reminders(
+) -> Result<Vec<CronReminderStruct>, Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::select()
+        .columns(CronReminder::iter().skip(1))
+        .from(CronReminder::Table)
+        .and_where(Expr::col(CronReminder::Sent).eq(false))
+        .and_where(Expr::col(CronReminder::Time).lt(Utc::now().naive_utc()))
+        .build(SqliteQueryBuilder);
+    bind_query_as(sqlx::query_as::<_, CronReminderStruct>(&sql), &values)
+        .fetch_all(&mut conn)
+        .await
+        .map_err(From::from)
+}
+
+pub async fn get_pending_user_cron_reminders(
+    user_id: i64,
+) -> Result<Vec<CronReminderStruct>, Error> {
+    let mut conn = get_db_connection().await?;
+    let (sql, values) = Query::select()
+        .columns(CronReminder::iter().skip(1))
+        .from(CronReminder::Table)
+        .and_where(Expr::col(CronReminder::UserId).eq(user_id))
+        .and_where(Expr::col(CronReminder::Time).gte(Utc::now().naive_utc()))
+        .and_where(Expr::col(CronReminder::Sent).eq(false))
+        .build(SqliteQueryBuilder);
+    bind_query_as(sqlx::query_as::<_, CronReminderStruct>(&sql), &values)
+        .fetch_all(&mut conn)
+        .await
+        .map_err(From::from)
 }

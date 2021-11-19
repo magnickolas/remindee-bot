@@ -17,33 +17,34 @@ use teloxide::dispatching::update_listeners::{
 };
 use teloxide::prelude::*;
 use teloxide::types::UpdateKind;
+use tg::GenericReminder;
 
 /// Iterate every second all reminders and send notifications if time's come
 async fn reminders_pooling(bot: Bot) {
     loop {
-        let reminders = db::get_active_reminders().unwrap();
+        let reminders = db::get_active_reminders().await.unwrap();
         for reminder in reminders {
             match tg::send_message(
-                &reminder.to_string(),
+                &reminder.to_string().await,
                 &bot,
                 reminder.user_id,
             )
             .await
             {
-                Ok(_) => db::mark_reminder_as_sent(reminder.id).unwrap_or_else(
-                    |err| {
+                Ok(_) => db::mark_reminder_as_sent(reminder.id)
+                    .await
+                    .unwrap_or_else(|err| {
                         dbg!(err);
-                    },
-                ),
+                    }),
                 Err(err) => {
                     dbg!(err);
                 }
             }
         }
-        let cron_reminders = db::get_active_cron_reminders().unwrap();
+        let cron_reminders = db::get_active_cron_reminders().await.unwrap();
         for cron_reminder in cron_reminders {
             match tg::send_message(
-                &cron_reminder.to_string(),
+                &cron_reminder.to_string().await,
                 &bot,
                 cron_reminder.user_id,
             )
@@ -51,24 +52,31 @@ async fn reminders_pooling(bot: Bot) {
             {
                 Ok(_) => {
                     db::mark_cron_reminder_as_sent(cron_reminder.id)
+                        .await
                         .unwrap_or_else(|err| {
                             dbg!(err);
                         });
                     let new_time = tz::get_user_timezone(cron_reminder.user_id)
-                        .and_then(|timezone| {
-                            Ok(parse_cron(
-                                &cron_reminder.cron_expr,
-                                &Utc::now().with_timezone(&timezone),
-                            )?
-                            .with_timezone(&Utc))
+                        .await
+                        .and_then(|timezone_opt| {
+                            timezone_opt
+                                .map(|timezone| {
+                                    Ok(parse_cron(
+                                        &cron_reminder.cron_expr,
+                                        &Utc::now().with_timezone(&timezone),
+                                    )?
+                                    .with_timezone(&Utc))
+                                })
+                                .transpose()
                         });
                     match new_time {
-                        Ok(new_time) => {
-                            let new_cron_reminder = db::CronReminder {
-                                time: new_time,
+                        Ok(Some(new_time)) => {
+                            let new_cron_reminder = db::CronReminderStruct {
+                                time: new_time.naive_utc(),
                                 ..cron_reminder
                             };
                             db::insert_cron_reminder(&new_cron_reminder)
+                                .await
                                 .unwrap_or_else(|err| {
                                     dbg!(err);
                                 });
@@ -76,6 +84,7 @@ async fn reminders_pooling(bot: Bot) {
                         Err(err) => {
                             dbg!(err);
                         }
+                        _ => {}
                     }
                 }
                 Err(err) => {
@@ -96,9 +105,9 @@ async fn run() {
     log::info!("Starting remindee bot!");
 
     // Create necessary database tables if they do not exist
-    db::create_reminder_table().unwrap();
-    db::create_cron_reminder_table().unwrap();
-    db::create_user_timezone_table().unwrap();
+    db::create_reminder_table().await.unwrap();
+    db::create_cron_reminder_table().await.unwrap();
+    db::create_user_timezone_table().await.unwrap();
 
     // Set token from an environment variable
     let token = std::env::var("BOT_TOKEN")
@@ -143,13 +152,13 @@ async fn run() {
                                 "edit" | "/edit" => {
                                     controller::start_edit(&bot, user_id).await
                                 }
-                                "/commands" => {
+                                "help" | "/help" => {
                                     controller::list_commands(&bot, user_id)
                                         .await
                                 }
                                 text => match (
-                                    db::get_edit_reminder(user_id),
-                                    db::get_edit_cron_reminder(user_id),
+                                    db::get_edit_reminder(user_id).await,
+                                    db::get_edit_cron_reminder(user_id).await,
                                 ) {
                                     (Ok(Some(edit_reminder)), _) => {
                                         controller::replace_reminder(

@@ -1,8 +1,9 @@
+use crate::db;
 use std::fmt;
 
 #[derive(Debug)]
 pub enum Error {
-    Database(rusqlite::Error),
+    Database(db::Error),
     Parse(String),
     CronParse(cron_parser::ParseError),
     CronFewFields,
@@ -37,8 +38,8 @@ impl fmt::Display for Error {
     }
 }
 
-impl From<rusqlite::Error> for Error {
-    fn from(err: rusqlite::Error) -> Self {
+impl From<db::Error> for Error {
+    fn from(err: db::Error) -> Self {
         Self::Database(err)
     }
 }

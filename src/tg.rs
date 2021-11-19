@@ -2,6 +2,7 @@ use crate::date;
 use crate::db;
 use crate::tz;
 
+use async_trait::async_trait;
 use chrono::offset::TimeZone;
 use chrono::prelude::*;
 use chrono::{Duration, Utc};
@@ -48,7 +49,7 @@ impl ToString for TgResponse {
             Self::ChosenTimezone(tz_name) => format!(
                 concat!(
                     "Selected timezone {}. Now you can set some reminders.\n\n",
-                    "You can get the commands I understand with /commands."
+                    "You can get the commands I understand with /help."
                 ),
                 tz_name
             ),
@@ -93,19 +94,59 @@ impl ReminderRegexFields {
     const DESCRIPTION: &'static str = "description";
 }
 
-pub trait GenericReminder: ToString {
-    fn get_time(&self) -> &DateTime<Utc>;
+#[async_trait]
+pub trait GenericReminder {
+    fn get_time(&self) -> &NaiveDateTime;
     fn get_id(&self) -> u32;
     fn is_cron_reminder(&self) -> bool;
-    fn to_unescaped_string(&self) -> String;
+    async fn to_string(&self) -> String;
+    async fn to_unescaped_string(&self) -> String;
 }
 
-impl ToString for db::Reminder {
-    fn to_string(&self) -> String {
-        match tz::get_user_timezone(self.user_id) {
-            Ok(user_timezone) => {
-                let time =
-                    user_timezone.from_utc_datetime(&self.time.naive_utc());
+impl db::ReminderStruct {}
+
+#[async_trait]
+impl GenericReminder for db::ReminderStruct {
+    fn get_time(&self) -> &NaiveDateTime {
+        &self.time
+    }
+
+    fn get_id(&self) -> u32 {
+        self.id
+    }
+
+    fn is_cron_reminder(&self) -> bool {
+        false
+    }
+
+    async fn to_unescaped_string(&self) -> String {
+        match tz::get_user_timezone(self.user_id).await {
+            Ok(Some(user_timezone)) => {
+                let time = user_timezone.from_utc_datetime(&self.time);
+                let now = Utc::now().with_timezone(&user_timezone);
+                let mut s = String::new();
+                if time.date() != now.date() {
+                    s = s
+                        + &format!("{:02}", time.day())
+                        + "."
+                        + &format!("{:02}", time.month())
+                        + " ";
+                }
+                s + &format!("{:02}", time.hour())
+                    + ":"
+                    + &format!("{:02}", time.minute())
+                    + " <"
+                    + &self.desc
+                    + ">"
+            }
+            _ => TgResponse::FailedGetTimezone.to_string(),
+        }
+    }
+
+    async fn to_string(&self) -> String {
+        match tz::get_user_timezone(self.user_id).await {
+            Ok(Some(user_timezone)) => {
+                let time = user_timezone.from_utc_datetime(&self.time);
                 let now = Utc::now().with_timezone(&user_timezone);
                 let mut s = String::new();
                 if time.date() != now.date() {
@@ -127,76 +168,9 @@ impl ToString for db::Reminder {
     }
 }
 
-impl GenericReminder for db::Reminder {
-    fn get_time(&self) -> &DateTime<Utc> {
-        &self.time
-    }
-
-    fn get_id(&self) -> u32 {
-        self.id
-    }
-
-    fn is_cron_reminder(&self) -> bool {
-        false
-    }
-
-    fn to_unescaped_string(&self) -> String {
-        match tz::get_user_timezone(self.user_id) {
-            Ok(user_timezone) => {
-                let time =
-                    user_timezone.from_utc_datetime(&self.time.naive_utc());
-                let now = Utc::now().with_timezone(&user_timezone);
-                let mut s = String::new();
-                if time.date() != now.date() {
-                    s = s
-                        + &format!("{:02}", time.day())
-                        + "."
-                        + &format!("{:02}", time.month())
-                        + " ";
-                }
-                s + &format!("{:02}", time.hour())
-                    + ":"
-                    + &format!("{:02}", time.minute())
-                    + " <"
-                    + &self.desc
-                    + ">"
-            }
-            _ => TgResponse::FailedGetTimezone.to_string(),
-        }
-    }
-}
-
-impl ToString for db::CronReminder {
-    fn to_string(&self) -> String {
-        match tz::get_user_timezone(self.user_id) {
-            Ok(user_timezone) => {
-                let time =
-                    user_timezone.from_utc_datetime(&self.time.naive_utc());
-                let now = Utc::now().with_timezone(&user_timezone);
-                let mut s = String::new();
-                if time.date() != now.date() {
-                    s = s
-                        + &format!("{:02}", time.day())
-                        + &escape(".")
-                        + &format!("{:02}", time.month())
-                        + " ";
-                }
-                s + &format!("{:02}", time.hour())
-                    + ":"
-                    + &format!("{:02}", time.minute())
-                    + &escape(" <")
-                    + &bold(&escape(&self.desc))
-                    + &escape("> [")
-                    + &escape(&self.cron_expr)
-                    + &escape("]")
-            }
-            _ => TgResponse::FailedGetTimezone.to_string(),
-        }
-    }
-}
-
-impl GenericReminder for db::CronReminder {
-    fn get_time(&self) -> &DateTime<Utc> {
+#[async_trait]
+impl GenericReminder for db::CronReminderStruct {
+    fn get_time(&self) -> &NaiveDateTime {
         &self.time
     }
 
@@ -208,11 +182,10 @@ impl GenericReminder for db::CronReminder {
         true
     }
 
-    fn to_unescaped_string(&self) -> String {
-        match tz::get_user_timezone(self.user_id) {
-            Ok(user_timezone) => {
-                let time =
-                    user_timezone.from_utc_datetime(&self.time.naive_utc());
+    async fn to_unescaped_string(&self) -> String {
+        match tz::get_user_timezone(self.user_id).await {
+            Ok(Some(user_timezone)) => {
+                let time = user_timezone.from_utc_datetime(&self.time);
                 let now = Utc::now().with_timezone(&user_timezone);
                 let mut s = String::new();
                 if time.date() != now.date() {
@@ -230,6 +203,32 @@ impl GenericReminder for db::CronReminder {
                     + "> ["
                     + &self.cron_expr
                     + "]"
+            }
+            _ => TgResponse::FailedGetTimezone.to_string(),
+        }
+    }
+
+    async fn to_string(&self) -> String {
+        match tz::get_user_timezone(self.user_id).await {
+            Ok(Some(user_timezone)) => {
+                let time = user_timezone.from_utc_datetime(&self.time);
+                let now = Utc::now().with_timezone(&user_timezone);
+                let mut s = String::new();
+                if time.date() != now.date() {
+                    s = s
+                        + &format!("{:02}", time.day())
+                        + &escape(".")
+                        + &format!("{:02}", time.month())
+                        + " ";
+                }
+                s + &format!("{:02}", time.hour())
+                    + ":"
+                    + &format!("{:02}", time.minute())
+                    + &escape(" <")
+                    + &bold(&escape(&self.desc))
+                    + &escape("> [")
+                    + &escape(&self.cron_expr)
+                    + &escape("]")
             }
             _ => TgResponse::FailedGetTimezone.to_string(),
         }
@@ -297,7 +296,7 @@ pub async fn edit_markup(
         .map(|_| ())
 }
 
-pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
+pub async fn parse_req(s: &str, user_id: i64) -> Option<db::ReminderStruct> {
     lazy_static! {
         static ref RE: Regex = Regex::new(&format!(
             concat!(
@@ -316,69 +315,75 @@ pub fn parse_req(s: &str, user_id: i64) -> Option<db::Reminder> {
         .unwrap();
     }
 
-    let user_timezone = tz::get_user_timezone(user_id).ok()?;
-    RE.captures(s).and_then(|caps| {
-        let now = user_timezone.from_utc_datetime(&Utc::now().naive_utc());
-        let get_field_by_name_or = |name, default| {
-            caps.name(name)
-                .and_then(|x| x.as_str().parse().ok())
-                .unwrap_or(default)
-        };
-        let day = get_field_by_name_or(ReminderRegexFields::DAY, now.day());
-        let month =
-            get_field_by_name_or(ReminderRegexFields::MONTH, now.month());
-        let year =
-            get_field_by_name_or(ReminderRegexFields::YEAR, now.year() as u32)
-                as i32;
-        let hour = get_field_by_name_or(ReminderRegexFields::HOUR, now.hour());
-        let minute =
-            get_field_by_name_or(ReminderRegexFields::MINUTE, now.minute());
-        let second = get_field_by_name_or(ReminderRegexFields::SECOND, 0);
-
-        if !((0..24).contains(&hour)
-            && (0..60).contains(&minute)
-            && (0..60).contains(&second))
-        {
-            return None;
-        }
-
-        let mut time = now
-            .date()
-            .with_day(day)
-            .and_then(|x| x.with_month(month))
-            .and_then(|x| x.with_year(year))
-            .unwrap_or_else(|| now.date())
-            .and_hms(hour, minute, second);
-
-        if time < now {
-            let specified_day = caps.name(ReminderRegexFields::DAY).is_some();
-            let specified_month =
-                caps.name(ReminderRegexFields::MONTH).is_some();
-            let durations = if !specified_day || specified_month {
-                [
-                    1,
-                    date::days_in_month(month, year),
-                    date::days_in_year(year),
-                ]
-                .to_vec()
-            } else {
-                [date::days_in_month(month, year), date::days_in_year(year)]
-                    .to_vec()
+    if let Ok(Some(user_timezone)) = tz::get_user_timezone(user_id).await {
+        RE.captures(s).and_then(|caps| {
+            let now = user_timezone.from_utc_datetime(&Utc::now().naive_utc());
+            let get_field_by_name_or = |name, default| {
+                caps.name(name)
+                    .and_then(|x| x.as_str().parse().ok())
+                    .unwrap_or(default)
             };
-            for duration in durations.iter().map(|&x| Duration::days(x)) {
-                if time + duration >= now {
-                    time = time + duration;
-                    break;
+            let day = get_field_by_name_or(ReminderRegexFields::DAY, now.day());
+            let month =
+                get_field_by_name_or(ReminderRegexFields::MONTH, now.month());
+            let year = get_field_by_name_or(
+                ReminderRegexFields::YEAR,
+                now.year() as u32,
+            ) as i32;
+            let hour =
+                get_field_by_name_or(ReminderRegexFields::HOUR, now.hour());
+            let minute =
+                get_field_by_name_or(ReminderRegexFields::MINUTE, now.minute());
+            let second = get_field_by_name_or(ReminderRegexFields::SECOND, 0);
+
+            if !((0..24).contains(&hour)
+                && (0..60).contains(&minute)
+                && (0..60).contains(&second))
+            {
+                return None;
+            }
+
+            let mut time = now
+                .date()
+                .with_day(day)
+                .and_then(|x| x.with_month(month))
+                .and_then(|x| x.with_year(year))
+                .unwrap_or_else(|| now.date())
+                .and_hms(hour, minute, second);
+
+            if time < now {
+                let specified_day =
+                    caps.name(ReminderRegexFields::DAY).is_some();
+                let specified_month =
+                    caps.name(ReminderRegexFields::MONTH).is_some();
+                let durations = if !specified_day || specified_month {
+                    [
+                        1,
+                        date::days_in_month(month, year),
+                        date::days_in_year(year),
+                    ]
+                    .to_vec()
+                } else {
+                    [date::days_in_month(month, year), date::days_in_year(year)]
+                        .to_vec()
+                };
+                for duration in durations.iter().map(|&x| Duration::days(x)) {
+                    if time + duration >= now {
+                        time = time + duration;
+                        break;
+                    }
                 }
             }
-        }
-        Some(db::Reminder {
-            id: 0,
-            user_id,
-            time: time.with_timezone(&Utc),
-            desc: caps[ReminderRegexFields::DESCRIPTION].to_string(),
-            sent: false,
-            edit: false,
+            Some(db::ReminderStruct {
+                id: 0,
+                user_id,
+                time: time.with_timezone(&Utc).naive_utc(),
+                desc: caps[ReminderRegexFields::DESCRIPTION].to_string(),
+                sent: false,
+                edit: false,
+            })
         })
-    })
+    } else {
+        None
+    }
 }

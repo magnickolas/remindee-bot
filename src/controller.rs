@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use crate::db;
 use crate::err;
 use crate::tg;
@@ -17,11 +19,12 @@ pub async fn start(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
     tg::send_message(&TgResponse::Hello.to_string(), bot, user_id).await
 }
 
-fn get_sorted_reminders(
+async fn get_sorted_reminders(
     user_id: i64,
-) -> Result<std::vec::IntoIter<Box<dyn tg::GenericReminder>>, rusqlite::Error> {
-    let reminders_future = db::get_pending_user_reminders(user_id);
-    let cron_reminders_future = db::get_pending_user_cron_reminders(user_id);
+) -> Result<std::vec::IntoIter<Box<dyn tg::GenericReminder>>, db::Error> {
+    let reminders_future = db::get_pending_user_reminders(user_id).await;
+    let cron_reminders_future =
+        db::get_pending_user_cron_reminders(user_id).await;
     let gen_rems = reminders_future.map(|v| {
         v.into_iter()
             .map::<Box<dyn tg::GenericReminder>, _>(|x| Box::new(x))
@@ -37,20 +40,25 @@ fn get_sorted_reminders(
 
 /// Send a list of all notifications
 pub async fn list(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
-    let sorted_reminders = get_sorted_reminders(user_id);
     // Format reminders
-    let text = sorted_reminders
-        .map(|rems| {
+    let text = match get_sorted_reminders(user_id).await {
+        Ok(sorted_reminders) => {
+            let mut rem_strs = vec![];
+            for rem in sorted_reminders {
+                let rem_str = rem.to_string().await;
+                rem_strs.push(rem_str);
+            }
             vec![TgResponse::RemindersListHeader.to_string()]
                 .into_iter()
-                .chain(rems.map(|rem| rem.to_string()))
+                .chain(rem_strs)
                 .collect::<Vec<String>>()
                 .join("\n")
-        })
-        .unwrap_or_else(|err| {
+        }
+        Err(err) => {
             dbg!(err);
             TgResponse::QueryingError.to_string()
-        });
+        }
+    };
     tg::send_message(&text, bot, user_id).await
 }
 
@@ -70,8 +78,9 @@ pub async fn choose_timezone(
 
 /// Send user's timezone
 pub async fn get_timezone(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
-    let response = match db::get_user_timezone_name(user_id) {
-        Ok(tz_name) => TgResponse::ChosenTimezone(tz_name),
+    let response = match db::get_user_timezone_name(user_id).await {
+        Ok(Some(tz_name)) => TgResponse::ChosenTimezone(tz_name),
+        Ok(None) => TgResponse::NoChosenTimezone,
         Err(err) => {
             dbg!(err);
             TgResponse::NoChosenTimezone
@@ -81,14 +90,22 @@ pub async fn get_timezone(bot: &Bot, user_id: i64) -> Result<(), RequestError> {
 }
 
 /// General way to send a markup to select a reminder for some operation
-async fn start_alter(
+async fn start_alter<Fut>(
     bot: &Bot,
     user_id: i64,
     response: TgResponse,
-    get_markup: fn(usize, i64) -> InlineKeyboardMarkup,
-) -> Result<(), RequestError> {
-    tg::send_markup(&response.to_string(), get_markup(0, user_id), bot, user_id)
-        .await
+    get_markup: impl FnOnce(usize, i64) -> Fut,
+) -> Result<(), RequestError>
+where
+    Fut: Future<Output = InlineKeyboardMarkup>,
+{
+    tg::send_markup(
+        &response.to_string(),
+        get_markup(0, user_id).await,
+        bot,
+        user_id,
+    )
+    .await
 }
 
 /// Send a markup to select a reminder for deleting
@@ -129,9 +146,9 @@ pub async fn set_reminder(
     from_id_opt: Option<i64>,
     silent_success: bool,
 ) -> Result<bool, RequestError> {
-    if let Some(reminder) = tg::parse_req(text, user_id) {
+    if let Some(reminder) = tg::parse_req(text, user_id).await {
         let mut ok = true;
-        let response = match db::insert_reminder(&reminder) {
+        let response = match db::insert_reminder(&reminder).await {
             Ok(_) => TgResponse::SuccessInsert,
             Err(err) => {
                 ok = false;
@@ -144,35 +161,43 @@ pub async fn set_reminder(
             tg::send_message(&response.to_string(), bot, user_id).await?
         }
         Ok(ok)
-    } else if let Ok((cron_expr, time)) = {
+    } else if let Ok(Some((cron_expr, time))) = {
         let cron_fields: Vec<&str> = text.split_whitespace().take(5).collect();
         if cron_fields.len() < 5 {
             Err(err::Error::CronFewFields)
         } else {
             let cron_expr = cron_fields.join(" ");
-            tz::get_user_timezone(user_id).and_then(|timezone| {
-                let time = parse_cron(
-                    &cron_expr,
-                    &Utc::now().with_timezone(&timezone),
-                )?
-                .with_timezone(&Utc);
-                Ok((cron_expr, time))
-            })
+            tz::get_user_timezone(user_id)
+                .await
+                .and_then(|timezone_opt| {
+                    timezone_opt
+                        .map(|timezone| {
+                            let time = parse_cron(
+                                &cron_expr,
+                                &Utc::now().with_timezone(&timezone),
+                            )?
+                            .with_timezone(&Utc);
+                            Ok((cron_expr, time))
+                        })
+                        .transpose()
+                })
         }
     } {
         let mut ok = true;
-        let response = match db::insert_cron_reminder(&db::CronReminder {
+        let response = match db::insert_cron_reminder(&db::CronReminderStruct {
             id: 0,
             user_id,
             cron_expr: cron_expr.clone(),
-            time,
+            time: time.naive_utc(),
             desc: text
                 .strip_prefix(&(cron_expr.to_owned() + " "))
                 .unwrap_or("")
                 .to_owned(),
             sent: false,
             edit: false,
-        }) {
+        })
+        .await
+        {
             Ok(_) => TgResponse::SuccessInsert,
             Err(err) => {
                 ok = false;
@@ -183,7 +208,7 @@ pub async fn set_reminder(
         tg::send_message(&response.to_string(), bot, user_id).await?;
         Ok(ok)
     } else if from_id_opt.filter(|&from_id| from_id == user_id).is_some() {
-        let response = if tz::get_user_timezone(user_id).is_err() {
+        let response = if tz::get_user_timezone(user_id).await.is_err() {
             TgResponse::NoChosenTimezone
         } else {
             TgResponse::IncorrectRequest
@@ -219,7 +244,7 @@ pub async fn set_timezone(
     user_id: i64,
     tz_name: &str,
 ) -> Result<(), RequestError> {
-    let response = match db::set_user_timezone_name(user_id, tz_name) {
+    let response = match db::set_user_timezone_name(user_id, tz_name).await {
         Ok(_) => TgResponse::ChosenTimezone(tz_name.to_owned()),
         Err(err) => {
             dbg!(err);
@@ -229,14 +254,18 @@ pub async fn set_timezone(
     tg::send_message(&response.to_string(), bot, user_id).await
 }
 
-async fn alter_reminder_set_page(
+async fn alter_reminder_set_page<Fut>(
     bot: &Bot,
     user_id: i64,
     page_num: usize,
     msg_id: i32,
-    get_markup: fn(usize, i64) -> InlineKeyboardMarkup,
-) -> Result<(), RequestError> {
-    tg::edit_markup(get_markup(page_num, user_id), bot, msg_id, user_id).await
+    get_markup: impl FnOnce(usize, i64) -> Fut,
+) -> Result<(), RequestError>
+where
+    Fut: Future<Output = InlineKeyboardMarkup>,
+{
+    tg::edit_markup(get_markup(page_num, user_id).await, bot, msg_id, user_id)
+        .await
 }
 
 pub async fn delete_reminder_set_page(
@@ -271,14 +300,17 @@ pub async fn edit_reminder_set_page(
     .await
 }
 
-async fn delete_arbitrary_reminder(
+async fn delete_arbitrary_reminder<Fut>(
     bot: &Bot,
     user_id: i64,
     rem_id: u32,
     msg_id: i32,
-    mark_sent: fn(u32) -> Result<(), rusqlite::Error>,
-) -> Result<(), RequestError> {
-    let response = match mark_sent(rem_id) {
+    mark_sent: impl FnOnce(u32) -> Fut,
+) -> Result<(), RequestError>
+where
+    Fut: Future<Output = Result<(), db::Error>>,
+{
+    let response = match mark_sent(rem_id).await {
         Ok(_) => TgResponse::SuccessDelete,
         Err(err) => {
             dbg!(err);
@@ -321,15 +353,19 @@ pub async fn delete_cron_reminder(
     .await
 }
 
-async fn edit_arbitrary_reminder(
+async fn edit_arbitrary_reminder<Fut>(
     bot: &Bot,
     user_id: i64,
     rem_id: u32,
-    mark_edit: fn(u32) -> Result<(), rusqlite::Error>,
-) -> Result<(), RequestError> {
+    mark_edit: impl FnOnce(u32) -> Fut,
+) -> Result<(), RequestError>
+where
+    Fut: Future<Output = Result<(), db::Error>>,
+{
     let response = match db::reset_reminders_edit(user_id)
-        .and(db::reset_cron_reminders_edit(user_id))
-        .and(mark_edit(rem_id))
+        .await
+        .and(db::reset_cron_reminders_edit(user_id).await)
+        .and(mark_edit(rem_id).await)
     {
         Ok(_) => TgResponse::EnterNewReminder,
         Err(err) => {
@@ -371,7 +407,7 @@ pub async fn replace_reminder(
     from_id_opt: Option<i64>,
 ) -> Result<(), RequestError> {
     if set_reminder(text, bot, user_id, from_id_opt, true).await? {
-        let response = match db::mark_reminder_as_sent(rem_id) {
+        let response = match db::mark_reminder_as_sent(rem_id).await {
             Ok(_) => TgResponse::SuccessEdit,
             Err(err) => {
                 dbg!(err);
@@ -393,7 +429,7 @@ pub async fn replace_cron_reminder(
     from_id_opt: Option<i64>,
 ) -> Result<(), RequestError> {
     if set_reminder(text, bot, user_id, from_id_opt, true).await? {
-        let response = match db::mark_cron_reminder_as_sent(rem_id) {
+        let response = match db::mark_cron_reminder_as_sent(rem_id).await {
             Ok(_) => TgResponse::SuccessEdit,
             Err(err) => {
                 dbg!(err);
@@ -450,40 +486,39 @@ pub fn get_markup_for_tz_page_idx(num: usize) -> InlineKeyboardMarkup {
     markup.append_row(move_buttons)
 }
 
-fn get_markup_for_reminders_page_alteration(
+async fn get_markup_for_reminders_page_alteration(
     num: usize,
     user_id: i64,
     cb_prefix: &str,
 ) -> InlineKeyboardMarkup {
     let mut markup = InlineKeyboardMarkup::default();
     let mut last_rem_page: bool = false;
-    let sorted_reminders =
-        get_sorted_reminders(user_id).map(|rems| rems.collect::<Vec<_>>());
+    let sorted_reminders = get_sorted_reminders(user_id)
+        .await
+        .map(|rems| rems.collect::<Vec<_>>());
     if let Some(reminders) = sorted_reminders
         .ok()
         .as_ref()
         .and_then(|rems| rems.chunks(45).into_iter().nth(num))
     {
         for chunk in reminders.chunks(1) {
-            markup = markup.append_row(
-                chunk
-                    .iter()
-                    .map(|rem| {
-                        InlineKeyboardButton::new(
-                            rem.to_unescaped_string(),
-                            InlineKeyboardButtonKind::CallbackData(
-                                cb_prefix.to_owned()
-                                    + if rem.is_cron_reminder() {
-                                        "::cron_alt::"
-                                    } else {
-                                        "::alt::"
-                                    }
-                                    + &rem.get_id().to_string(),
-                            ),
-                        )
-                    })
-                    .collect::<Vec<_>>(),
-            );
+            let mut row = vec![];
+            for rem in chunk {
+                let rem_str = rem.to_unescaped_string().await;
+                row.push(InlineKeyboardButton::new(
+                    rem_str,
+                    InlineKeyboardButtonKind::CallbackData(
+                        cb_prefix.to_owned()
+                            + if rem.is_cron_reminder() {
+                                "::cron_alt::"
+                            } else {
+                                "::alt::"
+                            }
+                            + &rem.get_id().to_string(),
+                    ),
+                ))
+            }
+            markup = markup.append_row(row);
         }
     } else {
         last_rem_page = true;
@@ -508,16 +543,16 @@ fn get_markup_for_reminders_page_alteration(
     markup.append_row(move_buttons)
 }
 
-pub fn get_markup_for_reminders_page_deletion(
+pub async fn get_markup_for_reminders_page_deletion(
     num: usize,
     user_id: i64,
 ) -> InlineKeyboardMarkup {
-    get_markup_for_reminders_page_alteration(num, user_id, "delrem")
+    get_markup_for_reminders_page_alteration(num, user_id, "delrem").await
 }
 
-pub fn get_markup_for_reminders_page_editing(
+pub async fn get_markup_for_reminders_page_editing(
     num: usize,
     user_id: i64,
 ) -> InlineKeyboardMarkup {
-    get_markup_for_reminders_page_alteration(num, user_id, "editrem")
+    get_markup_for_reminders_page_alteration(num, user_id, "editrem").await
 }
