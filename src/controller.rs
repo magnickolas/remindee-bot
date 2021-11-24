@@ -190,8 +190,9 @@ pub async fn set_reminder(
             cron_expr: cron_expr.clone(),
             time: time.naive_utc(),
             desc: text
-                .strip_prefix(&(cron_expr.to_owned() + " "))
+                .strip_prefix(&(cron_expr.to_owned()))
                 .unwrap_or("")
+                .trim()
                 .to_owned(),
             sent: false,
             edit: false,

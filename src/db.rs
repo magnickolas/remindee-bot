@@ -232,7 +232,6 @@ pub async fn get_pending_user_reminders(
         .columns(Reminder::iter().skip(1))
         .from(Reminder::Table)
         .and_where(Expr::col(Reminder::UserId).eq(user_id))
-        .and_where(Expr::col(Reminder::Time).gte(Utc::now().naive_utc()))
         .and_where(Expr::col(Reminder::Sent).eq(false))
         .build(SqliteQueryBuilder);
     bind_query_as(sqlx::query_as::<_, ReminderStruct>(&sql), &values)
@@ -424,7 +423,6 @@ pub async fn get_pending_user_cron_reminders(
         .columns(CronReminder::iter().skip(1))
         .from(CronReminder::Table)
         .and_where(Expr::col(CronReminder::UserId).eq(user_id))
-        .and_where(Expr::col(CronReminder::Time).gte(Utc::now().naive_utc()))
         .and_where(Expr::col(CronReminder::Sent).eq(false))
         .build(SqliteQueryBuilder);
     bind_query_as(sqlx::query_as::<_, CronReminderStruct>(&sql), &values)
