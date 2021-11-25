@@ -381,7 +381,12 @@ impl TgBot<'_> {
                 .await;
             self.alter_reminder_set_page(user_id, msg_id, markup).await
         } else {
-            tg::send_message(&TgResponse::NoChosenTimezone.to_string(), self.bot, user_id).await
+            tg::send_message(
+                &TgResponse::NoChosenTimezone.to_string(),
+                self.bot,
+                user_id,
+            )
+            .await
         }
     }
 
@@ -403,7 +408,12 @@ impl TgBot<'_> {
                 .await;
             self.alter_reminder_set_page(user_id, msg_id, markup).await
         } else {
-            tg::send_message(&TgResponse::NoChosenTimezone.to_string(), self.bot, user_id).await
+            tg::send_message(
+                &TgResponse::NoChosenTimezone.to_string(),
+                self.bot,
+                user_id,
+            )
+            .await
         }
     }
 

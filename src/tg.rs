@@ -62,8 +62,13 @@ impl ToString for TgResponse {
             Self::SuccessEdit => "Edited!".to_string(),
             Self::FailedEdit => "Failed to edit...".to_string(),
             Self::Hello => concat!(
-                "Hello! I'm Remindee. My purpose is to remind you of whatever you ask and ",
-                "whenever you ask.\n\nPlease, select your timezone with /tz command first."
+                "Hello! I'm remindee bot. My purpose is to remind you of whatever you ask and ",
+                "whenever you ask.\n\n",
+                "Examples:\n17:30 go to restaurant => notify today at 5:30 PM\n",
+                "01.01 00:00 Happy New Year => notify at 1st of January at 12 AM\n",
+                "55 10 * * 1-5 meeting call => notify at 10:55 AM every weekday ",
+                "(CRON expression format)\n\n",
+                "Please, select your timezone with /tz command first."
             )
             .to_string(),
             Self::CommandsHelp => concat!(

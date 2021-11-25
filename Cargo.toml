@@ -1,6 +1,6 @@
 [package]
 name = "remindee-bot"
-version = "0.1.12"
+version = "0.1.13"
 authors = ["Nikolai Oplachko <magnickolas@gmail.com>"]
 edition = "2021"
 license = "GPL-3.0-only"
