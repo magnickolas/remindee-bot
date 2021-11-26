@@ -1513,7 +1513,6 @@ name = "remindee-bot"
 version = "0.1.13"
 dependencies = [
  "async-std",
- "async-trait",
  "chrono",
  "chrono-tz",
  "cron-parser",

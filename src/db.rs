@@ -81,7 +81,7 @@ pub struct ReminderStruct {
     pub edit: bool,
 }
 
-#[derive(Iden)]
+#[derive(Iden, EnumIter)]
 enum UserTimezone {
     Table,
     UserId,
@@ -94,6 +94,25 @@ pub struct UserTimezoneStruct {
     pub timezone: String,
 }
 
+async fn get_db_pool() -> Result<SqlitePool, Error> {
+    let base_dirs = BaseDirs::new().unwrap();
+    if std::env::consts::OS != "android" {
+        SqlitePool::connect(
+            base_dirs
+                .data_dir()
+                .join("remindee_db.sqlite")
+                .to_str()
+                .unwrap(),
+        )
+        .await
+        .map_err(From::from)
+    } else {
+        SqlitePool::connect("remindee_db.sqlite")
+            .await
+            .map_err(From::from)
+    }
+}
+
 #[derive(Clone)]
 pub struct Database {
     pool: SqlitePool,
@@ -101,26 +120,7 @@ pub struct Database {
 
 impl Database {
     pub async fn new() -> Result<Self, Error> {
-        Self::get_db_pool().await.map(|pool| Self { pool })
-    }
-
-    async fn get_db_pool() -> Result<SqlitePool, Error> {
-        let base_dirs = BaseDirs::new().unwrap();
-        if std::env::consts::OS != "android" {
-            SqlitePool::connect(
-                base_dirs
-                    .data_dir()
-                    .join("remindee_db.sqlite")
-                    .to_str()
-                    .unwrap(),
-            )
-            .await
-            .map_err(From::from)
-        } else {
-            SqlitePool::connect("remindee_db.sqlite")
-                .await
-                .map_err(From::from)
-        }
+        get_db_pool().await.map(|pool| Self { pool })
     }
 
     pub async fn create_reminder_table(&self) -> Result<(), Error> {
@@ -283,7 +283,7 @@ impl Database {
     ) -> Result<Option<String>, Error> {
         let mut conn = self.pool.acquire().await?;
         let (sql, values) = Query::select()
-            .columns(vec![UserTimezone::UserId, UserTimezone::Timezone])
+            .columns(UserTimezone::iter().skip(1))
             .from(UserTimezone::Table)
             .and_where(Expr::col(UserTimezone::UserId).eq(user_id))
             .build(SqliteQueryBuilder);

@@ -1,7 +1,6 @@
 use crate::date;
 use crate::db;
 
-use async_trait::async_trait;
 use chrono::offset::TimeZone;
 use chrono::prelude::*;
 use chrono::{Duration, Utc};
@@ -157,7 +156,6 @@ impl GenericReminder for db::ReminderStruct {
     }
 }
 
-#[async_trait]
 impl GenericReminder for db::CronReminderStruct {
     fn get_time(&self) -> &NaiveDateTime {
         &self.time
