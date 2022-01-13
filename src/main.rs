@@ -52,12 +52,31 @@ async fn reminders_pooling(mut database: db::Database, bot: Bot) {
             if let Ok(Some(user_timezone)) =
                 database.get_user_timezone(cron_reminder.user_id).await
             {
-                match tg::send_message(
-                    &cron_reminder.to_string(user_timezone),
-                    &bot,
-                    cron_reminder.user_id,
+                let new_time = parse_cron(
+                    &cron_reminder.cron_expr,
+                    &Utc::now().with_timezone(&user_timezone),
                 )
-                .await
+                .map(|user_time| user_time.with_timezone(&Utc));
+                let new_cron_reminder = match new_time {
+                    Ok(new_time) => Some(db::CronReminderStruct {
+                        time: new_time.naive_utc(),
+                        ..cron_reminder.clone()
+                    }),
+                    Err(err) => {
+                        dbg!(err);
+                        None
+                    }
+                };
+                let message = match &new_cron_reminder {
+                    Some(next_reminder) => format!(
+                        "{}\n\nNext reminder:\n{}",
+                        cron_reminder.to_string(user_timezone),
+                        next_reminder.to_string(user_timezone)
+                    ),
+                    None => cron_reminder.to_string(user_timezone),
+                };
+                match tg::send_message(&message, &bot, cron_reminder.user_id)
+                    .await
                 {
                     Ok(_) => {
                         database
@@ -66,28 +85,13 @@ async fn reminders_pooling(mut database: db::Database, bot: Bot) {
                             .unwrap_or_else(|err| {
                                 dbg!(err);
                             });
-                        let new_time = parse_cron(
-                            &cron_reminder.cron_expr,
-                            &Utc::now().with_timezone(&user_timezone),
-                        )
-                        .map(|user_time| user_time.with_timezone(&Utc));
-                        match new_time {
-                            Ok(new_time) => {
-                                let new_cron_reminder =
-                                    db::CronReminderStruct {
-                                        time: new_time.naive_utc(),
-                                        ..cron_reminder
-                                    };
-                                database
-                                    .insert_cron_reminder(&new_cron_reminder)
-                                    .await
-                                    .unwrap_or_else(|err| {
-                                        dbg!(err);
-                                    });
-                            }
-                            Err(err) => {
-                                dbg!(err);
-                            }
+                        if let Some(new_cron_reminder) = new_cron_reminder {
+                            database
+                                .insert_cron_reminder(&new_cron_reminder)
+                                .await
+                                .unwrap_or_else(|err| {
+                                    dbg!(err);
+                                });
                         }
                     }
                     Err(err) => {

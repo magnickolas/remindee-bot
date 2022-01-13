@@ -12,6 +12,7 @@ use teloxide::types::{
     InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup,
 };
 use teloxide::RequestError;
+use tg::GenericReminder;
 use tg::TgResponse;
 
 impl db::Database {
@@ -200,7 +201,9 @@ impl TgBot<'_> {
                     let mut is_ok = true;
                     let response =
                         match self.database.insert_reminder(&reminder).await {
-                            Ok(_) => TgResponse::SuccessInsert,
+                            Ok(_) => TgResponse::SuccessInsert(
+                                reminder.to_unescaped_string(user_timezone),
+                            ),
                             Err(err) => {
                                 is_ok = false;
                                 dbg!(err);
@@ -237,24 +240,27 @@ impl TgBot<'_> {
                     }
                 } {
                     let mut is_ok = true;
+                    let cron_reminder = db::CronReminderStruct {
+                        id: 0,
+                        user_id,
+                        cron_expr: cron_expr.clone(),
+                        time: time.naive_utc(),
+                        desc: text
+                            .strip_prefix(&(cron_expr.to_owned()))
+                            .unwrap_or("")
+                            .trim()
+                            .to_owned(),
+                        sent: false,
+                        edit: false,
+                    };
                     let response = match self
                         .database
-                        .insert_cron_reminder(&db::CronReminderStruct {
-                            id: 0,
-                            user_id,
-                            cron_expr: cron_expr.clone(),
-                            time: time.naive_utc(),
-                            desc: text
-                                .strip_prefix(&(cron_expr.to_owned()))
-                                .unwrap_or("")
-                                .trim()
-                                .to_owned(),
-                            sent: false,
-                            edit: false,
-                        })
+                        .insert_cron_reminder(&cron_reminder)
                         .await
                     {
-                        Ok(_) => TgResponse::SuccessInsert,
+                        Ok(_) => TgResponse::SuccessPeriodicInsert(
+                            cron_reminder.to_unescaped_string(user_timezone),
+                        ),
                         Err(err) => {
                             is_ok = false;
                             dbg!(err);

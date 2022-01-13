@@ -15,7 +15,8 @@ use teloxide::utils::markdown::{bold, escape};
 use teloxide::RequestError;
 
 pub enum TgResponse {
-    SuccessInsert,
+    SuccessInsert(String),
+    SuccessPeriodicInsert(String),
     FailedInsert,
     IncorrectRequest,
     QueryingError,
@@ -38,7 +39,8 @@ pub enum TgResponse {
 impl ToString for TgResponse {
     fn to_string(&self) -> String {
         let raw_text: String = match self {
-            Self::SuccessInsert => "Remember that!".to_string(),
+            Self::SuccessInsert(reminder_str) => format!("New reminder:\n{}", reminder_str),
+            Self::SuccessPeriodicInsert(reminder_str) => format!("New periodic reminder:\n{}", reminder_str),
             Self::FailedInsert => "Failed to create a reminder...".to_string(),
             Self::IncorrectRequest => "Incorrect request!".to_string(),
             Self::QueryingError => "Error occured while querying reminders...".to_string(),
