@@ -1,3 +1,5 @@
+use std::fs::OpenOptions;
+
 use chrono::{NaiveDateTime, Utc};
 use directories::BaseDirs;
 use sea_query::{
@@ -14,6 +16,7 @@ use strum_macros::EnumIter;
 pub enum Error {
     Database(sqlx::Error),
     Query(sea_query::error::Error),
+    File(std::io::Error),
 }
 
 impl std::fmt::Display for Error {
@@ -21,6 +24,7 @@ impl std::fmt::Display for Error {
         match *self {
             Self::Database(ref err) => write!(f, "Database error: {}", err),
             Self::Query(ref err) => write!(f, "Query error: {}", err),
+            Self::File(ref err) => write!(f, "File error: {}", err),
         }
     }
 }
@@ -34,6 +38,12 @@ impl From<sqlx::Error> for Error {
 impl From<sea_query::error::Error> for Error {
     fn from(err: sea_query::error::Error) -> Self {
         Self::Query(err)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Self {
+        Self::File(err)
     }
 }
 
@@ -96,21 +106,26 @@ pub struct UserTimezoneStruct {
 
 async fn get_db_pool() -> Result<SqlitePool, Error> {
     let base_dirs = BaseDirs::new().unwrap();
-    if std::env::consts::OS != "android" {
-        SqlitePool::connect(
-            base_dirs
-                .data_dir()
-                .join("remindee_db.sqlite")
-                .to_str()
-                .unwrap(),
-        )
-        .await
-        .map_err(From::from)
+    let dp_path = if std::env::consts::OS != "android" {
+        base_dirs
+            .data_dir()
+            .join("remindee_db.sqlite")
+            .to_str()
+            .unwrap()
+            .to_owned()
     } else {
-        SqlitePool::connect("remindee_db.sqlite")
-            .await
-            .map_err(From::from)
-    }
+        "remindee_db.sqlite".to_owned()
+    };
+    OpenOptions::new().write(true).create(true).open(dp_path)?;
+    SqlitePool::connect(
+        base_dirs
+            .data_dir()
+            .join("remindee_db.sqlite")
+            .to_str()
+            .unwrap(),
+    )
+    .await
+    .map_err(From::from)
 }
 
 #[derive(Clone)]

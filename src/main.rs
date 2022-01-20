@@ -5,19 +5,21 @@ mod controller;
 mod date;
 mod db;
 mod err;
+mod generic_trait;
+mod parsers;
 mod tg;
 mod tz;
 
 use async_std::task;
 use chrono::Utc;
 use cron_parser::parse as parse_cron;
+use generic_trait::GenericReminder;
 use std::time::Duration;
 use teloxide::dispatching::update_listeners::{
     polling_default, AsUpdateStream,
 };
 use teloxide::prelude::*;
 use teloxide::types::UpdateKind;
-use tg::GenericReminder;
 
 /// Iterate every second all reminders and send notifications if time's come
 async fn reminders_pooling(mut database: db::Database, bot: Bot) {
@@ -69,9 +71,9 @@ async fn reminders_pooling(mut database: db::Database, bot: Bot) {
                 };
                 let message = match &new_cron_reminder {
                     Some(next_reminder) => format!(
-                        "{}\n\nNext reminder:\n{}",
+                        "{}\n\nNext time → {}",
                         cron_reminder.to_string(user_timezone),
-                        next_reminder.to_string(user_timezone)
+                        next_reminder.serialize_time(user_timezone)
                     ),
                     None => cron_reminder.to_string(user_timezone),
                 };
@@ -245,7 +247,7 @@ async fn run() {
                                         .await
                                         .map_err(From::from)
                                 } else if let Some(rem_id) = cb_data
-                                    .strip_prefix("delrem::alt::")
+                                    .strip_prefix("delrem::rem_alt::")
                                     .and_then(|x| x.parse::<u32>().ok())
                                 {
                                     tg_bot
@@ -257,7 +259,7 @@ async fn run() {
                                         .await
                                         .map_err(From::from)
                                 } else if let Some(cron_rem_id) = cb_data
-                                    .strip_prefix("delrem::cron_alt::")
+                                    .strip_prefix("delrem::cron_rem_alt::")
                                     .and_then(|x| x.parse::<u32>().ok())
                                 {
                                     tg_bot

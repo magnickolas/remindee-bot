@@ -1,42 +1,46 @@
 use crate::db;
-use crate::err;
+use crate::parsers;
 use crate::tg;
 use crate::tz;
 
-use chrono::Utc;
+use crate::generic_trait::GenericReminder;
 use chrono_tz::Tz;
-use cron_parser::parse as parse_cron;
-use itertools::Itertools;
 use teloxide::prelude::*;
 use teloxide::types::{
     InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup,
 };
 use teloxide::RequestError;
-use tg::GenericReminder;
 use tg::TgResponse;
 
 impl db::Database {
     async fn get_sorted_reminders(
         &mut self,
         user_id: i64,
-    ) -> Result<std::vec::IntoIter<Box<dyn tg::GenericReminder>>, db::Error>
-    {
+    ) -> Result<Vec<Box<dyn GenericReminder>>, db::Error> {
         let reminders_future = self.get_pending_user_reminders(user_id).await;
         let cron_reminders_future =
             self.get_pending_user_cron_reminders(user_id).await;
-        let gen_rems = reminders_future.map(|v| {
-            v.into_iter()
-                .map::<Box<dyn tg::GenericReminder>, _>(|x| Box::new(x))
+        let gen_rems = reminders_future.map(|mut v| {
+            v.drain(..)
+                .map(|x| -> Box<dyn GenericReminder> { Box::new(x) })
+                .collect::<Vec<_>>()
         });
-        let gen_cron_rems = cron_reminders_future.map(|v| {
-            v.into_iter()
-                .map::<Box<dyn tg::GenericReminder>, _>(|x| Box::new(x))
+        let gen_cron_rems = cron_reminders_future.map(|mut v| {
+            v.drain(..)
+                .map(|x| -> Box<dyn GenericReminder> { Box::new(x) })
+                .collect::<Vec<_>>()
         });
         gen_rems
-            .and_then(|rems| {
-                gen_cron_rems.map(|cron_rems| rems.chain(cron_rems))
+            .and_then(|mut rems| {
+                gen_cron_rems.map(|mut cron_rems| {
+                    rems.append(cron_rems.as_mut());
+                    rems
+                })
             })
-            .map(|rems| rems.sorted())
+            .map(|mut rems| {
+                rems.sort();
+                rems
+            })
     }
 }
 
@@ -69,6 +73,7 @@ impl TgBot<'_> {
                             .into_iter()
                             .chain(
                                 sorted_reminders
+                                    .into_iter()
                                     .map(|rem| rem.to_string(user_timezone)),
                             )
                             .collect::<Vec<String>>()
@@ -196,79 +201,56 @@ impl TgBot<'_> {
         match self.database.get_user_timezone(user_id).await {
             Ok(Some(user_timezone)) => {
                 if let Some(reminder) =
-                    tg::parse_req(text, user_id, user_timezone).await
+                    parsers::parse_reminder(text, user_id, user_timezone).await
                 {
-                    let mut is_ok = true;
-                    let response =
-                        match self.database.insert_reminder(&reminder).await {
-                            Ok(_) => TgResponse::SuccessInsert(
-                                reminder.to_unescaped_string(user_timezone),
-                            ),
-                            Err(err) => {
-                                is_ok = false;
-                                dbg!(err);
-                                TgResponse::FailedInsert
+                    match self.database.insert_reminder(&reminder).await {
+                        Ok(_) => {
+                            if !silent_success {
+                                let rem_str =
+                                    reminder.to_unescaped_string(user_timezone);
+                                self.reply(
+                                    TgResponse::SuccessInsert(rem_str),
+                                    user_id,
+                                )
+                                .await?;
                             }
-                        };
-
-                    if !silent_success {
-                        self.reply(response, user_id).await?
+                            Ok(true)
+                        }
+                        Err(err) => {
+                            dbg!(err);
+                            self.reply(TgResponse::FailedInsert, user_id)
+                                .await?;
+                            Ok(false)
+                        }
                     }
-                    Ok(is_ok)
-                } else if let Ok(Some((cron_expr, time))) = {
-                    let cron_fields: Vec<&str> =
-                        text.split_whitespace().take(5).collect();
-                    if cron_fields.len() < 5 {
-                        Err(err::Error::CronFewFields)
-                    } else {
-                        let cron_expr = cron_fields.join(" ");
-                        self.database.get_user_timezone(user_id).await.and_then(
-                            |timezone_opt| {
-                                timezone_opt
-                                    .map(|timezone| {
-                                        let time = parse_cron(
-                                            &cron_expr,
-                                            &Utc::now()
-                                                .with_timezone(&timezone),
-                                        )?
-                                        .with_timezone(&Utc);
-                                        Ok((cron_expr, time))
-                                    })
-                                    .transpose()
-                            },
-                        )
-                    }
-                } {
-                    let mut is_ok = true;
-                    let cron_reminder = db::CronReminderStruct {
-                        id: 0,
-                        user_id,
-                        cron_expr: cron_expr.clone(),
-                        time: time.naive_utc(),
-                        desc: text
-                            .strip_prefix(&(cron_expr.to_owned()))
-                            .unwrap_or("")
-                            .trim()
-                            .to_owned(),
-                        sent: false,
-                        edit: false,
-                    };
-                    let response = match self
+                } else if let Some(cron_reminder) =
+                    parsers::parse_cron_reminder(text, user_id, user_timezone)
+                        .await
+                {
+                    match self
                         .database
                         .insert_cron_reminder(&cron_reminder)
                         .await
                     {
-                        Ok(_) => TgResponse::SuccessPeriodicInsert(
-                            cron_reminder.to_unescaped_string(user_timezone),
-                        ),
-                        Err(err) => {
-                            is_ok = false;
-                            dbg!(err);
-                            TgResponse::FailedInsert
+                        Ok(_) => {
+                            if !silent_success {
+                                let rem_str = cron_reminder
+                                    .to_unescaped_string(user_timezone);
+                                self.reply(
+                                    TgResponse::SuccessPeriodicInsert(rem_str),
+                                    user_id,
+                                )
+                                .await?;
+                            };
+                            Ok(true)
                         }
-                    };
-                    self.reply(response, user_id).await?;
-                    Ok(is_ok)
+                        Err(err) => {
+                            dbg!(err);
+                            self.reply(TgResponse::FailedInsert, user_id)
+                                .await?;
+                            Ok(false)
+                        }
+                    }
                 } else if from_id_opt
                     .filter(|&from_id| from_id == user_id)
                     .is_some()
@@ -553,11 +535,8 @@ impl TgBot<'_> {
     ) -> InlineKeyboardMarkup {
         let mut markup = InlineKeyboardMarkup::default();
         let mut last_rem_page: bool = false;
-        let sorted_reminders = self
-            .database
-            .get_sorted_reminders(user_id)
-            .await
-            .map(|rems| rems.collect::<Vec<_>>());
+        let sorted_reminders =
+            self.database.get_sorted_reminders(user_id).await;
         if let Some(reminders) = sorted_reminders
             .ok()
             .as_ref()
@@ -571,11 +550,7 @@ impl TgBot<'_> {
                         rem_str,
                         InlineKeyboardButtonKind::CallbackData(
                             cb_prefix.to_owned()
-                                + if rem.is_cron_reminder() {
-                                    "::cron_alt::"
-                                } else {
-                                    "::alt::"
-                                }
+                                + &format!("::{}_alt::", rem.get_type())
                                 + &rem.get_id().to_string(),
                         ),
                     ))
