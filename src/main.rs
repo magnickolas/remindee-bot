@@ -283,7 +283,7 @@ async fn run() {
                                         .await
                                         .map_err(From::from)
                                 } else if let Some(rem_id) = cb_data
-                                    .strip_prefix("editrem::alt::")
+                                    .strip_prefix("editrem::rem_alt::")
                                     .and_then(|x| x.parse::<u32>().ok())
                                 {
                                     tg_bot
@@ -291,7 +291,7 @@ async fn run() {
                                         .await
                                         .map_err(From::from)
                                 } else if let Some(cron_rem_id) = cb_data
-                                    .strip_prefix("editrem::cron_alt::")
+                                    .strip_prefix("editrem::cron_rem_alt::")
                                     .and_then(|x| x.parse::<u32>().ok())
                                 {
                                     tg_bot
