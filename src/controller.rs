@@ -490,8 +490,8 @@ impl TgBot<'_> {
             for chunk in tz_names.chunks(2) {
                 markup = markup.append_row(
                     chunk
-                        .to_vec()
-                        .into_iter()
+                        .iter()
+                        .copied()
                         .map(|tz_name| {
                             InlineKeyboardButton::new(
                                 tz_name,

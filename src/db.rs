@@ -116,16 +116,10 @@ async fn get_db_pool() -> Result<SqlitePool, Error> {
     } else {
         "remindee_db.sqlite".to_owned()
     };
-    OpenOptions::new().write(true).create(true).open(dp_path)?;
-    SqlitePool::connect(
-        base_dirs
-            .data_dir()
-            .join("remindee_db.sqlite")
-            .to_str()
-            .unwrap(),
-    )
-    .await
-    .map_err(From::from)
+    OpenOptions::new().write(true).create(true).open(&dp_path)?;
+    SqlitePool::connect(dp_path.as_str())
+        .await
+        .map_err(From::from)
 }
 
 #[derive(Clone)]
