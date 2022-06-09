@@ -30,7 +30,7 @@ pub async fn parse_reminder(
         static ref RE: Regex = Regex::new(&format!(
             concat!(
                 r"^\s*((?P<{day}>\d{{1,2}})(\.(?P<{month}>\d{{2}}))?(\.(?P<{year}>\d{{4}}))?\s+)?",
-                r"(?P<{hour}>\d{{1,2}}):(?P<{minute}>\d{{2}})(:(?P<{second}>\d{{2}}))?\s*",
+                r"(?P<{hour}>\d{{1,2}})(:(?P<{minute}>\d{{2}})(:(?P<{second}>\d{{2}}))?)?\s*",
                 r"(?P<{description}>(?s:.)*?)\s*$"
             ),
             day = ReminderRegexFields::DAY,
@@ -58,7 +58,14 @@ pub async fn parse_reminder(
             get_field_by_name_or(ReminderRegexFields::YEAR, now.year() as u32)
                 as i32;
         let hour = get_field_by_name_or(ReminderRegexFields::HOUR, now.hour());
-        let minute = get_field_by_name_or(ReminderRegexFields::MINUTE, now.minute());
+        let default_minute_value = match caps.name(ReminderRegexFields::HOUR) {
+            Some(_) => 0,
+            None => now.minute(),
+        };
+        let minute = get_field_by_name_or(
+            ReminderRegexFields::MINUTE,
+            default_minute_value,
+        );
         let second = get_field_by_name_or(ReminderRegexFields::SECOND, 0);
 
         if !((0..24).contains(&hour)
