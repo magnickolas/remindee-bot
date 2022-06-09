@@ -78,7 +78,7 @@ impl ToString for TgResponse {
 pub async fn send_message(
     text: &str,
     bot: &Bot,
-    user_id: i64,
+    user_id: ChatId,
 ) -> Result<(), RequestError> {
     bot.send_message(user_id, text)
         .parse_mode(MarkdownV2)
@@ -92,7 +92,7 @@ pub async fn send_markup(
     text: &str,
     markup: InlineKeyboardMarkup,
     bot: &Bot,
-    user_id: i64,
+    user_id: ChatId,
 ) -> Result<(), RequestError> {
     bot.send_message(user_id, text)
         .parse_mode(MarkdownV2)
@@ -107,9 +107,9 @@ pub async fn edit_markup(
     markup: InlineKeyboardMarkup,
     bot: &Bot,
     msg_id: i32,
-    user_id: i64,
+    user_id: ChatId,
 ) -> Result<(), RequestError> {
-    bot.edit_message_reply_markup(ChatId::Id(user_id), msg_id)
+    bot.edit_message_reply_markup(user_id, msg_id)
         .reply_markup(markup)
         .send()
         .await

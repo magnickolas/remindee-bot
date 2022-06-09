@@ -58,8 +58,7 @@ pub async fn parse_reminder(
             get_field_by_name_or(ReminderRegexFields::YEAR, now.year() as u32)
                 as i32;
         let hour = get_field_by_name_or(ReminderRegexFields::HOUR, now.hour());
-        let minute =
-            get_field_by_name_or(ReminderRegexFields::MINUTE, now.minute());
+        let minute = get_field_by_name_or(ReminderRegexFields::MINUTE, now.minute());
         let second = get_field_by_name_or(ReminderRegexFields::SECOND, 0);
 
         if !((0..24).contains(&hour)

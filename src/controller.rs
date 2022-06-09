@@ -53,21 +53,21 @@ impl TgBot<'_> {
     async fn reply<R: ToString>(
         &self,
         response: R,
-        user_id: i64,
+        user_id: ChatId,
     ) -> Result<(), RequestError> {
         tg::send_message(&response.to_string(), self.bot, user_id).await
     }
 
-    pub async fn start(&self, user_id: i64) -> Result<(), RequestError> {
+    pub async fn start(&self, user_id: ChatId) -> Result<(), RequestError> {
         self.reply(TgResponse::Hello, user_id).await
     }
 
     /// Send a list of all notifications
-    pub async fn list(&mut self, user_id: i64) -> Result<(), RequestError> {
+    pub async fn list(&mut self, user_id: ChatId) -> Result<(), RequestError> {
         // Format reminders
-        let text = match self.database.get_user_timezone(user_id).await {
+        let text = match self.database.get_user_timezone(user_id.0).await {
             Ok(Some(user_timezone)) => {
-                match self.database.get_sorted_reminders(user_id).await {
+                match self.database.get_sorted_reminders(user_id.0).await {
                     Ok(sorted_reminders) => {
                         vec![TgResponse::RemindersListHeader.to_string()]
                             .into_iter()
@@ -93,7 +93,7 @@ impl TgBot<'_> {
     /// Send a markup with all timezones to select
     pub async fn choose_timezone(
         &self,
-        user_id: i64,
+        user_id: ChatId,
     ) -> Result<(), RequestError> {
         tg::send_markup(
             &TgResponse::SelectTimezone.to_string(),
@@ -107,24 +107,24 @@ impl TgBot<'_> {
     /// Send user's timezone
     pub async fn get_timezone(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
     ) -> Result<(), RequestError> {
-        let response = match self.database.get_user_timezone_name(user_id).await
-        {
-            Ok(Some(tz_name)) => TgResponse::ChosenTimezone(tz_name),
-            Ok(None) => TgResponse::NoChosenTimezone,
-            Err(err) => {
-                dbg!(err);
-                TgResponse::NoChosenTimezone
-            }
-        };
+        let response =
+            match self.database.get_user_timezone_name(user_id.0).await {
+                Ok(Some(tz_name)) => TgResponse::ChosenTimezone(tz_name),
+                Ok(None) => TgResponse::NoChosenTimezone,
+                Err(err) => {
+                    dbg!(err);
+                    TgResponse::NoChosenTimezone
+                }
+            };
         self.reply(response, user_id).await
     }
 
     /// General way to send a markup to select a reminder for some operation
     async fn start_alter(
         &self,
-        user_id: i64,
+        user_id: ChatId,
         response: TgResponse,
         markup: InlineKeyboardMarkup,
     ) -> Result<(), RequestError> {
@@ -134,9 +134,9 @@ impl TgBot<'_> {
     /// Send a markup to select a reminder for deleting
     pub async fn start_delete(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
     ) -> Result<(), RequestError> {
-        match self.database.get_user_timezone(user_id).await {
+        match self.database.get_user_timezone(user_id.0).await {
             Ok(Some(user_timezone)) => {
                 let markup = self
                     .get_markup_for_reminders_page_deletion(
@@ -159,9 +159,9 @@ impl TgBot<'_> {
     /// Send a markup to select a reminder for editing
     pub async fn start_edit(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
     ) -> Result<(), RequestError> {
-        match self.database.get_user_timezone(user_id).await {
+        match self.database.get_user_timezone(user_id.0).await {
             Ok(Some(user_timezone)) => {
                 let markup = self
                     .get_markup_for_reminders_page_editing(
@@ -184,7 +184,7 @@ impl TgBot<'_> {
     /// Send a list of supported commands
     pub async fn list_commands(
         &self,
-        user_id: i64,
+        user_id: ChatId,
     ) -> Result<(), RequestError> {
         self.reply(TgResponse::CommandsHelp.to_string(), user_id)
             .await
@@ -194,14 +194,15 @@ impl TgBot<'_> {
     pub async fn set_reminder(
         &mut self,
         text: &str,
-        user_id: i64,
-        from_id_opt: Option<i64>,
+        user_id: ChatId,
+        from_id_opt: Option<UserId>,
         silent_success: bool,
     ) -> Result<bool, RequestError> {
-        match self.database.get_user_timezone(user_id).await {
+        match self.database.get_user_timezone(user_id.0).await {
             Ok(Some(user_timezone)) => {
                 if let Some(reminder) =
-                    parsers::parse_reminder(text, user_id, user_timezone).await
+                    parsers::parse_reminder(text, user_id.0, user_timezone)
+                        .await
                 {
                     match self.database.insert_reminder(&reminder).await {
                         Ok(_) => {
@@ -224,7 +225,7 @@ impl TgBot<'_> {
                         }
                     }
                 } else if let Some(cron_reminder) =
-                    parsers::parse_cron_reminder(text, user_id, user_timezone)
+                    parsers::parse_cron_reminder(text, user_id.0, user_timezone)
                         .await
                 {
                     match self
@@ -252,7 +253,7 @@ impl TgBot<'_> {
                         }
                     }
                 } else if from_id_opt
-                    .filter(|&from_id| from_id == user_id)
+                    .filter(|&from_id| from_id.0 == user_id.0 as u64)
                     .is_some()
                 {
                     self.reply(TgResponse::IncorrectRequest, user_id).await?;
@@ -270,7 +271,7 @@ impl TgBot<'_> {
 
     pub async fn incorrect_request(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
     ) -> Result<(), RequestError> {
         self.reply(TgResponse::IncorrectRequest, user_id).await
     }
@@ -278,7 +279,7 @@ impl TgBot<'_> {
     /// Switch the markup's page
     pub async fn select_timezone_set_page(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
         page_num: usize,
         msg_id: i32,
     ) -> Result<(), RequestError> {
@@ -293,12 +294,12 @@ impl TgBot<'_> {
 
     pub async fn set_timezone(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
         tz_name: &str,
     ) -> Result<(), RequestError> {
         let response = match self
             .database
-            .set_user_timezone_name(user_id, tz_name)
+            .set_user_timezone_name(user_id.0, tz_name)
             .await
         {
             Ok(_) => TgResponse::ChosenTimezone(tz_name.to_owned()),
@@ -312,7 +313,7 @@ impl TgBot<'_> {
 
     async fn alter_reminder_set_page(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
         msg_id: i32,
         markup: InlineKeyboardMarkup,
     ) -> Result<(), RequestError> {
@@ -321,12 +322,12 @@ impl TgBot<'_> {
 
     pub async fn delete_reminder_set_page(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
         page_num: usize,
         msg_id: i32,
     ) -> Result<(), RequestError> {
         if let Ok(Some(user_timezone)) =
-            self.database.get_user_timezone(user_id).await
+            self.database.get_user_timezone(user_id.0).await
         {
             let markup = self
                 .get_markup_for_reminders_page_deletion(
@@ -343,12 +344,12 @@ impl TgBot<'_> {
 
     pub async fn edit_reminder_set_page(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
         page_num: usize,
         msg_id: i32,
     ) -> Result<(), RequestError> {
         if let Ok(Some(user_timezone)) =
-            self.database.get_user_timezone(user_id).await
+            self.database.get_user_timezone(user_id.0).await
         {
             let markup = self
                 .get_markup_for_reminders_page_editing(
@@ -365,7 +366,7 @@ impl TgBot<'_> {
 
     pub async fn delete_reminder(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
         rem_id: u32,
         msg_id: i32,
     ) -> Result<(), RequestError> {
@@ -382,7 +383,7 @@ impl TgBot<'_> {
 
     pub async fn delete_cron_reminder(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
         cron_rem_id: u32,
         msg_id: i32,
     ) -> Result<(), RequestError> {
@@ -400,12 +401,12 @@ impl TgBot<'_> {
 
     pub async fn edit_reminder(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
         rem_id: u32,
     ) -> Result<(), RequestError> {
         let response = match self
             .database
-            .reset_reminders_edit(user_id)
+            .reset_reminders_edit(user_id.0)
             .await
             .and(self.database.mark_reminder_as_edit(rem_id).await)
         {
@@ -420,28 +421,30 @@ impl TgBot<'_> {
 
     pub async fn edit_cron_reminder(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
         cron_rem_id: u32,
     ) -> Result<(), RequestError> {
-        let response =
-            match self.database.reset_cron_reminders_edit(user_id).await.and(
-                self.database.mark_cron_reminder_as_edit(cron_rem_id).await,
-            ) {
-                Ok(_) => TgResponse::EnterNewReminder,
-                Err(err) => {
-                    dbg!(err);
-                    TgResponse::FailedEdit
-                }
-            };
+        let response = match self
+            .database
+            .reset_cron_reminders_edit(user_id.0)
+            .await
+            .and(self.database.mark_cron_reminder_as_edit(cron_rem_id).await)
+        {
+            Ok(_) => TgResponse::EnterNewReminder,
+            Err(err) => {
+                dbg!(err);
+                TgResponse::FailedEdit
+            }
+        };
         self.reply(response, user_id).await
     }
 
     pub async fn replace_reminder(
         &mut self,
         text: &str,
-        user_id: i64,
+        user_id: ChatId,
         rem_id: u32,
-        from_id_opt: Option<i64>,
+        from_id_opt: Option<UserId>,
     ) -> Result<(), RequestError> {
         if self.set_reminder(text, user_id, from_id_opt, true).await? {
             let response =
@@ -461,9 +464,9 @@ impl TgBot<'_> {
     pub async fn replace_cron_reminder(
         &mut self,
         text: &str,
-        user_id: i64,
+        user_id: ChatId,
         rem_id: u32,
-        from_id_opt: Option<i64>,
+        from_id_opt: Option<UserId>,
     ) -> Result<(), RequestError> {
         if self.set_reminder(text, user_id, from_id_opt, true).await? {
             let response =
@@ -529,14 +532,14 @@ impl TgBot<'_> {
     async fn get_markup_for_reminders_page_alteration(
         &mut self,
         num: usize,
-        user_id: i64,
+        user_id: ChatId,
         cb_prefix: &str,
         user_timezone: Tz,
     ) -> InlineKeyboardMarkup {
         let mut markup = InlineKeyboardMarkup::default();
         let mut last_rem_page: bool = false;
         let sorted_reminders =
-            self.database.get_sorted_reminders(user_id).await;
+            self.database.get_sorted_reminders(user_id.0).await;
         if let Some(reminders) = sorted_reminders
             .ok()
             .as_ref()
@@ -583,7 +586,7 @@ impl TgBot<'_> {
     pub async fn get_markup_for_reminders_page_deletion(
         &mut self,
         num: usize,
-        user_id: i64,
+        user_id: ChatId,
         user_timezone: Tz,
     ) -> InlineKeyboardMarkup {
         self.get_markup_for_reminders_page_alteration(
@@ -598,7 +601,7 @@ impl TgBot<'_> {
     pub async fn get_markup_for_reminders_page_editing(
         &mut self,
         num: usize,
-        user_id: i64,
+        user_id: ChatId,
         user_timezone: Tz,
     ) -> InlineKeyboardMarkup {
         self.get_markup_for_reminders_page_alteration(
@@ -612,15 +615,15 @@ impl TgBot<'_> {
 
     pub async fn get_edit_reminder(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
     ) -> Result<Option<db::ReminderStruct>, db::Error> {
-        self.database.get_edit_reminder(user_id).await
+        self.database.get_edit_reminder(user_id.0).await
     }
 
     pub async fn get_edit_cron_reminder(
         &mut self,
-        user_id: i64,
+        user_id: ChatId,
     ) -> Result<Option<db::CronReminderStruct>, db::Error> {
-        self.database.get_edit_cron_reminder(user_id).await
+        self.database.get_edit_cron_reminder(user_id.0).await
     }
 }
