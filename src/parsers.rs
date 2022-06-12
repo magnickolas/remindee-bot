@@ -29,8 +29,8 @@ pub async fn parse_reminder(
     lazy_static! {
         static ref RE: Regex = Regex::new(&format!(
             concat!(
-                r"^\s*((?P<{day}>\d{{1,2}})(\.(?P<{month}>\d{{2}}))?(\.(?P<{year}>\d{{4}}))?\s+)?",
-                r"(?P<{hour}>\d{{1,2}})(:(?P<{minute}>\d{{2}})(:(?P<{second}>\d{{2}}))?)?\s*",
+                r"^\s*((?P<{day}>\d{{1,2}})(\.(?P<{month}>\d{{1,2}}))?(\.(?P<{year}>\d{{4}}))?\s+)?",
+                r"(?P<{hour}>\d{{1,2}})(:(?P<{minute}>\d{{1,2}})(:(?P<{second}>\d{{2}}))?)?\s*",
                 r"(?P<{description}>(?s:.)*?)\s*$"
             ),
             day = ReminderRegexFields::DAY,
