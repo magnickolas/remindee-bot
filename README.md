@@ -21,10 +21,10 @@ remindee-bot
 ## Features
 - You can set reminders with/without some description on today or another date:
     - `17:30 go to restaurant` => notify today at 5:30 PM
-    - `01.01 00:00 Happy New Year` => notify at 1st of January at 12 AM
-- Some fields (day, month, year) can be omitted depending on the current time:
-    - `8:00 wake up` (if set at e.g. 10 PM, the bot will remind at 8 AM tomorrow)
-    - `1 0:00 ++month` (the bot will remind at 12 AM on the first day of the next month) 
+    - `01.01 0:00 Happy New Year` => notify at 1st of January at 12 AM
+- Some fields (minutes, day, month, year) can be omitted depending on the current time:
+    - `8 wake up` (the bot will remind at nearest 8 AM)
+    - `1 0:05 ++month` (the bot will remind at 12 AM on the first day of the next month) 
 - Periodic reminders can be set with [crontab-like syntax][cron]:
     - `55 10 * * 1-5 go to school` (at 10:30 AM every weekday)
     - `45 10-19 * * 1-6 break for 15 minutes` (at 10:45, 11:45, ..., 19:45 from Monday to Saturday)
