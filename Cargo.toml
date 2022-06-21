@@ -1,6 +1,6 @@
 [package]
 name = "remindee-bot"
-version = "0.1.17"
+version = "0.1.18"
 authors = ["Nikolai Oplachko <magnickolas@gmail.com>"]
 edition = "2021"
 license = "GPL-3.0-only"
@@ -25,7 +25,7 @@ teloxide = "0.9.2"
 teloxide-macros = "0.6.2"
 openssl = { version = "0.10.40", features = ["vendored"] }
 sea-query = { version = "^0", features = ["sqlx-sqlite", "with-chrono"] }
-sqlx = { version = "0.5.13", features = ["runtime-tokio-rustls", "sqlite", "chrono"] }
+sqlx = { version = "0.6.0", features = ["runtime-tokio-rustls", "sqlite", "chrono"] }
 strum = "0.24.0"
 strum_macros = "0.24.0"
 

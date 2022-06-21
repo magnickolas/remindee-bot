@@ -55,7 +55,7 @@ impl TgBot<'_> {
         response: R,
         user_id: ChatId,
     ) -> Result<(), RequestError> {
-        tg::send_message(&response.to_string(), self.bot, user_id).await
+        tg::send_silent_message(&response.to_string(), self.bot, user_id).await
     }
 
     pub async fn start(&self, user_id: ChatId) -> Result<(), RequestError> {

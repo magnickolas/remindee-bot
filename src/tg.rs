@@ -1,3 +1,4 @@
+use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode::MarkdownV2;
 use teloxide::types::{ChatId, InlineKeyboardMarkup};
@@ -75,17 +76,35 @@ impl ToString for TgResponse {
     }
 }
 
-pub async fn send_message(
+pub async fn _send_message(
     text: &str,
     bot: &Bot,
     user_id: ChatId,
+    silent: bool
 ) -> Result<(), RequestError> {
     bot.send_message(user_id, text)
         .parse_mode(MarkdownV2)
         .disable_web_page_preview(true)
+        .disable_notification(silent)
         .send()
         .await
         .map(|_| ())
+}
+
+pub async fn send_message(
+    text: &str,
+    bot: &Bot,
+    user_id: ChatId
+) -> Result<(), RequestError> {
+    _send_message(text, bot, user_id, false).await
+}
+
+pub async fn send_silent_message(
+    text: &str,
+    bot: &Bot,
+    user_id: ChatId
+) -> Result<(), RequestError> {
+    _send_message(text, bot, user_id, true).await
 }
 
 pub async fn send_markup(
@@ -97,6 +116,7 @@ pub async fn send_markup(
     bot.send_message(user_id, text)
         .parse_mode(MarkdownV2)
         .disable_web_page_preview(true)
+        .disable_notification(true)
         .reply_markup(markup)
         .send()
         .await
