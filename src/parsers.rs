@@ -21,6 +21,11 @@ impl ReminderRegexFields {
     const DESCRIPTION: &'static str = "description";
 }
 
+#[cfg(not(test))]
+fn now_time() -> NaiveDateTime {
+    Utc::now().naive_utc()
+}
+
 pub async fn parse_reminder(
     s: &str,
     user_id: i64,
@@ -45,7 +50,7 @@ pub async fn parse_reminder(
     }
 
     RE.captures(s).and_then(|caps| {
-        let now = user_timezone.from_utc_datetime(&Utc::now().naive_utc());
+        let now = user_timezone.from_utc_datetime(&now_time());
         let get_field_by_name_or = |name, default| {
             caps.name(name)
                 .and_then(|x| x.as_str().parse().ok())
@@ -141,5 +146,49 @@ pub async fn parse_cron_reminder(
                 edit: false,
             })
             .ok()
+    }
+}
+
+#[cfg(test)]
+fn now_time() -> NaiveDateTime {
+    unsafe { NaiveDateTime::from_timestamp(test::TEST_TIMESTAMP, 0) }
+}
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    lazy_static! {
+        static ref TEST_TZ: Tz = "Europe/Moscow".parse::<Tz>().unwrap();
+    }
+
+    pub static mut TEST_TIMESTAMP: i64 = 0;
+    const TEST_DESCRIPTION: &str = "reminder description";
+
+    async fn test_parse_reminder(
+        text: &str,
+        mock_time: NaiveDateTime,
+    ) -> Option<(DateTime<Tz>, String)> {
+        unsafe {
+            TEST_TIMESTAMP = mock_time.timestamp();
+        }
+        parse_reminder(text, 0, *TEST_TZ)
+            .await
+            .and_then(|reminder| {
+                Some((TEST_TZ.from_utc_datetime(&reminder.time), reminder.desc))
+            })
+    }
+
+    #[tokio::test]
+    async fn test_parse_ordinary_reminder() {
+        let (year, month, day, hour, minute, second) =
+            (2007, 1, 1, 22, 0, 0);
+        let expected_time = TEST_TZ.ymd(year, month, day).and_hms(hour, minute, second);
+        assert_eq!(
+            test_parse_reminder(
+                format!("{}:{} {}", hour, minute, TEST_DESCRIPTION).as_str(),
+                NaiveDate::from_ymd(year, month, day).and_hms(0, 0, 0),
+            ).await,
+            Some((expected_time, TEST_DESCRIPTION.to_owned()))
+        );
     }
 }
