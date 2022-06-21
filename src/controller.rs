@@ -200,31 +200,7 @@ impl TgBot<'_> {
     ) -> Result<bool, RequestError> {
         match self.database.get_user_timezone(user_id.0).await {
             Ok(Some(user_timezone)) => {
-                if let Some(reminder) =
-                    parsers::parse_reminder(text, user_id.0, user_timezone)
-                        .await
-                {
-                    match self.database.insert_reminder(&reminder).await {
-                        Ok(_) => {
-                            if !silent_success {
-                                let rem_str =
-                                    reminder.to_unescaped_string(user_timezone);
-                                self.reply(
-                                    TgResponse::SuccessInsert(rem_str),
-                                    user_id,
-                                )
-                                .await?;
-                            }
-                            Ok(true)
-                        }
-                        Err(err) => {
-                            dbg!(err);
-                            self.reply(TgResponse::FailedInsert, user_id)
-                                .await?;
-                            Ok(false)
-                        }
-                    }
-                } else if let Some(cron_reminder) =
+                if let Some(cron_reminder) =
                     parsers::parse_cron_reminder(text, user_id.0, user_timezone)
                         .await
                 {
@@ -243,6 +219,30 @@ impl TgBot<'_> {
                                 )
                                 .await?;
                             };
+                            Ok(true)
+                        }
+                        Err(err) => {
+                            dbg!(err);
+                            self.reply(TgResponse::FailedInsert, user_id)
+                                .await?;
+                            Ok(false)
+                        }
+                    }
+                } else if let Some(reminder) =
+                    parsers::parse_reminder(text, user_id.0, user_timezone)
+                        .await
+                {
+                    match self.database.insert_reminder(&reminder).await {
+                        Ok(_) => {
+                            if !silent_success {
+                                let rem_str =
+                                    reminder.to_unescaped_string(user_timezone);
+                                self.reply(
+                                    TgResponse::SuccessInsert(rem_str),
+                                    user_id,
+                                )
+                                .await?;
+                            }
                             Ok(true)
                         }
                         Err(err) => {
