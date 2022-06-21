@@ -80,7 +80,7 @@ pub async fn _send_message(
     text: &str,
     bot: &Bot,
     user_id: ChatId,
-    silent: bool
+    silent: bool,
 ) -> Result<(), RequestError> {
     bot.send_message(user_id, text)
         .parse_mode(MarkdownV2)
@@ -94,7 +94,7 @@ pub async fn _send_message(
 pub async fn send_message(
     text: &str,
     bot: &Bot,
-    user_id: ChatId
+    user_id: ChatId,
 ) -> Result<(), RequestError> {
     _send_message(text, bot, user_id, false).await
 }
@@ -102,7 +102,7 @@ pub async fn send_message(
 pub async fn send_silent_message(
     text: &str,
     bot: &Bot,
-    user_id: ChatId
+    user_id: ChatId,
 ) -> Result<(), RequestError> {
     _send_message(text, bot, user_id, true).await
 }
