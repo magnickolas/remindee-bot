@@ -35,7 +35,7 @@ pub async fn parse_reminder(
         static ref RE: Regex = Regex::new(&format!(
             concat!(
                 r"^\s*((?P<{day}>\d{{1,2}})(\.(?P<{month}>\d{{1,2}}))?(\.(?P<{year}>\d{{4}}))?\s+)?",
-                r"(?P<{hour}>\d{{1,2}})(:(?P<{minute}>\d{{1,2}})(:(?P<{second}>\d{{2}}))?)?(\s|$)\s*",
+                r"(?P<{hour}>\d{{1,2}})(:(?P<{minute}>\d{{1,2}})(:(?P<{second}>\d{{1,2}}))?)?(\s|$)\s*",
                 r"(?P<{description}>(?s:.)*?)\s*$"
             ),
             day = ReminderRegexFields::DAY,
@@ -88,7 +88,7 @@ pub async fn parse_reminder(
             .unwrap_or_else(|| now.date())
             .and_hms(hour, minute, second);
 
-        if time < now {
+        if time <= now {
             let specified_day = caps.name(ReminderRegexFields::DAY).is_some();
             let specified_month =
                 caps.name(ReminderRegexFields::MONTH).is_some();
@@ -104,7 +104,7 @@ pub async fn parse_reminder(
                     .to_vec()
             };
             for duration in durations.iter().map(|&x| Duration::days(x)) {
-                if time + duration >= now {
+                if time.date().and_hms(0, 0, 0) + duration > now {
                     time = time + duration;
                     break;
                 }
@@ -156,39 +156,74 @@ fn now_time() -> NaiveDateTime {
 #[cfg(test)]
 mod test {
     use super::*;
+    use test_case::test_case;
+    extern crate strfmt;
+    use std::collections::HashMap;
+    use strfmt::strfmt;
 
     lazy_static! {
         static ref TEST_TZ: Tz = "Europe/Moscow".parse::<Tz>().unwrap();
+        static ref TEST_TIME: DateTime<Tz> =
+            TEST_TZ.ymd(2007, 2, 2).and_hms(12, 30, 30);
     }
 
     pub static mut TEST_TIMESTAMP: i64 = 0;
     const TEST_DESCRIPTION: &str = "reminder description";
 
-    async fn test_parse_reminder(
-        text: &str,
-        mock_time: NaiveDateTime,
-    ) -> Option<(DateTime<Tz>, String)> {
-        unsafe {
-            TEST_TIMESTAMP = mock_time.timestamp();
-        }
-        parse_reminder(text, 0, *TEST_TZ)
-            .await
-            .and_then(|reminder| {
-                Some((TEST_TZ.from_utc_datetime(&reminder.time), reminder.desc))
-            })
-    }
+    #[derive(Debug, PartialEq)]
+    struct Time(i32, u32, u32, u32, u32, u32);
 
+    #[test_case("{day}.{month}.{year} {hour}:{minute}:{second} {desc}", Time(2008, 2, 2, 12, 31, 1) => Some(Time(2008, 2, 2, 12, 31, 1)) ; "ymd hms" )]
+    #[test_case("{day}.{month}.{year} {hour}:{minute} {desc}", Time(2007, 2, 2, 12, 31, 1) => Some(Time(2007, 2, 2, 12, 31, 0)) ; "ymd hm" )]
+    #[test_case("{day}.{month}.{year} {hour} {desc}", Time(2007, 2, 2, 13, 0, 0) => Some(Time(2007, 2, 2, 13, 0, 0)) ; "ymd h" )]
+    #[test_case("{day}.{month}.{year} {desc}", Time(2007, 2, 2, 0, 0, 0) => None ; "ymd non-parsable" )]
+    #[test_case("{hour}:{minute} {desc}", Time(2007, 2, 2, 12, 40, 0) => Some(Time(2007, 2, 2, 12, 40, 0)) ; "hm" )]
+    #[test_case("{day}.{month} {hour} {desc}", Time(2007, 2, 2, 13, 31, 1) => Some(Time(2007, 2, 2, 13, 0, 0)) ; "md h" )]
+    #[test_case("{day} {hour} {desc}", Time(2007, 2, 2, 13, 31, 1) => Some(Time(2007, 2, 2, 13, 0, 0)) ; "d h" )]
+    #[test_case("{hour}:{minute} {desc}", Time(2007, 2, 2, 11, 0, 0) => Some(Time(2007, 2, 3, 11, 0, 0)) ; "hour before" )]
+    #[test_case("{hour}:{minute} {desc}", Time(2007, 2, 2, 12, 29, 0) => Some(Time(2007, 2, 3, 12, 29, 0)) ; "minute before" )]
+    #[test_case("{day} {hour} {desc}", Time(2007, 2, 1, 13, 0, 0) => Some(Time(2007, 3, 1, 13, 0, 0)) ; "day before" )]
+    #[test_case("02.01 13:00 {desc}", Time(2007, 1, 2, 13, 0, 0) => Some(Time(2008, 1, 2, 13, 0, 0)) ; "month before" )]
+    #[test_case("{hour}:{minute}{desc}", Time(2007, 2, 2, 12, 30, 0) => None ; "non-parsable" )]
     #[tokio::test]
-    async fn test_parse_ordinary_reminder() {
+    async fn test_parse_reminder(fmt_str: &str, time: Time) -> Option<Time> {
         let (year, month, day, hour, minute, second) =
-            (2007, 1, 1, 22, 0, 0);
-        let expected_time = TEST_TZ.ymd(year, month, day).and_hms(hour, minute, second);
-        assert_eq!(
-            test_parse_reminder(
-                format!("{}:{} {}", hour, minute, TEST_DESCRIPTION).as_str(),
-                NaiveDate::from_ymd(year, month, day).and_hms(0, 0, 0),
-            ).await,
-            Some((expected_time, TEST_DESCRIPTION.to_owned()))
-        );
+            (time.0, time.1, time.2, time.3, time.4, time.5);
+        let vars = HashMap::from([
+            ("year".to_owned(), year.to_string()),
+            ("month".to_owned(), month.to_string()),
+            ("day".to_owned(), day.to_string()),
+            ("hour".to_owned(), hour.to_string()),
+            ("minute".to_owned(), minute.to_string()),
+            ("second".to_owned(), second.to_string()),
+            ("desc".to_owned(), TEST_DESCRIPTION.to_owned()),
+        ]);
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
+        dbg!("{}", strfmt(fmt_str, &vars).unwrap());
+        let result =
+            parse_reminder(&strfmt(fmt_str, &vars).unwrap(), 0, *TEST_TZ)
+                .await
+                .and_then(|reminder| {
+                    Some((
+                        TEST_TZ.from_utc_datetime(&reminder.time),
+                        reminder.desc,
+                    ))
+                });
+        match result {
+            Some((time, desc)) => {
+                assert_eq!(desc, TEST_DESCRIPTION.to_owned());
+                Some(Time(
+                    time.year(),
+                    time.month(),
+                    time.day(),
+                    time.hour(),
+                    time.minute(),
+                    time.second(),
+                ))
+            }
+            None => None,
+        }
     }
 }
