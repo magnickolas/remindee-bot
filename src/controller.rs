@@ -5,7 +5,9 @@ use crate::tz;
 
 use crate::generic_trait::GenericReminder;
 use chrono_tz::Tz;
+use entity::{cron_reminder, reminder};
 use teloxide::prelude::*;
+use teloxide::types::MessageId;
 use teloxide::types::{
     InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup,
 };
@@ -14,7 +16,7 @@ use tg::TgResponse;
 
 impl db::Database {
     async fn get_sorted_reminders(
-        &mut self,
+        &self,
         user_id: i64,
     ) -> Result<Vec<Box<dyn GenericReminder>>, db::Error> {
         let reminders_future = self.get_pending_user_reminders(user_id).await;
@@ -22,12 +24,16 @@ impl db::Database {
             self.get_pending_user_cron_reminders(user_id).await;
         let gen_rems = reminders_future.map(|mut v| {
             v.drain(..)
-                .map(|x| -> Box<dyn GenericReminder> { Box::new(x) })
+                .map(|x| -> Box<dyn GenericReminder> {
+                    Box::<reminder::ActiveModel>::new(x.into())
+                })
                 .collect::<Vec<_>>()
         });
         let gen_cron_rems = cron_reminders_future.map(|mut v| {
             v.drain(..)
-                .map(|x| -> Box<dyn GenericReminder> { Box::new(x) })
+                .map(|x| -> Box<dyn GenericReminder> {
+                    Box::<cron_reminder::ActiveModel>::new(x.into())
+                })
                 .collect::<Vec<_>>()
         });
         gen_rems
@@ -45,7 +51,7 @@ impl db::Database {
 }
 
 pub struct TgBot<'a> {
-    pub database: &'a mut db::Database,
+    pub database: &'a db::Database,
     pub bot: &'a Bot,
 }
 
@@ -206,7 +212,7 @@ impl TgBot<'_> {
                 {
                     match self
                         .database
-                        .insert_cron_reminder(&cron_reminder)
+                        .insert_cron_reminder(cron_reminder.clone())
                         .await
                     {
                         Ok(_) => {
@@ -232,7 +238,8 @@ impl TgBot<'_> {
                     parsers::parse_reminder(text, user_id.0, user_timezone)
                         .await
                 {
-                    match self.database.insert_reminder(&reminder).await {
+                    match self.database.insert_reminder(reminder.clone()).await
+                    {
                         Ok(_) => {
                             if !silent_success {
                                 let rem_str =
@@ -281,7 +288,7 @@ impl TgBot<'_> {
         &mut self,
         user_id: ChatId,
         page_num: usize,
-        msg_id: i32,
+        msg_id: MessageId,
     ) -> Result<(), RequestError> {
         tg::edit_markup(
             self.get_markup_for_tz_page_idx(page_num),
@@ -314,7 +321,7 @@ impl TgBot<'_> {
     async fn alter_reminder_set_page(
         &mut self,
         user_id: ChatId,
-        msg_id: i32,
+        msg_id: MessageId,
         markup: InlineKeyboardMarkup,
     ) -> Result<(), RequestError> {
         tg::edit_markup(markup, self.bot, msg_id, user_id).await
@@ -324,7 +331,7 @@ impl TgBot<'_> {
         &mut self,
         user_id: ChatId,
         page_num: usize,
-        msg_id: i32,
+        msg_id: MessageId,
     ) -> Result<(), RequestError> {
         if let Ok(Some(user_timezone)) =
             self.database.get_user_timezone(user_id.0).await
@@ -346,7 +353,7 @@ impl TgBot<'_> {
         &mut self,
         user_id: ChatId,
         page_num: usize,
-        msg_id: i32,
+        msg_id: MessageId,
     ) -> Result<(), RequestError> {
         if let Ok(Some(user_timezone)) =
             self.database.get_user_timezone(user_id.0).await
@@ -367,8 +374,8 @@ impl TgBot<'_> {
     pub async fn delete_reminder(
         &mut self,
         user_id: ChatId,
-        rem_id: u32,
-        msg_id: i32,
+        rem_id: i64,
+        msg_id: MessageId,
     ) -> Result<(), RequestError> {
         let response = match self.database.mark_reminder_as_sent(rem_id).await {
             Ok(_) => TgResponse::SuccessDelete,
@@ -384,8 +391,8 @@ impl TgBot<'_> {
     pub async fn delete_cron_reminder(
         &mut self,
         user_id: ChatId,
-        cron_rem_id: u32,
-        msg_id: i32,
+        cron_rem_id: i64,
+        msg_id: MessageId,
     ) -> Result<(), RequestError> {
         let response =
             match self.database.mark_cron_reminder_as_sent(cron_rem_id).await {
@@ -402,7 +409,7 @@ impl TgBot<'_> {
     pub async fn edit_reminder(
         &mut self,
         user_id: ChatId,
-        rem_id: u32,
+        rem_id: i64,
     ) -> Result<(), RequestError> {
         let response = match self
             .database
@@ -422,7 +429,7 @@ impl TgBot<'_> {
     pub async fn edit_cron_reminder(
         &mut self,
         user_id: ChatId,
-        cron_rem_id: u32,
+        cron_rem_id: i64,
     ) -> Result<(), RequestError> {
         let response = match self
             .database
@@ -443,7 +450,7 @@ impl TgBot<'_> {
         &mut self,
         text: &str,
         user_id: ChatId,
-        rem_id: u32,
+        rem_id: i64,
         from_id_opt: Option<UserId>,
     ) -> Result<(), RequestError> {
         if self.set_reminder(text, user_id, from_id_opt, true).await? {
@@ -465,7 +472,7 @@ impl TgBot<'_> {
         &mut self,
         text: &str,
         user_id: ChatId,
-        rem_id: u32,
+        rem_id: i64,
         from_id_opt: Option<UserId>,
     ) -> Result<(), RequestError> {
         if self.set_reminder(text, user_id, from_id_opt, true).await? {
@@ -554,7 +561,7 @@ impl TgBot<'_> {
                         InlineKeyboardButtonKind::CallbackData(
                             cb_prefix.to_owned()
                                 + &format!("::{}_alt::", rem.get_type())
-                                + &rem.get_id().to_string(),
+                                + &rem.get_id().unwrap().to_string(),
                         ),
                     ))
                 }
@@ -616,14 +623,14 @@ impl TgBot<'_> {
     pub async fn get_edit_reminder(
         &mut self,
         user_id: ChatId,
-    ) -> Result<Option<db::ReminderStruct>, db::Error> {
+    ) -> Result<Option<reminder::Model>, db::Error> {
         self.database.get_edit_reminder(user_id.0).await
     }
 
     pub async fn get_edit_cron_reminder(
         &mut self,
         user_id: ChatId,
-    ) -> Result<Option<db::CronReminderStruct>, db::Error> {
+    ) -> Result<Option<cron_reminder::Model>, db::Error> {
         self.database.get_edit_cron_reminder(user_id.0).await
     }
 }

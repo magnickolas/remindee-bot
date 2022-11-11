@@ -11,15 +11,18 @@ mod parsers;
 mod tg;
 mod tz;
 
+use async_once::AsyncOnce;
 use async_std::task;
 use chrono::Utc;
 use cron_parser::parse as parse_cron;
+use entity::cron_reminder;
 use generic_trait::GenericReminder;
+use migration::sea_orm::{ActiveValue::NotSet, IntoActiveModel};
 use std::time::Duration;
 use teloxide::prelude::*;
 
 /// Iterate every second all reminders and send notifications if time's come
-async fn reminders_pooling(mut database: db::Database, bot: Bot) {
+async fn reminders_pooling(database: &db::Database, bot: Bot) {
     loop {
         let reminders = database.get_active_reminders().await.unwrap();
         for reminder in reminders {
@@ -27,7 +30,10 @@ async fn reminders_pooling(mut database: db::Database, bot: Bot) {
                 database.get_user_timezone(reminder.user_id).await
             {
                 match tg::send_message(
-                    &reminder.to_string(user_timezone),
+                    &reminder
+                        .clone()
+                        .into_active_model()
+                        .to_string(user_timezone),
                     &bot,
                     ChatId(reminder.user_id),
                 )
@@ -57,7 +63,7 @@ async fn reminders_pooling(mut database: db::Database, bot: Bot) {
                 )
                 .map(|user_time| user_time.with_timezone(&Utc));
                 let new_cron_reminder = match new_time {
-                    Ok(new_time) => Some(db::CronReminderStruct {
+                    Ok(new_time) => Some(cron_reminder::Model {
                         time: new_time.naive_utc(),
                         ..cron_reminder.clone()
                     }),
@@ -69,10 +75,19 @@ async fn reminders_pooling(mut database: db::Database, bot: Bot) {
                 let message = match &new_cron_reminder {
                     Some(next_reminder) => format!(
                         "{}\n\nNext time → {}",
-                        cron_reminder.to_string(user_timezone),
-                        next_reminder.serialize_time(user_timezone)
+                        cron_reminder
+                            .clone()
+                            .into_active_model()
+                            .to_string(user_timezone),
+                        next_reminder
+                            .clone()
+                            .into_active_model()
+                            .serialize_time(user_timezone)
                     ),
-                    None => cron_reminder.to_string(user_timezone),
+                    None => cron_reminder
+                        .clone()
+                        .into_active_model()
+                        .to_string(user_timezone),
                 };
                 match tg::send_message(
                     &message,
@@ -89,8 +104,10 @@ async fn reminders_pooling(mut database: db::Database, bot: Bot) {
                                 dbg!(err);
                             });
                         if let Some(new_cron_reminder) = new_cron_reminder {
+                            let mut new_cron_reminder: cron_reminder::ActiveModel = new_cron_reminder.into();
+                            new_cron_reminder.id = NotSet;
                             database
-                                .insert_cron_reminder(&new_cron_reminder)
+                                .insert_cron_reminder(new_cron_reminder)
                                 .await
                                 .unwrap_or_else(|err| {
                                     dbg!(err);
@@ -111,16 +128,18 @@ fn set_token(token: &str) {
     std::env::set_var("TELOXIDE_TOKEN", token);
 }
 
+// Create static async_once database pool
+lazy_static! {
+    static ref DATABASE: AsyncOnce<db::Database> =
+        AsyncOnce::new(async { db::Database::new().await.unwrap() });
+}
+
 async fn run() {
     pretty_env_logger::init();
     log::info!("Starting remindee bot!");
 
-    let database = db::Database::new().await.unwrap();
-
     // Create necessary database tables if they do not exist
-    database.create_reminder_table().await.unwrap();
-    database.create_cron_reminder_table().await.unwrap();
-    database.create_user_timezone_table().await.unwrap();
+    DATABASE.get().await.apply_migrations().await.unwrap();
 
     // Set token from an environment variable
     let token = std::env::var("BOT_TOKEN")
@@ -129,23 +148,22 @@ async fn run() {
     let bot = Bot::from_env();
 
     // Run a database polling loop checking pending reminders asynchronously
-    tokio::spawn(reminders_pooling(database.clone(), bot.clone()));
+    tokio::spawn(reminders_pooling(DATABASE.get().await, bot.clone()));
 
     let handler = dptree::entry()
         .branch(Update::filter_message().endpoint(message_handler))
         .branch(Update::filter_callback_query().endpoint(callback_handler));
 
     Dispatcher::builder(bot, handler)
+        .enable_ctrlc_handler()
         .build()
-        .setup_ctrlc_handler()
         .dispatch()
         .await;
 }
 
 async fn message_handler(msg: Message, bot: Bot) -> Result<(), err::Error> {
-    let mut database = db::Database::new().await.unwrap();
     let mut tg_bot = controller::TgBot {
-        database: &mut database,
+        database: DATABASE.get().await,
         bot: &bot,
     };
     let user_id = msg.chat.id;
@@ -215,9 +233,8 @@ async fn callback_handler(
     cb_query: CallbackQuery,
     bot: Bot,
 ) -> Result<(), err::Error> {
-    let mut database = db::Database::new().await.unwrap();
     let mut tg_bot = controller::TgBot {
-        database: &mut database,
+        database: DATABASE.get().await,
         bot: &bot,
     };
     if let Some(cb_data) = &cb_query.data {
@@ -245,7 +262,7 @@ async fn callback_handler(
                     .map_err(From::from)
             } else if let Some(rem_id) = cb_data
                 .strip_prefix("delrem::rem_alt::")
-                .and_then(|x| x.parse::<u32>().ok())
+                .and_then(|x| x.parse::<i64>().ok())
             {
                 tg_bot
                     .delete_reminder(msg.chat.id, rem_id, msg.id)
@@ -253,7 +270,7 @@ async fn callback_handler(
                     .map_err(From::from)
             } else if let Some(cron_rem_id) = cb_data
                 .strip_prefix("delrem::cron_rem_alt::")
-                .and_then(|x| x.parse::<u32>().ok())
+                .and_then(|x| x.parse::<i64>().ok())
             {
                 tg_bot
                     .delete_cron_reminder(msg.chat.id, cron_rem_id, msg.id)
@@ -269,7 +286,7 @@ async fn callback_handler(
                     .map_err(From::from)
             } else if let Some(rem_id) = cb_data
                 .strip_prefix("editrem::rem_alt::")
-                .and_then(|x| x.parse::<u32>().ok())
+                .and_then(|x| x.parse::<i64>().ok())
             {
                 tg_bot
                     .edit_reminder(msg.chat.id, rem_id)
@@ -277,7 +294,7 @@ async fn callback_handler(
                     .map_err(From::from)
             } else if let Some(cron_rem_id) = cb_data
                 .strip_prefix("editrem::cron_rem_alt::")
-                .and_then(|x| x.parse::<u32>().ok())
+                .and_then(|x| x.parse::<i64>().ok())
             {
                 tg_bot
                     .edit_cron_reminder(msg.chat.id, cron_rem_id)

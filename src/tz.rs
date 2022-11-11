@@ -360,7 +360,7 @@ pub fn get_tz_names_for_page_idx(num: usize) -> Option<Vec<&'static str>> {
 
 impl db::Database {
     pub async fn get_user_timezone(
-        &mut self,
+        &self,
         user_id: i64,
     ) -> Result<Option<Tz>, err::Error> {
         let tz_name_opt = self.get_user_timezone_name(user_id).await?;

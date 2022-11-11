@@ -1,11 +1,13 @@
 use crate::date;
-use crate::db;
 
 use chrono::offset::TimeZone;
 use chrono::prelude::*;
 use chrono::{Duration, Utc};
 use chrono_tz::Tz;
 use cron_parser::parse as parse_cron;
+use entity::cron_reminder;
+use entity::reminder;
+use migration::sea_orm::ActiveValue::{NotSet, Set};
 use regex::Regex;
 
 #[non_exhaustive]
@@ -30,7 +32,7 @@ pub async fn parse_reminder(
     s: &str,
     user_id: i64,
     user_timezone: Tz,
-) -> Option<db::ReminderStruct> {
+) -> Option<reminder::ActiveModel> {
     lazy_static! {
         static ref RE: Regex = Regex::new(&format!(
             concat!(
@@ -105,18 +107,18 @@ pub async fn parse_reminder(
             };
             for duration in durations.iter().map(|&x| Duration::days(x)) {
                 if time.date().and_hms(0, 0, 0) + duration > now {
-                    time = time + duration;
+                    time += duration;
                     break;
                 }
             }
         }
-        Some(db::ReminderStruct {
-            id: 0,
-            user_id,
-            time: time.with_timezone(&Utc).naive_utc(),
-            desc: caps[ReminderRegexFields::DESCRIPTION].to_string(),
-            sent: false,
-            edit: false,
+        Some(reminder::ActiveModel {
+            id: NotSet,
+            user_id: Set(user_id),
+            time: Set(time.with_timezone(&Utc).naive_utc()),
+            desc: Set(caps[ReminderRegexFields::DESCRIPTION].to_string()),
+            sent: Set(false),
+            edit: Set(false),
         })
     })
 }
@@ -125,25 +127,25 @@ pub async fn parse_cron_reminder(
     text: &str,
     user_id: i64,
     user_timezone: Tz,
-) -> Option<db::CronReminderStruct> {
+) -> Option<cron_reminder::ActiveModel> {
     let cron_fields: Vec<&str> = text.split_whitespace().take(5).collect();
     if cron_fields.len() < 5 {
         None
     } else {
         let cron_expr = cron_fields.join(" ");
         parse_cron(&cron_expr, &Utc::now().with_timezone(&user_timezone))
-            .map(|time| db::CronReminderStruct {
-                id: 0,
-                user_id,
-                cron_expr: cron_expr.clone(),
-                time: time.with_timezone(&Utc).naive_utc(),
-                desc: text
+            .map(|time| cron_reminder::ActiveModel {
+                id: NotSet,
+                user_id: Set(user_id),
+                cron_expr: Set(cron_expr.clone()),
+                time: Set(time.with_timezone(&Utc).naive_utc()),
+                desc: Set(text
                     .strip_prefix(&(cron_expr.to_owned()))
                     .unwrap_or("")
                     .trim()
-                    .to_owned(),
-                sent: false,
-                edit: false,
+                    .to_owned()),
+                sent: Set(false),
+                edit: Set(false),
             })
             .ok()
     }

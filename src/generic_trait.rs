@@ -1,20 +1,19 @@
-use crate::db::CronReminderStruct;
-use crate::db::ReminderStruct;
 use chrono::prelude::*;
 use chrono::Utc;
 use chrono_tz::Tz;
+use entity::{cron_reminder, reminder};
 use std::cmp::Ord;
 use std::cmp::Ordering;
 use teloxide::utils::markdown::{bold, escape};
 
 pub trait GenericReminder {
-    fn get_time(&self) -> &NaiveDateTime;
-    fn get_id(&self) -> u32;
+    fn get_time(&self) -> NaiveDateTime;
+    fn get_id(&self) -> Option<i64>;
     fn get_type(&self) -> &'static str;
     fn to_string(&self, user_timezone: Tz) -> String;
     fn to_unescaped_string(&self, user_timezone: Tz) -> String;
     fn serialize_time_unescaped(&self, user_timezone: Tz) -> String {
-        let time = user_timezone.from_utc_datetime(self.get_time());
+        let time = user_timezone.from_utc_datetime(&self.get_time());
         let now = Utc::now().with_timezone(&user_timezone);
         let mut s = String::new();
         if time.date() != now.date() {
@@ -27,13 +26,13 @@ pub trait GenericReminder {
     }
 }
 
-impl GenericReminder for ReminderStruct {
-    fn get_time(&self) -> &NaiveDateTime {
-        &self.time
+impl GenericReminder for reminder::ActiveModel {
+    fn get_time(&self) -> NaiveDateTime {
+        self.time.clone().unwrap()
     }
 
-    fn get_id(&self) -> u32 {
-        self.id
+    fn get_id(&self) -> Option<i64> {
+        self.id.clone().take()
     }
 
     fn get_type(&self) -> &'static str {
@@ -44,7 +43,7 @@ impl GenericReminder for ReminderStruct {
         format!(
             "{} <{}>",
             self.serialize_time_unescaped(user_timezone),
-            self.desc
+            self.desc.clone().unwrap(),
         )
     }
 
@@ -52,18 +51,18 @@ impl GenericReminder for ReminderStruct {
         format!(
             r"{} <{}\>",
             self.serialize_time(user_timezone),
-            bold(&escape(&self.desc))
+            bold(&escape(&self.desc.clone().unwrap()))
         )
     }
 }
 
-impl GenericReminder for CronReminderStruct {
-    fn get_time(&self) -> &NaiveDateTime {
-        &self.time
+impl GenericReminder for cron_reminder::ActiveModel {
+    fn get_time(&self) -> NaiveDateTime {
+        self.time.clone().unwrap()
     }
 
-    fn get_id(&self) -> u32 {
-        self.id
+    fn get_id(&self) -> Option<i64> {
+        self.id.clone().take()
     }
 
     fn get_type(&self) -> &'static str {
@@ -74,8 +73,8 @@ impl GenericReminder for CronReminderStruct {
         format!(
             "{} <{}> [{}]",
             self.serialize_time_unescaped(user_timezone),
-            self.desc,
-            self.cron_expr
+            self.desc.clone().unwrap(),
+            self.cron_expr.clone().unwrap()
         )
     }
 
@@ -83,15 +82,15 @@ impl GenericReminder for CronReminderStruct {
         format!(
             r"{} <{}\> \[{}\]",
             self.serialize_time(user_timezone),
-            bold(&escape(&self.desc)),
-            escape(&self.cron_expr)
+            bold(&escape(&self.desc.clone().unwrap())),
+            escape(&self.cron_expr.clone().unwrap())
         )
     }
 }
 
 impl Ord for dyn GenericReminder {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.get_time().cmp(other.get_time())
+        self.get_time().cmp(&other.get_time())
     }
 }
 

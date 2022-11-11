@@ -1,7 +1,7 @@
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode::MarkdownV2;
-use teloxide::types::{ChatId, InlineKeyboardMarkup};
+use teloxide::types::{ChatId, InlineKeyboardMarkup, MessageId};
 use teloxide::utils::markdown::escape;
 use teloxide::RequestError;
 
@@ -126,7 +126,7 @@ pub async fn send_markup(
 pub async fn edit_markup(
     markup: InlineKeyboardMarkup,
     bot: &Bot,
-    msg_id: i32,
+    msg_id: MessageId,
     user_id: ChatId,
 ) -> Result<(), RequestError> {
     bot.edit_message_reply_markup(user_id, msg_id)
