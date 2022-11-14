@@ -11,6 +11,17 @@ pub trait GenericReminder {
     fn get_id(&self) -> Option<i64>;
     fn get_type(&self) -> &'static str;
     fn to_string(&self, user_timezone: Tz) -> String;
+    fn to_string_with_mention(
+        &self,
+        user_timezone: Tz,
+        user_id: i64,
+    ) -> String {
+        format!(
+            "[🔔](tg://user?id={})\n{}",
+            user_id,
+            self.to_string(user_timezone),
+        )
+    }
     fn to_unescaped_string(&self, user_timezone: Tz) -> String;
     fn serialize_time_unescaped(&self, user_timezone: Tz) -> String {
         let time = user_timezone.from_utc_datetime(&self.get_time());
@@ -51,7 +62,7 @@ impl GenericReminder for reminder::ActiveModel {
         format!(
             r"{} <{}\>",
             self.serialize_time(user_timezone),
-            bold(&escape(&self.desc.clone().unwrap()))
+            bold(&escape(&self.desc.clone().unwrap())),
         )
     }
 }

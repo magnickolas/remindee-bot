@@ -14,114 +14,181 @@ mod tz;
 use async_once::AsyncOnce;
 use async_std::task;
 use chrono::Utc;
+use chrono_tz::Tz;
 use cron_parser::parse as parse_cron;
-use entity::cron_reminder;
+use entity::{cron_reminder, reminder};
 use generic_trait::GenericReminder;
-use migration::sea_orm::{ActiveValue::NotSet, IntoActiveModel};
+use migration::sea_orm::{
+    ActiveModelTrait, ActiveValue::NotSet, IntoActiveModel,
+};
 use std::time::Duration;
 use teloxide::{
     prelude::*,
     types::{Chat, User},
 };
 
+async fn format_reminder<T: ActiveModelTrait + GenericReminder>(
+    reminder: &T,
+    user_id: Option<UserId>,
+    user_timezone: Tz,
+    is_group: bool,
+) -> Result<String, err::Error> {
+    Ok(match user_id {
+        Some(user_id) if is_group => {
+            reminder.to_string_with_mention(user_timezone, user_id.0 as i64)
+        }
+        _ => reminder.to_string(user_timezone),
+    })
+}
+
+async fn format_cron_reminder(
+    reminder: &cron_reminder::Model,
+    next_reminder: &Option<cron_reminder::Model>,
+    user_id: Option<UserId>,
+    user_timezone: Tz,
+    is_group: bool,
+) -> Result<String, err::Error> {
+    let formatted_reminder = format_reminder(
+        &reminder.clone().into_active_model(),
+        user_id,
+        user_timezone,
+        is_group,
+    )
+    .await?;
+    Ok(match next_reminder {
+        Some(next_reminder) => format!(
+            "{}\n\nNext time → {}",
+            formatted_reminder,
+            next_reminder
+                .clone()
+                .into_active_model()
+                .serialize_time(user_timezone)
+        ),
+        None => formatted_reminder,
+    })
+}
+
+async fn send_reminder(
+    reminder: &reminder::Model,
+    user_timezone: Tz,
+    bot: &Bot,
+) -> Result<(), err::Error> {
+    let chat_id = ChatId(reminder.chat_id);
+    let user_id = reminder.user_id.map(|x| UserId(x as u64));
+    let is_group = user_id
+        .filter(|user_id| user_id.0 != chat_id.0 as u64)
+        .is_some();
+    let text = format_reminder(
+        &reminder.clone().into_active_model(),
+        user_id,
+        user_timezone,
+        is_group,
+    )
+    .await?;
+    tg::send_message(&text, bot, ChatId(reminder.chat_id))
+        .await
+        .map_err(From::from)
+}
+
+async fn send_cron_reminder(
+    reminder: &cron_reminder::Model,
+    next_reminder: &Option<cron_reminder::Model>,
+    user_timezone: Tz,
+    bot: &Bot,
+) -> Result<(), err::Error> {
+    let chat_id = ChatId(reminder.chat_id);
+    let user_id = reminder.user_id.map(|x| UserId(x as u64));
+    let is_group = user_id
+        .filter(|user_id| user_id.0 != chat_id.0 as u64)
+        .is_some();
+
+    let text = format_cron_reminder(
+        reminder,
+        next_reminder,
+        user_id,
+        user_timezone,
+        is_group,
+    )
+    .await?;
+    tg::send_message(&text, bot, ChatId(reminder.chat_id))
+        .await
+        .map_err(From::from)
+}
+
 /// Iterate every second all reminders and send notifications if time's come
 async fn reminders_pooling(db: &db::Database, bot: Bot) {
     loop {
         let reminders = db.get_active_reminders().await.unwrap();
         for reminder in reminders {
-            if let Some(user_id) = reminder.user_id.map(|x| UserId(x as u64)) {
-                if let Ok(Some(user_timezone)) =
-                    tz::get_user_timezone(db, user_id).await
-                {
-                    match tg::send_message(
-                        &reminder
-                            .clone()
-                            .into_active_model()
-                            .to_string(user_timezone),
-                        &bot,
-                        ChatId(reminder.chat_id),
-                    )
-                    .await
-                    {
-                        Ok(_) => db
-                            .mark_reminder_as_sent(reminder.id)
-                            .await
-                            .unwrap_or_else(|err| {
-                                dbg!(err);
-                            }),
-                        Err(err) => {
+            // NOTE: backward compatibility
+            let user_id =
+                UserId(reminder.user_id.unwrap_or(reminder.chat_id) as u64);
+            if let Ok(Some(user_timezone)) =
+                tz::get_user_timezone(db, user_id).await
+            {
+                match send_reminder(&reminder, user_timezone, &bot).await {
+                    Ok(_) => db
+                        .mark_reminder_as_sent(reminder.id)
+                        .await
+                        .unwrap_or_else(|err| {
                             dbg!(err);
-                        }
+                        }),
+                    Err(err) => {
+                        dbg!(err);
                     }
                 }
             }
         }
         let cron_reminders = db.get_active_cron_reminders().await.unwrap();
         for cron_reminder in cron_reminders {
-            if let Some(user_id) =
-                cron_reminder.user_id.map(|x| UserId(x as u64))
+            // NOTE: backward compatibility
+            let user_id =
+                UserId(cron_reminder.user_id.unwrap_or(cron_reminder.chat_id)
+                    as u64);
+            if let Ok(Some(user_timezone)) =
+                tz::get_user_timezone(db, user_id).await
             {
-                if let Ok(Some(user_timezone)) =
-                    tz::get_user_timezone(db, user_id).await
+                let new_time = parse_cron(
+                    &cron_reminder.cron_expr,
+                    &Utc::now().with_timezone(&user_timezone),
+                )
+                .map(|user_time| user_time.with_timezone(&Utc));
+                let new_cron_reminder = match new_time {
+                    Ok(new_time) => Some(cron_reminder::Model {
+                        time: new_time.naive_utc(),
+                        ..cron_reminder.clone()
+                    }),
+                    Err(err) => {
+                        dbg!(err);
+                        None
+                    }
+                };
+                match send_cron_reminder(
+                    &cron_reminder,
+                    &new_cron_reminder,
+                    user_timezone,
+                    &bot,
+                )
+                .await
                 {
-                    let new_time = parse_cron(
-                        &cron_reminder.cron_expr,
-                        &Utc::now().with_timezone(&user_timezone),
-                    )
-                    .map(|user_time| user_time.with_timezone(&Utc));
-                    let new_cron_reminder = match new_time {
-                        Ok(new_time) => Some(cron_reminder::Model {
-                            time: new_time.naive_utc(),
-                            ..cron_reminder.clone()
-                        }),
-                        Err(err) => {
-                            dbg!(err);
-                            None
-                        }
-                    };
-                    let message = match &new_cron_reminder {
-                        Some(next_reminder) => format!(
-                            "{}\n\nNext time → {}",
-                            cron_reminder
-                                .clone()
-                                .into_active_model()
-                                .to_string(user_timezone),
-                            next_reminder
-                                .clone()
-                                .into_active_model()
-                                .serialize_time(user_timezone)
-                        ),
-                        None => cron_reminder
-                            .clone()
-                            .into_active_model()
-                            .to_string(user_timezone),
-                    };
-                    match tg::send_message(
-                        &message,
-                        &bot,
-                        ChatId(cron_reminder.chat_id),
-                    )
-                    .await
-                    {
-                        Ok(_) => {
-                            db.mark_cron_reminder_as_sent(cron_reminder.id)
+                    Ok(_) => {
+                        db.mark_cron_reminder_as_sent(cron_reminder.id)
+                            .await
+                            .unwrap_or_else(|err| {
+                                dbg!(err);
+                            });
+                        if let Some(new_cron_reminder) = new_cron_reminder {
+                            let mut new_cron_reminder: cron_reminder::ActiveModel = new_cron_reminder.into();
+                            new_cron_reminder.id = NotSet;
+                            db.insert_cron_reminder(new_cron_reminder)
                                 .await
                                 .unwrap_or_else(|err| {
                                     dbg!(err);
                                 });
-                            if let Some(new_cron_reminder) = new_cron_reminder {
-                                let mut new_cron_reminder: cron_reminder::ActiveModel = new_cron_reminder.into();
-                                new_cron_reminder.id = NotSet;
-                                db.insert_cron_reminder(new_cron_reminder)
-                                    .await
-                                    .unwrap_or_else(|err| {
-                                        dbg!(err);
-                                    });
-                            }
                         }
-                        Err(err) => {
-                            dbg!(err);
-                        }
+                    }
+                    Err(err) => {
+                        dbg!(err);
                     }
                 }
             }

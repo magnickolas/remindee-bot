@@ -154,7 +154,6 @@ impl Database {
         &self,
         user_id: i64,
     ) -> Result<Option<String>, Error> {
-        dbg!(user_id);
         Ok(user_timezone::Entity::find_by_id(user_id)
             .one(&self.pool)
             .await?
@@ -181,7 +180,6 @@ impl Database {
         user_id: i64,
         timezone: &str,
     ) -> Result<(), Error> {
-        dbg!(user_id);
         let tz: Option<user_timezone::Model> =
             user_timezone::Entity::find_by_id(user_id)
                 .one(&self.pool)
