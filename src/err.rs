@@ -10,6 +10,7 @@ pub enum Error {
     UnmatchedQuery(teloxide::types::CallbackQuery),
     NoQueryData(teloxide::types::CallbackQuery),
     NoQueryMessage(teloxide::types::CallbackQuery),
+    UserNotFound(teloxide::types::Message),
 }
 
 impl fmt::Display for Error {
@@ -29,6 +30,9 @@ impl fmt::Display for Error {
             }
             Self::NoQueryMessage(ref cb_query) => {
                 write!(f, "Could not get query message: {:?}", cb_query)
+            }
+            Self::UserNotFound(ref msg) => {
+                write!(f, "Could not find user for message: {:?}", msg)
             }
         }
     }

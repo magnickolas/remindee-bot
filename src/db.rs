@@ -104,10 +104,10 @@ impl Database {
 
     pub async fn reset_reminders_edit(
         &self,
-        user_id: i64,
+        chat_id: i64,
     ) -> Result<(), Error> {
         reminder::Entity::update_many()
-            .filter(reminder::Column::UserId.eq(user_id))
+            .filter(reminder::Column::ChatId.eq(chat_id))
             .set(reminder::ActiveModel {
                 edit: Set(false),
                 ..Default::default()
@@ -119,10 +119,10 @@ impl Database {
 
     pub async fn get_edit_reminder(
         &self,
-        user_id: i64,
+        chat_id: i64,
     ) -> Result<Option<reminder::Model>, Error> {
         Ok(reminder::Entity::find()
-            .filter(reminder::Column::UserId.eq(user_id))
+            .filter(reminder::Column::ChatId.eq(chat_id))
             .filter(reminder::Column::Edit.eq(true))
             .filter(reminder::Column::Sent.eq(false))
             .one(&self.pool)
@@ -139,12 +139,12 @@ impl Database {
             .await?)
     }
 
-    pub async fn get_pending_user_reminders(
+    pub async fn get_pending_chat_reminders(
         &self,
-        user_id: i64,
+        chat_id: i64,
     ) -> Result<Vec<reminder::Model>, Error> {
         Ok(reminder::Entity::find()
-            .filter(reminder::Column::UserId.eq(user_id))
+            .filter(reminder::Column::ChatId.eq(chat_id))
             .filter(reminder::Column::Sent.eq(false))
             .all(&self.pool)
             .await?)
@@ -154,26 +154,11 @@ impl Database {
         &self,
         user_id: i64,
     ) -> Result<Option<String>, Error> {
+        dbg!(user_id);
         Ok(user_timezone::Entity::find_by_id(user_id)
             .one(&self.pool)
             .await?
             .map(|x| x.timezone))
-    }
-
-    async fn update_user_timezone_name(
-        &self,
-        user_id: i64,
-        timezone: &str,
-    ) -> Result<(), Error> {
-        let model = user_timezone::ActiveModel {
-            timezone: Set(timezone.to_string()),
-            ..Default::default()
-        };
-        user_timezone::Entity::update(model)
-            .filter(user_timezone::Column::UserId.eq(user_id))
-            .exec(&self.pool)
-            .await?;
-        Ok(())
     }
 
     async fn insert_user_timezone_name(
@@ -191,14 +176,22 @@ impl Database {
         Ok(())
     }
 
-    pub async fn set_user_timezone_name(
+    pub async fn insert_or_update_user_timezone(
         &self,
         user_id: i64,
         timezone: &str,
     ) -> Result<(), Error> {
-        match self.get_user_timezone_name(user_id).await? {
-            None => self.insert_user_timezone_name(user_id, timezone).await?,
-            _ => self.update_user_timezone_name(user_id, timezone).await?,
+        dbg!(user_id);
+        let tz: Option<user_timezone::Model> =
+            user_timezone::Entity::find_by_id(user_id)
+                .one(&self.pool)
+                .await?;
+        if let Some(tz) = tz {
+            let mut tz: user_timezone::ActiveModel = tz.into();
+            tz.timezone = Set(timezone.to_string());
+            tz.update(&self.pool).await?;
+        } else {
+            self.insert_user_timezone_name(user_id, timezone).await?;
         }
         Ok(())
     }
@@ -245,10 +238,10 @@ impl Database {
 
     pub async fn reset_cron_reminders_edit(
         &self,
-        user_id: i64,
+        chat_id: i64,
     ) -> Result<(), Error> {
         cron_reminder::Entity::update_many()
-            .filter(cron_reminder::Column::UserId.eq(user_id))
+            .filter(cron_reminder::Column::ChatId.eq(chat_id))
             .set(cron_reminder::ActiveModel {
                 edit: Set(false),
                 ..Default::default()
@@ -260,10 +253,10 @@ impl Database {
 
     pub async fn get_edit_cron_reminder(
         &self,
-        user_id: i64,
+        chat_id: i64,
     ) -> Result<Option<cron_reminder::Model>, Error> {
         Ok(cron_reminder::Entity::find()
-            .filter(cron_reminder::Column::UserId.eq(user_id))
+            .filter(cron_reminder::Column::ChatId.eq(chat_id))
             .filter(cron_reminder::Column::Edit.eq(true))
             .filter(cron_reminder::Column::Sent.eq(false))
             .one(&self.pool)
@@ -280,12 +273,12 @@ impl Database {
             .await?)
     }
 
-    pub async fn get_pending_user_cron_reminders(
+    pub async fn get_pending_chat_cron_reminders(
         &self,
-        user_id: i64,
+        chat_id: i64,
     ) -> Result<Vec<cron_reminder::Model>, Error> {
         Ok(cron_reminder::Entity::find()
-            .filter(cron_reminder::Column::UserId.eq(user_id))
+            .filter(cron_reminder::Column::ChatId.eq(chat_id))
             .filter(cron_reminder::Column::Sent.eq(false))
             .all(&self.pool)
             .await?)

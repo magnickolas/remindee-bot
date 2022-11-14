@@ -30,7 +30,8 @@ fn now_time() -> NaiveDateTime {
 
 pub async fn parse_reminder(
     s: &str,
-    user_id: i64,
+    chat_id: i64,
+    user_id: u64,
     user_timezone: Tz,
 ) -> Option<reminder::ActiveModel> {
     lazy_static! {
@@ -114,7 +115,8 @@ pub async fn parse_reminder(
         }
         Some(reminder::ActiveModel {
             id: NotSet,
-            user_id: Set(user_id),
+            chat_id: Set(chat_id),
+            user_id: Set(Some(user_id as i64)),
             time: Set(time.with_timezone(&Utc).naive_utc()),
             desc: Set(caps[ReminderRegexFields::DESCRIPTION].to_string()),
             sent: Set(false),
@@ -125,7 +127,8 @@ pub async fn parse_reminder(
 
 pub async fn parse_cron_reminder(
     text: &str,
-    user_id: i64,
+    chat_id: i64,
+    user_id: u64,
     user_timezone: Tz,
 ) -> Option<cron_reminder::ActiveModel> {
     let cron_fields: Vec<&str> = text.split_whitespace().take(5).collect();
@@ -136,7 +139,8 @@ pub async fn parse_cron_reminder(
         parse_cron(&cron_expr, &Utc::now().with_timezone(&user_timezone))
             .map(|time| cron_reminder::ActiveModel {
                 id: NotSet,
-                user_id: Set(user_id),
+                chat_id: Set(chat_id),
+                user_id: Set(Some(user_id as i64)),
                 cron_expr: Set(cron_expr.clone()),
                 time: Set(time.with_timezone(&Utc).naive_utc()),
                 desc: Set(text
@@ -205,13 +209,13 @@ mod test {
         }
         dbg!("{}", strfmt(fmt_str, &vars).unwrap());
         let result =
-            parse_reminder(&strfmt(fmt_str, &vars).unwrap(), 0, *TEST_TZ)
+            parse_reminder(&strfmt(fmt_str, &vars).unwrap(), 0, 0u64, *TEST_TZ)
                 .await
-                .and_then(|reminder| {
-                    Some((
-                        TEST_TZ.from_utc_datetime(&reminder.time),
-                        reminder.desc,
-                    ))
+                .map(|reminder| {
+                    (
+                        TEST_TZ.from_utc_datetime(&reminder.time.unwrap()),
+                        reminder.desc.unwrap(),
+                    )
                 });
         match result {
             Some((time, desc)) => {

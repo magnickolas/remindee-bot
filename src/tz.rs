@@ -2,6 +2,7 @@ use crate::db;
 use crate::err;
 
 use chrono_tz::Tz;
+use teloxide::types::UserId;
 
 const TZ_NAMES: &[&str] = &[
     "Africa/Abidjan",
@@ -358,14 +359,12 @@ pub fn get_tz_names_for_page_idx(num: usize) -> Option<Vec<&'static str>> {
     TZ_NAMES.chunks(90).into_iter().nth(num).map(|v| v.to_vec())
 }
 
-impl db::Database {
-    pub async fn get_user_timezone(
-        &self,
-        user_id: i64,
-    ) -> Result<Option<Tz>, err::Error> {
-        let tz_name_opt = self.get_user_timezone_name(user_id).await?;
-        tz_name_opt
-            .map(|tz_name| tz_name.parse::<Tz>().map_err(err::Error::Parse))
-            .transpose()
-    }
+pub async fn get_user_timezone(
+    db: &db::Database,
+    user_id: UserId,
+) -> Result<Option<Tz>, err::Error> {
+    let tz_name_opt = db.get_user_timezone_name(user_id.0 as i64).await?;
+    tz_name_opt
+        .map(|tz_name| tz_name.parse::<Tz>().map_err(err::Error::Parse))
+        .transpose()
 }

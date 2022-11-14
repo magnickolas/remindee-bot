@@ -19,103 +19,109 @@ use entity::cron_reminder;
 use generic_trait::GenericReminder;
 use migration::sea_orm::{ActiveValue::NotSet, IntoActiveModel};
 use std::time::Duration;
-use teloxide::prelude::*;
+use teloxide::{
+    prelude::*,
+    types::{Chat, User},
+};
 
 /// Iterate every second all reminders and send notifications if time's come
-async fn reminders_pooling(database: &db::Database, bot: Bot) {
+async fn reminders_pooling(db: &db::Database, bot: Bot) {
     loop {
-        let reminders = database.get_active_reminders().await.unwrap();
+        let reminders = db.get_active_reminders().await.unwrap();
         for reminder in reminders {
-            if let Ok(Some(user_timezone)) =
-                database.get_user_timezone(reminder.user_id).await
-            {
-                match tg::send_message(
-                    &reminder
-                        .clone()
-                        .into_active_model()
-                        .to_string(user_timezone),
-                    &bot,
-                    ChatId(reminder.user_id),
-                )
-                .await
+            if let Some(user_id) = reminder.user_id.map(|x| UserId(x as u64)) {
+                if let Ok(Some(user_timezone)) =
+                    tz::get_user_timezone(db, user_id).await
                 {
-                    Ok(_) => database
-                        .mark_reminder_as_sent(reminder.id)
-                        .await
-                        .unwrap_or_else(|err| {
+                    match tg::send_message(
+                        &reminder
+                            .clone()
+                            .into_active_model()
+                            .to_string(user_timezone),
+                        &bot,
+                        ChatId(reminder.chat_id),
+                    )
+                    .await
+                    {
+                        Ok(_) => db
+                            .mark_reminder_as_sent(reminder.id)
+                            .await
+                            .unwrap_or_else(|err| {
+                                dbg!(err);
+                            }),
+                        Err(err) => {
                             dbg!(err);
-                        }),
-                    Err(err) => {
-                        dbg!(err);
+                        }
                     }
                 }
             }
         }
-        let cron_reminders =
-            database.get_active_cron_reminders().await.unwrap();
+        let cron_reminders = db.get_active_cron_reminders().await.unwrap();
         for cron_reminder in cron_reminders {
-            if let Ok(Some(user_timezone)) =
-                database.get_user_timezone(cron_reminder.user_id).await
+            if let Some(user_id) =
+                cron_reminder.user_id.map(|x| UserId(x as u64))
             {
-                let new_time = parse_cron(
-                    &cron_reminder.cron_expr,
-                    &Utc::now().with_timezone(&user_timezone),
-                )
-                .map(|user_time| user_time.with_timezone(&Utc));
-                let new_cron_reminder = match new_time {
-                    Ok(new_time) => Some(cron_reminder::Model {
-                        time: new_time.naive_utc(),
-                        ..cron_reminder.clone()
-                    }),
-                    Err(err) => {
-                        dbg!(err);
-                        None
-                    }
-                };
-                let message = match &new_cron_reminder {
-                    Some(next_reminder) => format!(
-                        "{}\n\nNext time → {}",
-                        cron_reminder
+                if let Ok(Some(user_timezone)) =
+                    tz::get_user_timezone(db, user_id).await
+                {
+                    let new_time = parse_cron(
+                        &cron_reminder.cron_expr,
+                        &Utc::now().with_timezone(&user_timezone),
+                    )
+                    .map(|user_time| user_time.with_timezone(&Utc));
+                    let new_cron_reminder = match new_time {
+                        Ok(new_time) => Some(cron_reminder::Model {
+                            time: new_time.naive_utc(),
+                            ..cron_reminder.clone()
+                        }),
+                        Err(err) => {
+                            dbg!(err);
+                            None
+                        }
+                    };
+                    let message = match &new_cron_reminder {
+                        Some(next_reminder) => format!(
+                            "{}\n\nNext time → {}",
+                            cron_reminder
+                                .clone()
+                                .into_active_model()
+                                .to_string(user_timezone),
+                            next_reminder
+                                .clone()
+                                .into_active_model()
+                                .serialize_time(user_timezone)
+                        ),
+                        None => cron_reminder
                             .clone()
                             .into_active_model()
                             .to_string(user_timezone),
-                        next_reminder
-                            .clone()
-                            .into_active_model()
-                            .serialize_time(user_timezone)
-                    ),
-                    None => cron_reminder
-                        .clone()
-                        .into_active_model()
-                        .to_string(user_timezone),
-                };
-                match tg::send_message(
-                    &message,
-                    &bot,
-                    ChatId(cron_reminder.user_id),
-                )
-                .await
-                {
-                    Ok(_) => {
-                        database
-                            .mark_cron_reminder_as_sent(cron_reminder.id)
-                            .await
-                            .unwrap_or_else(|err| {
-                                dbg!(err);
-                            });
-                        if let Some(new_cron_reminder) = new_cron_reminder {
-                            let mut new_cron_reminder: cron_reminder::ActiveModel = new_cron_reminder.into();
-                            new_cron_reminder.id = NotSet;
-                            database
-                                .insert_cron_reminder(new_cron_reminder)
+                    };
+                    match tg::send_message(
+                        &message,
+                        &bot,
+                        ChatId(cron_reminder.chat_id),
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            db.mark_cron_reminder_as_sent(cron_reminder.id)
                                 .await
                                 .unwrap_or_else(|err| {
                                     dbg!(err);
                                 });
+                            if let Some(new_cron_reminder) = new_cron_reminder {
+                                let mut new_cron_reminder: cron_reminder::ActiveModel = new_cron_reminder.into();
+                                new_cron_reminder.id = NotSet;
+                                db.insert_cron_reminder(new_cron_reminder)
+                                    .await
+                                    .unwrap_or_else(|err| {
+                                        dbg!(err);
+                                    });
+                            }
                         }
-                    }
-                    Err(err) => {
-                        dbg!(err);
+                        Err(err) => {
+                            dbg!(err);
+                        }
                     }
                 }
             }
@@ -161,68 +167,62 @@ async fn run() {
         .await;
 }
 
+impl<'a> controller::TgController<'a> {
+    pub async fn new(
+        bot: &'a Bot,
+        chat: &'a Chat,
+        user: &'a User,
+        msg: &'a Message,
+    ) -> Result<controller::TgController<'a>, err::Error> {
+        let is_group = !msg.chat.is_private();
+        Ok(Self {
+            db: DATABASE.get().await,
+            bot,
+            chat_id: chat.id,
+            user_id: user.id,
+            msg_id: msg.id,
+            is_group,
+        })
+    }
+}
+
 async fn message_handler(msg: Message, bot: Bot) -> Result<(), err::Error> {
-    let mut tg_bot = controller::TgBot {
-        database: DATABASE.get().await,
-        bot: &bot,
-    };
-    let user_id = msg.chat.id;
+    let mut ctl = controller::TgController::new(
+        &bot,
+        &msg.chat,
+        msg.from()
+            .ok_or_else(|| err::Error::UserNotFound(msg.clone()))?,
+        &msg,
+    )
+    .await?;
     if let Some(text) = msg.text() {
         match text {
-            "/start" => tg_bot.start(user_id).await,
-            "list" | "/list" => tg_bot.list(user_id).await,
+            "/start" => ctl.start().await,
+            "list" | "/list" => ctl.list().await,
             "tz" | "/tz" | "timezone" | "/timezone" => {
-                tg_bot.choose_timezone(user_id).await
+                ctl.choose_timezone().await
             }
             "mytz" | "/mytz" | "mytimezone" | "/mytimezone" => {
-                tg_bot.get_timezone(user_id).await
+                ctl.get_timezone().await
             }
-            "del" | "/del" | "delete" | "/delete" => {
-                tg_bot.start_delete(user_id).await
-            }
-            "edit" | "/edit" => tg_bot.start_edit(user_id).await,
-            "help" | "/help" => tg_bot.list_commands(user_id).await,
+            "del" | "/del" | "delete" | "/delete" => ctl.start_delete().await,
+            "edit" | "/edit" => ctl.start_edit().await,
+            "help" | "/help" => ctl.list_commands().await,
             text => match (
-                tg_bot.get_edit_reminder(user_id).await,
-                tg_bot.get_edit_cron_reminder(user_id).await,
+                ctl.get_edit_reminder().await,
+                ctl.get_edit_cron_reminder().await,
             ) {
                 (Ok(Some(edit_reminder)), _) => {
-                    tg_bot
-                        .replace_reminder(
-                            text,
-                            user_id,
-                            edit_reminder.id,
-                            msg.from().map(|user| user.id),
-                        )
-                        .await
+                    ctl.replace_reminder(text, edit_reminder.id).await
                 }
                 (_, Ok(Some(edit_cron_reminder))) => {
-                    tg_bot
-                        .replace_cron_reminder(
-                            text,
-                            user_id,
-                            edit_cron_reminder.id,
-                            msg.from().map(|user| user.id),
-                        )
-                        .await
+                    ctl.replace_cron_reminder(text, edit_cron_reminder.id).await
                 }
-                _ => tg_bot
-                    .set_reminder(
-                        text,
-                        user_id,
-                        msg.from().map(|user| user.id),
-                        false,
-                    )
-                    .await
-                    .map(|_| ()),
+                _ => ctl.set_reminder(text, false).await.map(|_| ()),
             },
         }
-    } else if msg
-        .from()
-        .filter(|user| user.id.0 == user_id.0 as u64)
-        .is_some()
-    {
-        tg_bot.incorrect_request(user_id).await
+    } else if !ctl.is_group {
+        ctl.incorrect_request().await
     } else {
         Ok(())
     }
@@ -233,71 +233,60 @@ async fn callback_handler(
     cb_query: CallbackQuery,
     bot: Bot,
 ) -> Result<(), err::Error> {
-    let mut tg_bot = controller::TgBot {
-        database: DATABASE.get().await,
-        bot: &bot,
-    };
     if let Some(cb_data) = &cb_query.data {
         if let Some(msg) = &cb_query.message {
+            let mut ctl = controller::TgController::new(
+                &bot,
+                &msg.chat,
+                &cb_query.from,
+                msg,
+            )
+            .await?;
             if let Some(page_num) = cb_data
                 .strip_prefix("seltz::page::")
                 .and_then(|x| x.parse::<usize>().ok())
             {
-                tg_bot
-                    .select_timezone_set_page(msg.chat.id, page_num, msg.id)
+                ctl.select_timezone_set_page(page_num)
                     .await
                     .map_err(From::from)
             } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
-                tg_bot
-                    .set_timezone(msg.chat.id, tz_name)
-                    .await
-                    .map_err(From::from)
+                ctl.set_timezone(tz_name).await.map_err(From::from)
             } else if let Some(page_num) = cb_data
                 .strip_prefix("delrem::page::")
                 .and_then(|x| x.parse::<usize>().ok())
             {
-                tg_bot
-                    .delete_reminder_set_page(msg.chat.id, page_num, msg.id)
+                ctl.delete_reminder_set_page(page_num)
                     .await
                     .map_err(From::from)
             } else if let Some(rem_id) = cb_data
                 .strip_prefix("delrem::rem_alt::")
                 .and_then(|x| x.parse::<i64>().ok())
             {
-                tg_bot
-                    .delete_reminder(msg.chat.id, rem_id, msg.id)
-                    .await
-                    .map_err(From::from)
+                ctl.delete_reminder(rem_id).await.map_err(From::from)
             } else if let Some(cron_rem_id) = cb_data
                 .strip_prefix("delrem::cron_rem_alt::")
                 .and_then(|x| x.parse::<i64>().ok())
             {
-                tg_bot
-                    .delete_cron_reminder(msg.chat.id, cron_rem_id, msg.id)
+                ctl.delete_cron_reminder(cron_rem_id)
                     .await
                     .map_err(From::from)
             } else if let Some(page_num) = cb_data
                 .strip_prefix("editrem::page::")
                 .and_then(|x| x.parse::<usize>().ok())
             {
-                tg_bot
-                    .edit_reminder_set_page(msg.chat.id, page_num, msg.id)
+                ctl.edit_reminder_set_page(page_num)
                     .await
                     .map_err(From::from)
             } else if let Some(rem_id) = cb_data
                 .strip_prefix("editrem::rem_alt::")
                 .and_then(|x| x.parse::<i64>().ok())
             {
-                tg_bot
-                    .edit_reminder(msg.chat.id, rem_id)
-                    .await
-                    .map_err(From::from)
+                ctl.edit_reminder(rem_id).await.map_err(From::from)
             } else if let Some(cron_rem_id) = cb_data
                 .strip_prefix("editrem::cron_rem_alt::")
                 .and_then(|x| x.parse::<i64>().ok())
             {
-                tg_bot
-                    .edit_cron_reminder(msg.chat.id, cron_rem_id)
+                ctl.edit_cron_reminder(cron_rem_id)
                     .await
                     .map_err(From::from)
             } else {

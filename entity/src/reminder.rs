@@ -8,11 +8,12 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
-    pub user_id: i64,
+    pub chat_id: i64,
     pub time: NaiveDateTime,
     pub desc: String,
     pub sent: bool,
     pub edit: bool,
+    pub user_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
