@@ -262,6 +262,8 @@ async fn message_handler(msg: Message, bot: Bot) -> Result<(), err::Error> {
     )
     .await?;
     if let Some(text) = msg.text() {
+        let bot_username = bot.get_me().await?.mention();
+        let text = text.strip_suffix(&bot_username).unwrap_or(text);
         match text {
             "/start" => ctl.start().await,
             "list" | "/list" => ctl.list().await,

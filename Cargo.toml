@@ -1,6 +1,6 @@
 [package]
 name = "remindee-bot"
-version = "0.1.19"
+version = "0.1.20"
 authors = ["Nikolai Oplachko <magnickolas@gmail.com>"]
 edition = "2021"
 license = "GPL-3.0-only"
@@ -12,11 +12,11 @@ keywords = ["bot","reminder", "cron", "telegram-bot", "reminders"]
 categories = ["command-line-utilities"]
 
 [workspace]
-members = [".", "entity"]
+members = [".", "entity", "migration"]
 
 [dependencies]
-entity = { path = "entity" }
-migration = { path = "migration" }
+entity = { path = "./entity", version = "0.1.0" }
+migration = { path = "./migration", version = "0.1.0" }
 async-std = "1.12.0"
 chrono = "0.4.23"
 chrono-tz = "0.8.0"
