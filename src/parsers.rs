@@ -53,7 +53,7 @@ pub async fn parse_reminder(
     }
 
     RE.captures(s).and_then(|caps| {
-        let now = user_timezone.from_utc_datetime(&now_time());
+        let now = user_timezone.from_utc_datetime(&now_time()).naive_local();
         let get_field_by_name_or = |name, default| {
             caps.name(name)
                 .and_then(|x| x.as_str().parse().ok())
@@ -89,7 +89,7 @@ pub async fn parse_reminder(
             .and_then(|x| x.with_month(month))
             .and_then(|x| x.with_year(year))
             .unwrap_or_else(|| now.date())
-            .and_hms(hour, minute, second);
+            .and_hms_opt(hour, minute, second)?;
 
         if time <= now {
             let specified_day = caps.name(ReminderRegexFields::DAY).is_some();
@@ -107,17 +107,21 @@ pub async fn parse_reminder(
                     .to_vec()
             };
             for duration in durations.iter().map(|&x| Duration::days(x)) {
-                if time.date().and_hms(0, 0, 0) + duration > now {
+                if time.date().and_hms_opt(0, 0, 0)? + duration > now {
                     time += duration;
                     break;
                 }
             }
         }
+        // Convert to UTC
         Some(reminder::ActiveModel {
             id: NotSet,
             chat_id: Set(chat_id),
             user_id: Set(Some(user_id as i64)),
-            time: Set(time.with_timezone(&Utc).naive_utc()),
+            time: Set(user_timezone
+                .from_local_datetime(&time)
+                .single()?
+                .naive_utc()),
             desc: Set(caps[ReminderRegexFields::DESCRIPTION].to_string()),
             sent: Set(false),
             edit: Set(false),

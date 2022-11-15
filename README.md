@@ -14,6 +14,7 @@ cargo install remindee-bot
 4. Start the bot:
 ```console
 export BOT_TOKEN=<your bot token>
+export REMINDEE_DB=<path to sqlite database> # OPTIONAL
 remindee-bot
 ```
 5. Send `/start` to it

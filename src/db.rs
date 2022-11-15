@@ -41,13 +41,17 @@ impl From<std::io::Error> for Error {
 async fn get_db_pool() -> Result<DatabaseConnection, Error> {
     let base_dirs = BaseDirs::new();
     let db_name = "remindee_db.sqlite";
-    let db_path = if std::env::consts::OS != "android" {
-        base_dirs
-            .map(|x| x.data_dir().join(db_name))
-            .unwrap_or_else(|| db_name.into())
-    } else {
-        db_name.into()
-    };
+    let db_path = std::env::var_os("REMINDEE_DB")
+        .map(Into::into)
+        .unwrap_or_else(|| {
+            if std::env::consts::OS != "android" {
+                base_dirs
+                    .map(|x| x.data_dir().join(db_name))
+                    .unwrap_or_else(|| db_name.into())
+            } else {
+                db_name.into()
+            }
+        });
     OpenOptions::new()
         .read(true)
         .write(true)
