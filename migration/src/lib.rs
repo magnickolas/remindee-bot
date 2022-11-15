@@ -4,6 +4,7 @@ mod m20220101_000001_create_user_timezone_table;
 mod m20221111_004928_create_reminder_table;
 mod m20221111_005303_create_cron_reminder_table;
 mod m20221113_214952_create_user_id_columns;
+mod m20221115_001608_set_user_id_to_chat_id;
 
 pub struct Migrator;
 
@@ -15,6 +16,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20221111_004928_create_reminder_table::Migration),
             Box::new(m20221111_005303_create_cron_reminder_table::Migration),
             Box::new(m20221113_214952_create_user_id_columns::Migration),
+            Box::new(m20221115_001608_set_user_id_to_chat_id::Migration),
         ]
     }
 }

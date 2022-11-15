@@ -120,75 +120,74 @@ async fn reminders_pooling(db: &db::Database, bot: Bot) {
     loop {
         let reminders = db.get_active_reminders().await.unwrap();
         for reminder in reminders {
-            // NOTE: backward compatibility
-            let user_id =
-                UserId(reminder.user_id.unwrap_or(reminder.chat_id) as u64);
-            if let Ok(Some(user_timezone)) =
-                tz::get_user_timezone(db, user_id).await
-            {
-                match send_reminder(&reminder, user_timezone, &bot).await {
-                    Ok(_) => db
-                        .mark_reminder_as_sent(reminder.id)
-                        .await
-                        .unwrap_or_else(|err| {
+            if let Some(user_id) = reminder.user_id.map(|x| UserId(x as u64)) {
+                if let Ok(Some(user_timezone)) =
+                    tz::get_user_timezone(db, user_id).await
+                {
+                    match send_reminder(&reminder, user_timezone, &bot).await {
+                        Ok(_) => db
+                            .mark_reminder_as_sent(reminder.id)
+                            .await
+                            .unwrap_or_else(|err| {
+                                dbg!(err);
+                            }),
+                        Err(err) => {
                             dbg!(err);
-                        }),
-                    Err(err) => {
-                        dbg!(err);
+                        }
                     }
                 }
             }
         }
         let cron_reminders = db.get_active_cron_reminders().await.unwrap();
         for cron_reminder in cron_reminders {
-            // NOTE: backward compatibility
-            let user_id =
-                UserId(cron_reminder.user_id.unwrap_or(cron_reminder.chat_id)
-                    as u64);
-            if let Ok(Some(user_timezone)) =
-                tz::get_user_timezone(db, user_id).await
+            if let Some(user_id) =
+                cron_reminder.user_id.map(|x| UserId(x as u64))
             {
-                let new_time = parse_cron(
-                    &cron_reminder.cron_expr,
-                    &Utc::now().with_timezone(&user_timezone),
-                )
-                .map(|user_time| user_time.with_timezone(&Utc));
-                let new_cron_reminder = match new_time {
-                    Ok(new_time) => Some(cron_reminder::Model {
-                        time: new_time.naive_utc(),
-                        ..cron_reminder.clone()
-                    }),
-                    Err(err) => {
-                        dbg!(err);
-                        None
-                    }
-                };
-                match send_cron_reminder(
-                    &cron_reminder,
-                    &new_cron_reminder,
-                    user_timezone,
-                    &bot,
-                )
-                .await
+                if let Ok(Some(user_timezone)) =
+                    tz::get_user_timezone(db, user_id).await
                 {
-                    Ok(_) => {
-                        db.mark_cron_reminder_as_sent(cron_reminder.id)
-                            .await
-                            .unwrap_or_else(|err| {
-                                dbg!(err);
-                            });
-                        if let Some(new_cron_reminder) = new_cron_reminder {
-                            let mut new_cron_reminder: cron_reminder::ActiveModel = new_cron_reminder.into();
-                            new_cron_reminder.id = NotSet;
-                            db.insert_cron_reminder(new_cron_reminder)
+                    let new_time = parse_cron(
+                        &cron_reminder.cron_expr,
+                        &Utc::now().with_timezone(&user_timezone),
+                    )
+                    .map(|user_time| user_time.with_timezone(&Utc));
+                    let new_cron_reminder = match new_time {
+                        Ok(new_time) => Some(cron_reminder::Model {
+                            time: new_time.naive_utc(),
+                            ..cron_reminder.clone()
+                        }),
+                        Err(err) => {
+                            dbg!(err);
+                            None
+                        }
+                    };
+                    match send_cron_reminder(
+                        &cron_reminder,
+                        &new_cron_reminder,
+                        user_timezone,
+                        &bot,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            db.mark_cron_reminder_as_sent(cron_reminder.id)
                                 .await
                                 .unwrap_or_else(|err| {
                                     dbg!(err);
                                 });
+                            if let Some(new_cron_reminder) = new_cron_reminder {
+                                let mut new_cron_reminder: cron_reminder::ActiveModel = new_cron_reminder.into();
+                                new_cron_reminder.id = NotSet;
+                                db.insert_cron_reminder(new_cron_reminder)
+                                    .await
+                                    .unwrap_or_else(|err| {
+                                        dbg!(err);
+                                    });
+                            }
                         }
-                    }
-                    Err(err) => {
-                        dbg!(err);
+                        Err(err) => {
+                            dbg!(err);
+                        }
                     }
                 }
             }
