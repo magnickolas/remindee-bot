@@ -4,6 +4,8 @@ use chrono::Utc;
 use chrono_tz::Tz;
 use std::cmp::Ord;
 use std::cmp::Ordering;
+use teloxide::types::ChatId;
+use teloxide::types::UserId;
 use teloxide::utils::markdown::{bold, escape};
 
 pub trait GenericReminder {
@@ -35,6 +37,8 @@ pub trait GenericReminder {
     fn serialize_time(&self, user_timezone: Tz) -> String {
         escape(&self.serialize_time_unescaped(user_timezone))
     }
+    fn user_id(&self) -> Option<UserId>;
+    fn chat_id(&self) -> ChatId;
 }
 
 impl GenericReminder for reminder::ActiveModel {
@@ -64,6 +68,14 @@ impl GenericReminder for reminder::ActiveModel {
             self.serialize_time(user_timezone),
             bold(&escape(&self.desc.clone().unwrap())),
         )
+    }
+
+    fn user_id(&self) -> Option<UserId> {
+        self.user_id.clone().unwrap().map(|id| UserId(id as u64))
+    }
+
+    fn chat_id(&self) -> ChatId {
+        ChatId(self.chat_id.clone().unwrap())
     }
 }
 
@@ -96,6 +108,14 @@ impl GenericReminder for cron_reminder::ActiveModel {
             bold(&escape(&self.desc.clone().unwrap())),
             escape(&self.cron_expr.clone().unwrap())
         )
+    }
+
+    fn user_id(&self) -> Option<UserId> {
+        self.user_id.clone().unwrap().map(|id| UserId(id as u64))
+    }
+
+    fn chat_id(&self) -> ChatId {
+        ChatId(self.chat_id.clone().unwrap())
     }
 }
 

@@ -7,7 +7,7 @@ mod date;
 mod db;
 mod entity;
 mod err;
-mod generic_trait;
+mod generic_reminder;
 mod migration;
 mod parsers;
 mod tg;
@@ -19,7 +19,7 @@ use chrono::Utc;
 use chrono_tz::Tz;
 use cron_parser::parse as parse_cron;
 use entity::{cron_reminder, reminder};
-use generic_trait::GenericReminder;
+use generic_reminder::GenericReminder;
 use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, IntoActiveModel};
 use std::time::Duration;
 use teloxide::{
@@ -29,12 +29,10 @@ use teloxide::{
 
 async fn format_reminder<T: ActiveModelTrait + GenericReminder>(
     reminder: &T,
-    user_id: Option<UserId>,
     user_timezone: Tz,
-    is_group: bool,
 ) -> Result<String, err::Error> {
-    Ok(match user_id {
-        Some(user_id) if is_group => {
+    Ok(match reminder.user_id() {
+        Some(user_id) if reminder.chat_id().is_group() => {
             reminder.to_string_with_mention(user_timezone, user_id.0 as i64)
         }
         _ => reminder.to_string(user_timezone),
@@ -44,17 +42,11 @@ async fn format_reminder<T: ActiveModelTrait + GenericReminder>(
 async fn format_cron_reminder(
     reminder: &cron_reminder::Model,
     next_reminder: &Option<cron_reminder::Model>,
-    user_id: Option<UserId>,
     user_timezone: Tz,
-    is_group: bool,
 ) -> Result<String, err::Error> {
-    let formatted_reminder = format_reminder(
-        &reminder.clone().into_active_model(),
-        user_id,
-        user_timezone,
-        is_group,
-    )
-    .await?;
+    let formatted_reminder =
+        format_reminder(&reminder.clone().into_active_model(), user_timezone)
+            .await?;
     Ok(match next_reminder {
         Some(next_reminder) => format!(
             "{}\n\nNext time → {}",
@@ -73,18 +65,9 @@ async fn send_reminder(
     user_timezone: Tz,
     bot: &Bot,
 ) -> Result<(), err::Error> {
-    let chat_id = ChatId(reminder.chat_id);
-    let user_id = reminder.user_id.map(|x| UserId(x as u64));
-    let is_group = user_id
-        .filter(|user_id| user_id.0 != chat_id.0 as u64)
-        .is_some();
-    let text = format_reminder(
-        &reminder.clone().into_active_model(),
-        user_id,
-        user_timezone,
-        is_group,
-    )
-    .await?;
+    let text =
+        format_reminder(&reminder.clone().into_active_model(), user_timezone)
+            .await?;
     tg::send_message(&text, bot, ChatId(reminder.chat_id))
         .await
         .map_err(From::from)
@@ -96,20 +79,8 @@ async fn send_cron_reminder(
     user_timezone: Tz,
     bot: &Bot,
 ) -> Result<(), err::Error> {
-    let chat_id = ChatId(reminder.chat_id);
-    let user_id = reminder.user_id.map(|x| UserId(x as u64));
-    let is_group = user_id
-        .filter(|user_id| user_id.0 != chat_id.0 as u64)
-        .is_some();
-
-    let text = format_cron_reminder(
-        reminder,
-        next_reminder,
-        user_id,
-        user_timezone,
-        is_group,
-    )
-    .await?;
+    let text =
+        format_cron_reminder(reminder, next_reminder, user_timezone).await?;
     tg::send_message(&text, bot, ChatId(reminder.chat_id))
         .await
         .map_err(From::from)

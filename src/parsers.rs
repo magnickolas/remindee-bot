@@ -160,7 +160,9 @@ pub async fn parse_cron_reminder(
 
 #[cfg(test)]
 fn now_time() -> NaiveDateTime {
-    unsafe { NaiveDateTime::from_timestamp(test::TEST_TIMESTAMP, 0) }
+    unsafe {
+        NaiveDateTime::from_timestamp_opt(test::TEST_TIMESTAMP, 0).unwrap()
+    }
 }
 #[cfg(test)]
 mod test {
@@ -173,7 +175,7 @@ mod test {
     lazy_static! {
         static ref TEST_TZ: Tz = "Europe/Moscow".parse::<Tz>().unwrap();
         static ref TEST_TIME: DateTime<Tz> =
-            TEST_TZ.ymd(2007, 2, 2).and_hms(12, 30, 30);
+            TEST_TZ.with_ymd_and_hms(2007, 2, 2, 12, 30, 30).unwrap();
     }
 
     pub static mut TEST_TIMESTAMP: i64 = 0;

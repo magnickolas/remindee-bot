@@ -4,7 +4,7 @@ use crate::tg;
 use crate::tz;
 
 use crate::entity::{cron_reminder, reminder};
-use crate::generic_trait::GenericReminder;
+use crate::generic_reminder::GenericReminder;
 use chrono_tz::Tz;
 use teloxide::prelude::*;
 use teloxide::types::MessageId;
