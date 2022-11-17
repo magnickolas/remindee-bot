@@ -5,8 +5,10 @@ extern crate pretty_env_logger;
 mod controller;
 mod date;
 mod db;
+mod entity;
 mod err;
 mod generic_trait;
+mod migration;
 mod parsers;
 mod tg;
 mod tz;
@@ -18,9 +20,7 @@ use chrono_tz::Tz;
 use cron_parser::parse as parse_cron;
 use entity::{cron_reminder, reminder};
 use generic_trait::GenericReminder;
-use migration::sea_orm::{
-    ActiveModelTrait, ActiveValue::NotSet, IntoActiveModel,
-};
+use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, IntoActiveModel};
 use std::time::Duration;
 use teloxide::{
     prelude::*,

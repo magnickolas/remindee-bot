@@ -3,9 +3,9 @@ use crate::parsers;
 use crate::tg;
 use crate::tz;
 
+use crate::entity::{cron_reminder, reminder};
 use crate::generic_trait::GenericReminder;
 use chrono_tz::Tz;
-use entity::{cron_reminder, reminder};
 use teloxide::prelude::*;
 use teloxide::types::MessageId;
 use teloxide::types::{

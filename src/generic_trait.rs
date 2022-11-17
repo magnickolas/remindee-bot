@@ -1,7 +1,7 @@
+use crate::entity::{cron_reminder, reminder};
 use chrono::prelude::*;
 use chrono::Utc;
 use chrono_tz::Tz;
-use entity::{cron_reminder, reminder};
 use std::cmp::Ord;
 use std::cmp::Ordering;
 use teloxide::utils::markdown::{bold, escape};

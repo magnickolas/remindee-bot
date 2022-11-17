@@ -12,11 +12,9 @@ keywords = ["bot","reminder", "cron", "telegram-bot", "reminders"]
 categories = ["command-line-utilities"]
 
 [workspace]
-members = [".", "entity", "migration"]
+members = ["."]
 
 [dependencies]
-entity = { path = "./entity", version = "0.1.0" }
-migration = { path = "./migration", version = "0.1.0" }
 async-std = "1.12.0"
 chrono = "0.4.23"
 chrono-tz = "0.8.0"
@@ -31,9 +29,17 @@ async_once = "0.2.6"
 
 log = "0.4.17"
 pretty_env_logger = "0.4.0"
+sea-orm = { version = "0.10.3" }
 
 tokio = { version = "1.21.2", features = ["rt-multi-thread", "macros"] }
 itertools = "0.10.5"
+
+[dependencies.sea-orm-migration]
+version = "0.10.3"
+features = [
+  "runtime-tokio-rustls",
+  "sqlx-sqlite",
+]
 
 [dev-dependencies]
 test-case = "2.2.2"

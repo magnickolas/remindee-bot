@@ -1,17 +1,17 @@
 use std::fs::OpenOptions;
 
+use crate::entity::{cron_reminder, reminder, user_timezone};
+use crate::migration::{DbErr, Migrator, MigratorTrait};
 use chrono::Utc;
 use directories::BaseDirs;
-use entity::{cron_reminder, reminder, user_timezone};
-use migration::sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, Database as SeaOrmDatabase,
+    DatabaseConnection, EntityTrait, QueryFilter, Set,
 };
-use migration::sea_orm::{Database as SeaOrmDatabase, Set};
-use migration::{Migrator, MigratorTrait};
 
 #[derive(Debug)]
 pub enum Error {
-    Database(migration::DbErr),
+    Database(DbErr),
     File(std::io::Error),
 }
 
@@ -26,8 +26,8 @@ impl std::fmt::Display for Error {
     }
 }
 
-impl From<migration::DbErr> for Error {
-    fn from(err: migration::DbErr) -> Self {
+impl From<DbErr> for Error {
+    fn from(err: DbErr) -> Self {
         Self::Database(err)
     }
 }
