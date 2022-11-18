@@ -211,20 +211,18 @@ impl<'a> controller::TgController<'a> {
         user: &'a User,
         msg: &'a Message,
     ) -> Result<controller::TgController<'a>, err::Error> {
-        let is_group = !msg.chat.is_private();
         Ok(Self {
             db: DATABASE.get().await,
             bot,
             chat_id: chat.id,
             user_id: user.id,
             msg_id: msg.id,
-            is_group,
         })
     }
 }
 
 async fn message_handler(msg: Message, bot: Bot) -> Result<(), err::Error> {
-    let mut ctl = controller::TgController::new(
+    let ctl = controller::TgController::new(
         &bot,
         &msg.chat,
         msg.from()
@@ -237,30 +235,19 @@ async fn message_handler(msg: Message, bot: Bot) -> Result<(), err::Error> {
         let text = text.strip_suffix(&bot_username).unwrap_or(text);
         match text {
             "/start" => ctl.start().await,
-            "list" | "/list" => ctl.list().await,
-            "tz" | "/tz" | "timezone" | "/timezone" => {
-                ctl.choose_timezone().await
+            "/list" => ctl.list().await,
+            "/tz" | "/timezone" => ctl.choose_timezone().await,
+            "/mytz" | "/mytimezone" => ctl.get_timezone().await,
+            "/del" | "/delete" => ctl.start_delete().await,
+            "/edit" => ctl.start_edit().await,
+            "/help" => ctl.list_commands().await,
+            _ => {
+                let reminder_text =
+                    text.strip_prefix("/set ").unwrap_or(text).trim();
+                ctl.set_or_edit_reminder(reminder_text).await
             }
-            "mytz" | "/mytz" | "mytimezone" | "/mytimezone" => {
-                ctl.get_timezone().await
-            }
-            "del" | "/del" | "delete" | "/delete" => ctl.start_delete().await,
-            "edit" | "/edit" => ctl.start_edit().await,
-            "help" | "/help" => ctl.list_commands().await,
-            text => match (
-                ctl.get_edit_reminder().await,
-                ctl.get_edit_cron_reminder().await,
-            ) {
-                (Ok(Some(edit_reminder)), _) => {
-                    ctl.replace_reminder(text, edit_reminder.id).await
-                }
-                (_, Ok(Some(edit_cron_reminder))) => {
-                    ctl.replace_cron_reminder(text, edit_cron_reminder.id).await
-                }
-                _ => ctl.set_reminder(text, false).await.map(|_| ()),
-            },
         }
-    } else if !ctl.is_group {
+    } else if ctl.chat_id.is_user() {
         ctl.incorrect_request().await
     } else {
         Ok(())
@@ -274,7 +261,7 @@ async fn callback_handler(
 ) -> Result<(), err::Error> {
     if let Some(cb_data) = &cb_query.data {
         if let Some(msg) = &cb_query.message {
-            let mut ctl = controller::TgController::new(
+            let ctl = controller::TgController::new(
                 &bot,
                 &msg.chat,
                 &cb_query.from,

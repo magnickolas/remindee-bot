@@ -56,7 +56,6 @@ pub struct TgController<'a> {
     pub chat_id: ChatId,
     pub user_id: UserId,
     pub msg_id: MessageId,
-    pub is_group: bool,
 }
 
 impl TgController<'_> {
@@ -73,7 +72,7 @@ impl TgController<'_> {
     }
 
     /// Send a list of all notifications
-    pub async fn list(&mut self) -> Result<(), RequestError> {
+    pub async fn list(&self) -> Result<(), RequestError> {
         // Format reminders
         let text = match tz::get_user_timezone(self.db, self.user_id).await {
             Ok(Some(user_timezone)) => {
@@ -112,7 +111,7 @@ impl TgController<'_> {
     }
 
     /// Send user's timezone
-    pub async fn get_timezone(&mut self) -> Result<(), RequestError> {
+    pub async fn get_timezone(&self) -> Result<(), RequestError> {
         let response =
             match self.db.get_user_timezone_name(self.user_id.0 as i64).await {
                 Ok(Some(tz_name)) => TgResponse::ChosenTimezone(tz_name),
@@ -136,7 +135,7 @@ impl TgController<'_> {
     }
 
     /// Send a markup to select a reminder for deleting
-    pub async fn start_delete(&mut self) -> Result<(), RequestError> {
+    pub async fn start_delete(&self) -> Result<(), RequestError> {
         match tz::get_user_timezone(self.db, self.user_id).await {
             Ok(Some(user_timezone)) => {
                 let markup = self
@@ -150,7 +149,7 @@ impl TgController<'_> {
     }
 
     /// Send a markup to select a reminder for editing
-    pub async fn start_edit(&mut self) -> Result<(), RequestError> {
+    pub async fn start_edit(&self) -> Result<(), RequestError> {
         match tz::get_user_timezone(self.db, self.user_id).await {
             Ok(Some(user_timezone)) => {
                 let markup = self
@@ -170,7 +169,7 @@ impl TgController<'_> {
 
     /// Try to parse user's message into a one-time or periodic reminder and set it
     pub async fn set_reminder(
-        &mut self,
+        &self,
         text: &str,
         silent_success: bool,
     ) -> Result<bool, RequestError> {
@@ -245,13 +244,13 @@ impl TgController<'_> {
         }
     }
 
-    pub async fn incorrect_request(&mut self) -> Result<(), RequestError> {
+    pub async fn incorrect_request(&self) -> Result<(), RequestError> {
         self.reply(TgResponse::IncorrectRequest).await
     }
 
     /// Switch the markup's page
     pub async fn select_timezone_set_page(
-        &mut self,
+        &self,
         page_num: usize,
     ) -> Result<(), RequestError> {
         tg::edit_markup(
@@ -264,7 +263,7 @@ impl TgController<'_> {
     }
 
     pub async fn set_timezone(
-        &mut self,
+        &self,
         tz_name: &str,
     ) -> Result<(), RequestError> {
         let response = match self
@@ -282,14 +281,14 @@ impl TgController<'_> {
     }
 
     async fn alter_reminder_set_page(
-        &mut self,
+        &self,
         markup: InlineKeyboardMarkup,
     ) -> Result<(), RequestError> {
         tg::edit_markup(markup, self.bot, self.msg_id, self.chat_id).await
     }
 
     pub async fn delete_reminder_set_page(
-        &mut self,
+        &self,
         page_num: usize,
     ) -> Result<(), RequestError> {
         if let Ok(Some(user_timezone)) =
@@ -305,7 +304,7 @@ impl TgController<'_> {
     }
 
     pub async fn edit_reminder_set_page(
-        &mut self,
+        &self,
         page_num: usize,
     ) -> Result<(), RequestError> {
         if let Ok(Some(user_timezone)) =
@@ -321,7 +320,7 @@ impl TgController<'_> {
     }
 
     pub async fn delete_reminder(
-        &mut self,
+        &self,
         rem_id: i64,
     ) -> Result<(), RequestError> {
         let response = match self.db.mark_reminder_as_sent(rem_id).await {
@@ -336,7 +335,7 @@ impl TgController<'_> {
     }
 
     pub async fn delete_cron_reminder(
-        &mut self,
+        &self,
         cron_rem_id: i64,
     ) -> Result<(), RequestError> {
         let response =
@@ -351,10 +350,7 @@ impl TgController<'_> {
         self.reply(response).await
     }
 
-    pub async fn edit_reminder(
-        &mut self,
-        rem_id: i64,
-    ) -> Result<(), RequestError> {
+    pub async fn edit_reminder(&self, rem_id: i64) -> Result<(), RequestError> {
         let response = match self
             .db
             .reset_reminders_edit(self.chat_id.0)
@@ -371,7 +367,7 @@ impl TgController<'_> {
     }
 
     pub async fn edit_cron_reminder(
-        &mut self,
+        &self,
         cron_rem_id: i64,
     ) -> Result<(), RequestError> {
         let response = match self
@@ -390,7 +386,7 @@ impl TgController<'_> {
     }
 
     pub async fn replace_reminder(
-        &mut self,
+        &self,
         text: &str,
         rem_id: i64,
     ) -> Result<(), RequestError> {
@@ -409,7 +405,7 @@ impl TgController<'_> {
     }
 
     pub async fn replace_cron_reminder(
-        &mut self,
+        &self,
         text: &str,
         rem_id: i64,
     ) -> Result<(), RequestError> {
@@ -475,7 +471,7 @@ impl TgController<'_> {
     }
 
     async fn get_markup_for_reminders_page_alteration(
-        &mut self,
+        &self,
         num: usize,
         cb_prefix: &str,
         user_timezone: Tz,
@@ -528,7 +524,7 @@ impl TgController<'_> {
     }
 
     pub async fn get_markup_for_reminders_page_deletion(
-        &mut self,
+        &self,
         num: usize,
         user_timezone: Tz,
     ) -> InlineKeyboardMarkup {
@@ -541,7 +537,7 @@ impl TgController<'_> {
     }
 
     pub async fn get_markup_for_reminders_page_editing(
-        &mut self,
+        &self,
         num: usize,
         user_timezone: Tz,
     ) -> InlineKeyboardMarkup {
@@ -553,14 +549,33 @@ impl TgController<'_> {
         .await
     }
 
+    pub async fn set_or_edit_reminder(
+        &self,
+        text: &str,
+    ) -> Result<(), RequestError> {
+        match (
+            self.get_edit_reminder().await,
+            self.get_edit_cron_reminder().await,
+        ) {
+            (Ok(Some(edit_reminder)), _) => {
+                self.replace_reminder(text, edit_reminder.id).await
+            }
+            (_, Ok(Some(edit_cron_reminder))) => {
+                self.replace_cron_reminder(text, edit_cron_reminder.id)
+                    .await
+            }
+            _ => self.set_reminder(text, false).await.map(|_| ()),
+        }
+    }
+
     pub async fn get_edit_reminder(
-        &mut self,
+        &self,
     ) -> Result<Option<reminder::Model>, db::Error> {
         self.db.get_edit_reminder(self.chat_id.0).await
     }
 
     pub async fn get_edit_cron_reminder(
-        &mut self,
+        &self,
     ) -> Result<Option<cron_reminder::Model>, db::Error> {
         self.db.get_edit_cron_reminder(self.chat_id.0).await
     }

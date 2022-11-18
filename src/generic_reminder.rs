@@ -39,6 +39,10 @@ pub trait GenericReminder {
     }
     fn user_id(&self) -> Option<UserId>;
     fn chat_id(&self) -> ChatId;
+    fn is_group(&self) -> bool {
+        let chat_id = self.chat_id();
+        chat_id.is_group() || chat_id.is_channel_or_supergroup()
+    }
 }
 
 impl GenericReminder for reminder::ActiveModel {
