@@ -356,7 +356,7 @@ const TZ_NAMES: &[&str] = &[
 ];
 
 pub fn get_tz_names_for_page_idx(num: usize) -> Option<Vec<&'static str>> {
-    TZ_NAMES.chunks(90).into_iter().nth(num).map(|v| v.to_vec())
+    TZ_NAMES.chunks(30).into_iter().nth(num).map(|v| v.to_vec())
 }
 
 pub async fn get_user_timezone(
