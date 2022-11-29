@@ -265,11 +265,31 @@ impl Database {
             .await?)
     }
 
+    pub async fn toggle_cron_reminder_paused(
+        &self,
+        id: i64,
+    ) -> Result<bool, Error> {
+        let rem: Option<cron_reminder::Model> =
+            cron_reminder::Entity::find_by_id(id)
+                .one(&self.pool)
+                .await?;
+        if let Some(rem) = rem {
+            let paused = !rem.paused;
+            let mut rem: cron_reminder::ActiveModel = rem.into();
+            rem.paused = Set(paused);
+            rem.update(&self.pool).await?;
+            Ok(paused)
+        } else {
+            Err(Error::Database(DbErr::RecordNotFound(id.to_string())))
+        }
+    }
+
     pub async fn get_active_cron_reminders(
         &self,
     ) -> Result<Vec<cron_reminder::Model>, Error> {
         Ok(cron_reminder::Entity::find()
             .filter(cron_reminder::Column::Sent.eq(false))
+            .filter(cron_reminder::Column::Paused.eq(false))
             .filter(cron_reminder::Column::Time.lt(Utc::now().naive_utc()))
             .all(&self.pool)
             .await?)

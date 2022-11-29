@@ -23,13 +23,17 @@ pub enum TgResponse {
     EnterNewReminder,
     SuccessEdit,
     FailedEdit,
+    ChoosePauseReminder,
+    SuccessPause,
+    SuccessResume,
+    FailedPause,
     Hello,
     CommandsHelp,
 }
 
-impl ToString for TgResponse {
-    fn to_string(&self) -> String {
-        let raw_text: String = match self {
+impl TgResponse {
+    pub fn to_unescaped_string(&self) -> String {
+        match self {
             Self::SuccessInsert(reminder_str) => format!("Added a reminder:\n{}", reminder_str),
             Self::SuccessPeriodicInsert(reminder_str) => format!("Added a periodic reminder:\n{}", reminder_str),
             Self::FailedInsert => "Failed to create a reminder...".to_owned(),
@@ -53,6 +57,10 @@ impl ToString for TgResponse {
             Self::EnterNewReminder => "Enter reminder to replace with:".to_owned(),
             Self::SuccessEdit => "Edited!".to_owned(),
             Self::FailedEdit => "Failed to edit...".to_owned(),
+            Self::ChoosePauseReminder => "Choose a reminder to pause/resume:".to_owned(),
+            Self::SuccessPause => "Paused!".to_owned(),
+            Self::SuccessResume => "Resumed!".to_owned(),
+            Self::FailedPause => "Failed to pause...".to_owned(),
             Self::Hello => concat!(
                 "Hello! I'm remindee bot. My purpose is to remind you of whatever you ask and ",
                 "whenever you ask.\n\n",
@@ -67,12 +75,18 @@ impl ToString for TgResponse {
                 "/list — list the set reminders\n",
                 "/del — choose reminders to delete\n",
                 "/edit — choose reminders to edit\n",
+                "/pause — choose reminders to pause/resume\n",
                 "/tz — select timezone\n",
                 "/mytz — print your timezone"
             )
             .to_owned(),
-        };
-        escape(&raw_text)
+        }
+    }
+}
+
+impl ToString for TgResponse {
+    fn to_string(&self) -> String {
+        escape(&self.to_unescaped_string())
     }
 }
 
@@ -131,6 +145,18 @@ pub async fn edit_markup(
 ) -> Result<(), RequestError> {
     bot.edit_message_reply_markup(user_id, msg_id)
         .reply_markup(markup)
+        .send()
+        .await
+        .map(|_| ())
+}
+
+pub async fn answer_callback_query(
+    bot: &Bot,
+    query_id: &str,
+    text: &str,
+) -> Result<(), RequestError> {
+    bot.answer_callback_query(query_id)
+        .text(text)
         .send()
         .await
         .map(|_| ())

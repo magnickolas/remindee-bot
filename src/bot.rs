@@ -1,4 +1,4 @@
-use crate::controller::TgController;
+use crate::controller::{TgCallbackController, TgMessageController};
 use crate::db::Database;
 use crate::entity::{cron_reminder, reminder};
 use crate::err::Error;
@@ -12,10 +12,8 @@ use chrono_tz::Tz;
 use cron_parser::parse as parse_cron;
 use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, IntoActiveModel};
 use std::time::Duration;
-use teloxide::{
-    prelude::*,
-    types::{Chat, User},
-};
+use teloxide::prelude::*;
+use teloxide::types::MessageId;
 
 async fn format_reminder<T: ActiveModelTrait + GenericReminder>(
     reminder: &T,
@@ -86,7 +84,7 @@ async fn reminders_pooling(db: &Database, bot: Bot) {
                     get_user_timezone(db, user_id).await
                 {
                     match send_reminder(&reminder, user_timezone, &bot).await {
-                        Ok(_) => db
+                        Ok(()) => db
                             .mark_reminder_as_sent(reminder.id)
                             .await
                             .unwrap_or_else(|err| {
@@ -130,7 +128,7 @@ async fn reminders_pooling(db: &Database, bot: Bot) {
                     )
                     .await
                     {
-                        Ok(_) => {
+                        Ok(()) => {
                             db.mark_cron_reminder_as_sent(cron_reminder.id)
                                 .await
                                 .unwrap_or_else(|err| {
@@ -194,19 +192,41 @@ pub async fn run() {
         .await;
 }
 
-impl<'a> TgController<'a> {
+impl<'a> TgMessageController<'a> {
     pub async fn new(
         bot: &'a Bot,
-        chat: &'a Chat,
-        user: &'a User,
-        msg: &'a Message,
-    ) -> Result<TgController<'a>, Error> {
+        chat_id: ChatId,
+        user_id: UserId,
+        msg_id: MessageId,
+    ) -> Result<TgMessageController<'a>, Error> {
         Ok(Self {
             db: DATABASE.get().await,
             bot,
-            chat_id: chat.id,
-            user_id: user.id,
-            msg_id: msg.id,
+            chat_id,
+            user_id,
+            msg_id,
+        })
+    }
+}
+
+impl<'a> TgCallbackController<'a> {
+    pub async fn new(
+        bot: &'a Bot,
+        cb_query: &'a CallbackQuery,
+    ) -> Result<TgCallbackController<'a>, Error> {
+        let msg = cb_query
+            .message
+            .as_ref()
+            .ok_or_else(|| Error::NoQueryMessage(cb_query.clone()))?;
+        Ok(Self {
+            msg_ctl: TgMessageController::new(
+                bot,
+                msg.chat.id,
+                cb_query.from.id,
+                msg.id,
+            )
+            .await?,
+            cb_id: &cb_query.id,
         })
     }
 }
@@ -224,11 +244,13 @@ async fn remove_bot_mention(bot: &Bot, text: &str) -> Result<String, Error> {
 }
 
 async fn message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
-    let ctl = TgController::new(
+    let ctl = TgMessageController::new(
         &bot,
-        &msg.chat,
-        msg.from().ok_or_else(|| Error::UserNotFound(msg.clone()))?,
-        &msg,
+        msg.chat.id,
+        msg.from()
+            .ok_or_else(|| Error::UserNotFound(msg.clone()))?
+            .id,
+        msg.id,
     )
     .await?;
     if let Some(text) = msg.text() {
@@ -239,6 +261,7 @@ async fn message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
             "/mytz" | "/mytimezone" => ctl.get_timezone().await,
             "/del" | "/delete" => ctl.start_delete().await,
             "/edit" => ctl.start_edit().await,
+            "/pause" => ctl.start_pause().await,
             "/help" => ctl.list_commands().await,
             text => {
                 let reminder_text =
@@ -259,61 +282,75 @@ async fn callback_handler(
     bot: Bot,
 ) -> Result<(), Error> {
     if let Some(cb_data) = &cb_query.data {
-        if let Some(msg) = &cb_query.message {
-            let ctl =
-                TgController::new(&bot, &msg.chat, &cb_query.from, msg).await?;
-            if let Some(page_num) = cb_data
-                .strip_prefix("seltz::page::")
-                .and_then(|x| x.parse::<usize>().ok())
-            {
-                ctl.select_timezone_set_page(page_num)
-                    .await
-                    .map_err(From::from)
-            } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
-                ctl.set_timezone(tz_name).await.map_err(From::from)
-            } else if let Some(page_num) = cb_data
-                .strip_prefix("delrem::page::")
-                .and_then(|x| x.parse::<usize>().ok())
-            {
-                ctl.delete_reminder_set_page(page_num)
-                    .await
-                    .map_err(From::from)
-            } else if let Some(rem_id) = cb_data
-                .strip_prefix("delrem::rem_alt::")
-                .and_then(|x| x.parse::<i64>().ok())
-            {
-                ctl.delete_reminder(rem_id).await.map_err(From::from)
-            } else if let Some(cron_rem_id) = cb_data
-                .strip_prefix("delrem::cron_rem_alt::")
-                .and_then(|x| x.parse::<i64>().ok())
-            {
-                ctl.delete_cron_reminder(cron_rem_id)
-                    .await
-                    .map_err(From::from)
-            } else if let Some(page_num) = cb_data
-                .strip_prefix("editrem::page::")
-                .and_then(|x| x.parse::<usize>().ok())
-            {
-                ctl.edit_reminder_set_page(page_num)
-                    .await
-                    .map_err(From::from)
-            } else if let Some(rem_id) = cb_data
-                .strip_prefix("editrem::rem_alt::")
-                .and_then(|x| x.parse::<i64>().ok())
-            {
-                ctl.edit_reminder(rem_id).await.map_err(From::from)
-            } else if let Some(cron_rem_id) = cb_data
-                .strip_prefix("editrem::cron_rem_alt::")
-                .and_then(|x| x.parse::<i64>().ok())
-            {
-                ctl.edit_cron_reminder(cron_rem_id)
-                    .await
-                    .map_err(From::from)
-            } else {
-                Err(Error::UnmatchedQuery(cb_query))
-            }
+        let ctl = TgCallbackController::new(&bot, &cb_query).await?;
+        let msg_ctl = &ctl.msg_ctl;
+        if let Some(page_num) = cb_data
+            .strip_prefix("seltz::page::")
+            .and_then(|x| x.parse::<usize>().ok())
+        {
+            msg_ctl
+                .select_timezone_set_page(page_num)
+                .await
+                .map_err(From::from)
+        } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
+            ctl.set_timezone(tz_name).await.map_err(From::from)
+        } else if let Some(page_num) = cb_data
+            .strip_prefix("delrem::page::")
+            .and_then(|x| x.parse::<usize>().ok())
+        {
+            msg_ctl
+                .delete_reminder_set_page(page_num)
+                .await
+                .map_err(From::from)
+        } else if let Some(rem_id) = cb_data
+            .strip_prefix("delrem::rem_alt::")
+            .and_then(|x| x.parse::<i64>().ok())
+        {
+            ctl.delete_reminder(rem_id).await.map_err(From::from)
+        } else if let Some(cron_rem_id) = cb_data
+            .strip_prefix("delrem::cron_rem_alt::")
+            .and_then(|x| x.parse::<i64>().ok())
+        {
+            ctl.delete_cron_reminder(cron_rem_id)
+                .await
+                .map_err(From::from)
+        } else if let Some(page_num) = cb_data
+            .strip_prefix("editrem::page::")
+            .and_then(|x| x.parse::<usize>().ok())
+        {
+            msg_ctl
+                .edit_reminder_set_page(page_num)
+                .await
+                .map_err(From::from)
+        } else if let Some(rem_id) = cb_data
+            .strip_prefix("editrem::rem_alt::")
+            .and_then(|x| x.parse::<i64>().ok())
+        {
+            ctl.edit_reminder(rem_id).await.map_err(From::from)
+        } else if let Some(cron_rem_id) = cb_data
+            .strip_prefix("editrem::cron_rem_alt::")
+            .and_then(|x| x.parse::<i64>().ok())
+        {
+            ctl.edit_cron_reminder(cron_rem_id)
+                .await
+                .map_err(From::from)
+        } else if let Some(page_num) = cb_data
+            .strip_prefix("pauserem::page::")
+            .and_then(|x| x.parse::<usize>().ok())
+        {
+            msg_ctl
+                .pause_reminder_set_page(page_num)
+                .await
+                .map_err(From::from)
+        } else if let Some(cron_rem_id) = cb_data
+            .strip_prefix("pauserem::cron_rem_alt::")
+            .and_then(|x| x.parse::<i64>().ok())
+        {
+            ctl.pause_cron_reminder(cron_rem_id)
+                .await
+                .map_err(From::from)
         } else {
-            Err(Error::NoQueryMessage(cb_query))
+            Err(Error::UnmatchedQuery(cb_query))
         }
     } else {
         Err(Error::NoQueryData(cb_query))

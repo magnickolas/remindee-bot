@@ -15,6 +15,7 @@ pub struct Model {
     pub sent: bool,
     pub edit: bool,
     pub user_id: Option<i64>,
+    pub paused: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

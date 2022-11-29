@@ -97,12 +97,17 @@ impl GenericReminder for cron_reminder::ActiveModel {
     }
 
     fn to_unescaped_string(&self, user_timezone: Tz) -> String {
-        format!(
+        let s = format!(
             "{} <{}> [{}]",
             self.serialize_time_unescaped(user_timezone),
             self.desc.clone().unwrap(),
             self.cron_expr.clone().unwrap()
-        )
+        );
+        if self.paused.clone().unwrap() {
+            format!("⏸ {}", s)
+        } else {
+            s
+        }
     }
 
     fn to_string(&self, user_timezone: Tz) -> String {

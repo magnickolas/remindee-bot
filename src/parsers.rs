@@ -153,6 +153,7 @@ pub async fn parse_cron_reminder(
                     .to_owned()),
                 sent: Set(false),
                 edit: Set(false),
+                paused: Set(false),
             })
             .ok()
     }
