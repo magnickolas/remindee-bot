@@ -1817,7 +1817,7 @@ checksum = "456c603be3e8d448b072f410900c09faf164fbce2d480456f50eea6e25f9c848"
 
 [[package]]
 name = "remindee-bot"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "async-std",
  "async_once",
@@ -1835,7 +1835,6 @@ dependencies = [
  "sea-orm-migration",
  "strfmt",
  "teloxide",
- "teloxide-macros",
  "test-case",
  "tokio",
 ]
@@ -2522,6 +2521,7 @@ dependencies = [
  "serde_json",
  "serde_with_macros",
  "teloxide-core",
+ "teloxide-macros",
  "thiserror",
  "tokio",
  "tokio-stream",

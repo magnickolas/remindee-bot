@@ -81,7 +81,7 @@ pub struct TgCallbackController<'a> {
 }
 
 impl TgMessageController<'_> {
-    async fn reply<R: ToString>(
+    pub async fn reply<R: ToString>(
         &self,
         response: R,
     ) -> Result<(), RequestError> {
@@ -196,11 +196,6 @@ impl TgMessageController<'_> {
             }
             _ => self.reply(TgResponse::NoChosenTimezone).await,
         }
-    }
-
-    /// Send a list of supported commands
-    pub async fn list_commands(&self) -> Result<(), RequestError> {
-        self.reply(TgResponse::CommandsHelp.to_string()).await
     }
 
     /// Try to parse user's message into a one-time or periodic reminder and set it

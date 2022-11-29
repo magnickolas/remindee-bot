@@ -12,8 +12,30 @@ use chrono_tz::Tz;
 use cron_parser::parse as parse_cron;
 use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, IntoActiveModel};
 use std::time::Duration;
-use teloxide::prelude::*;
-use teloxide::types::MessageId;
+use teloxide::{prelude::*, types::MessageId, utils::command::BotCommands};
+
+#[derive(BotCommands, Clone)]
+#[command(description = "Commands:", rename_rule = "lowercase")]
+pub enum Command {
+    #[command(description = "list the set reminders")]
+    List,
+    #[command(description = "choose reminders to delete")]
+    Delete,
+    #[command(description = "choose reminders to edit")]
+    Edit,
+    #[command(description = "choose reminders to pause")]
+    Pause,
+    #[command(description = "set a new reminder")]
+    Set(String),
+    #[command(description = "select a timezone")]
+    SetTimezone,
+    #[command(description = "show your timezone")]
+    Timezone,
+    #[command(description = "show this text")]
+    Help,
+    #[command(description = "start")]
+    Start,
+}
 
 async fn format_reminder<T: ActiveModelTrait + GenericReminder>(
     reminder: &T,
@@ -178,10 +200,18 @@ pub async fn run() {
     set_token(&token);
     let bot = Bot::from_env();
 
+    // Set bot commands
+    bot.set_my_commands(Command::bot_commands()).await.unwrap();
+
     // Run a database polling loop checking pending reminders asynchronously
     tokio::spawn(reminders_pooling(DATABASE.get().await, bot.clone()));
 
     let handler = dptree::entry()
+        .branch(
+            Update::filter_message()
+                .filter_command::<Command>()
+                .endpoint(command_handler),
+        )
         .branch(Update::filter_message().endpoint(message_handler))
         .branch(Update::filter_callback_query().endpoint(callback_handler));
 
@@ -231,16 +261,34 @@ impl<'a> TgCallbackController<'a> {
     }
 }
 
-async fn remove_bot_mention(bot: &Bot, text: &str) -> Result<String, Error> {
-    let mention = bot.get_me().await?.mention();
-    let mut parts = text.split_whitespace();
-    let new_first_part =
-        parts.next().map(|x| x.strip_suffix(&mention).unwrap_or(x));
-    Ok(new_first_part
-        .into_iter()
-        .chain(parts)
-        .collect::<Vec<_>>()
-        .join(" "))
+async fn command_handler(
+    msg: Message,
+    bot: Bot,
+    cmd: Command,
+) -> Result<(), Error> {
+    let ctl = TgMessageController::new(
+        &bot,
+        msg.chat.id,
+        msg.from()
+            .ok_or_else(|| Error::UserNotFound(msg.clone()))?
+            .id,
+        msg.id,
+    )
+    .await?;
+    match cmd {
+        Command::Help => ctl.reply(Command::descriptions()).await,
+        Command::Start => ctl.start().await,
+        Command::List => ctl.list().await,
+        Command::SetTimezone => ctl.choose_timezone().await,
+        Command::Timezone => ctl.get_timezone().await,
+        Command::Delete => ctl.start_delete().await,
+        Command::Edit => ctl.start_edit().await,
+        Command::Pause => ctl.start_pause().await,
+        Command::Set(ref reminder_text) => {
+            ctl.set_or_edit_reminder(reminder_text).await
+        }
+    }
+    .map_err(From::from)
 }
 
 async fn message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
@@ -254,21 +302,7 @@ async fn message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
     )
     .await?;
     if let Some(text) = msg.text() {
-        match remove_bot_mention(&bot, text).await?.as_str() {
-            "/start" => ctl.start().await,
-            "/list" => ctl.list().await,
-            "/tz" | "/timezone" => ctl.choose_timezone().await,
-            "/mytz" | "/mytimezone" => ctl.get_timezone().await,
-            "/del" | "/delete" => ctl.start_delete().await,
-            "/edit" => ctl.start_edit().await,
-            "/pause" => ctl.start_pause().await,
-            "/help" => ctl.list_commands().await,
-            text => {
-                let reminder_text =
-                    text.strip_prefix("/set ").unwrap_or(text).trim();
-                ctl.set_or_edit_reminder(reminder_text).await
-            }
-        }
+        ctl.set_or_edit_reminder(text).await.map_err(From::from)
     } else if ctl.chat_id.is_user() {
         ctl.incorrect_request().await
     } else {

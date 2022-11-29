@@ -28,7 +28,6 @@ pub enum TgResponse {
     SuccessResume,
     FailedPause,
     Hello,
-    CommandsHelp,
 }
 
 impl TgResponse {
@@ -69,15 +68,6 @@ impl TgResponse {
                 "55 10 * * 1-5 meeting call => notify at 10:55 AM every weekday ",
                 "(CRON expression format)\n\n",
                 "Please, select your timezone with /tz command first."
-            )
-            .to_owned(),
-            Self::CommandsHelp => concat!(
-                "/list — list the set reminders\n",
-                "/del — choose reminders to delete\n",
-                "/edit — choose reminders to edit\n",
-                "/pause — choose reminders to pause/resume\n",
-                "/tz — select timezone\n",
-                "/mytz — print your timezone"
             )
             .to_owned(),
         }
