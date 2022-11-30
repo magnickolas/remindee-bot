@@ -84,14 +84,13 @@ impl Database {
         Ok(())
     }
 
-    pub async fn mark_reminder_as_sent(&self, id: i64) -> Result<(), Error> {
-        let rem: Option<reminder::Model> =
-            reminder::Entity::find_by_id(id).one(&self.pool).await?;
-        if let Some(rem) = rem {
-            let mut rem: reminder::ActiveModel = rem.into();
-            rem.sent = Set(true);
-            rem.update(&self.pool).await?;
+    pub async fn delete_reminder(&self, id: i64) -> Result<(), Error> {
+        reminder::ActiveModel {
+            id: Set(id),
+            ..Default::default()
         }
+        .delete(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -128,7 +127,6 @@ impl Database {
         Ok(reminder::Entity::find()
             .filter(reminder::Column::ChatId.eq(chat_id))
             .filter(reminder::Column::Edit.eq(true))
-            .filter(reminder::Column::Sent.eq(false))
             .one(&self.pool)
             .await?)
     }
@@ -137,7 +135,6 @@ impl Database {
         &self,
     ) -> Result<Vec<reminder::Model>, Error> {
         Ok(reminder::Entity::find()
-            .filter(reminder::Column::Sent.eq(false))
             .filter(reminder::Column::Time.lt(Utc::now().naive_utc()))
             .all(&self.pool)
             .await?)
@@ -149,7 +146,6 @@ impl Database {
     ) -> Result<Vec<reminder::Model>, Error> {
         Ok(reminder::Entity::find()
             .filter(reminder::Column::ChatId.eq(chat_id))
-            .filter(reminder::Column::Sent.eq(false))
             .all(&self.pool)
             .await?)
     }
@@ -206,19 +202,13 @@ impl Database {
         Ok(())
     }
 
-    pub async fn mark_cron_reminder_as_sent(
-        &self,
-        id: i64,
-    ) -> Result<(), Error> {
-        let rem: Option<cron_reminder::Model> =
-            cron_reminder::Entity::find_by_id(id)
-                .one(&self.pool)
-                .await?;
-        if let Some(rem) = rem {
-            let mut rem: cron_reminder::ActiveModel = rem.into();
-            rem.sent = Set(true);
-            rem.update(&self.pool).await?;
+    pub async fn delete_cron_reminder(&self, id: i64) -> Result<(), Error> {
+        cron_reminder::ActiveModel {
+            id: Set(id),
+            ..Default::default()
         }
+        .delete(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -260,7 +250,6 @@ impl Database {
         Ok(cron_reminder::Entity::find()
             .filter(cron_reminder::Column::ChatId.eq(chat_id))
             .filter(cron_reminder::Column::Edit.eq(true))
-            .filter(cron_reminder::Column::Sent.eq(false))
             .one(&self.pool)
             .await?)
     }
@@ -288,7 +277,6 @@ impl Database {
         &self,
     ) -> Result<Vec<cron_reminder::Model>, Error> {
         Ok(cron_reminder::Entity::find()
-            .filter(cron_reminder::Column::Sent.eq(false))
             .filter(cron_reminder::Column::Paused.eq(false))
             .filter(cron_reminder::Column::Time.lt(Utc::now().naive_utc()))
             .all(&self.pool)
@@ -301,7 +289,6 @@ impl Database {
     ) -> Result<Vec<cron_reminder::Model>, Error> {
         Ok(cron_reminder::Entity::find()
             .filter(cron_reminder::Column::ChatId.eq(chat_id))
-            .filter(cron_reminder::Column::Sent.eq(false))
             .all(&self.pool)
             .await?)
     }

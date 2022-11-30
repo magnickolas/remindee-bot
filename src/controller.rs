@@ -506,7 +506,7 @@ impl TgMessageController<'_> {
         rem_id: i64,
     ) -> Result<(), RequestError> {
         if self.set_reminder(text, true).await? {
-            let response = match self.db.mark_reminder_as_sent(rem_id).await {
+            let response = match self.db.delete_reminder(rem_id).await {
                 Ok(()) => TgResponse::SuccessEdit,
                 Err(err) => {
                     dbg!(err);
@@ -525,14 +525,13 @@ impl TgMessageController<'_> {
         rem_id: i64,
     ) -> Result<(), RequestError> {
         if self.set_reminder(text, true).await? {
-            let response =
-                match self.db.mark_cron_reminder_as_sent(rem_id).await {
-                    Ok(()) => TgResponse::SuccessEdit,
-                    Err(err) => {
-                        dbg!(err);
-                        TgResponse::FailedEdit
-                    }
-                };
+            let response = match self.db.delete_cron_reminder(rem_id).await {
+                Ok(()) => TgResponse::SuccessEdit,
+                Err(err) => {
+                    dbg!(err);
+                    TgResponse::FailedEdit
+                }
+            };
             self.reply(response).await
         } else {
             self.reply(TgResponse::FailedEdit).await
@@ -610,8 +609,7 @@ impl TgCallbackController<'_> {
         &self,
         rem_id: i64,
     ) -> Result<(), RequestError> {
-        let response = match self.msg_ctl.db.mark_reminder_as_sent(rem_id).await
-        {
+        let response = match self.msg_ctl.db.delete_reminder(rem_id).await {
             Ok(()) => TgResponse::SuccessDelete,
             Err(err) => {
                 dbg!(err);
@@ -626,18 +624,14 @@ impl TgCallbackController<'_> {
         &self,
         cron_rem_id: i64,
     ) -> Result<(), RequestError> {
-        let response = match self
-            .msg_ctl
-            .db
-            .mark_cron_reminder_as_sent(cron_rem_id)
-            .await
-        {
-            Ok(()) => TgResponse::SuccessDelete,
-            Err(err) => {
-                dbg!(err);
-                TgResponse::FailedDelete
-            }
-        };
+        let response =
+            match self.msg_ctl.db.delete_cron_reminder(cron_rem_id).await {
+                Ok(()) => TgResponse::SuccessDelete,
+                Err(err) => {
+                    dbg!(err);
+                    TgResponse::FailedDelete
+                }
+            };
         self.msg_ctl.delete_reminder_set_page(0).await?;
         self.answer_callback_query(response).await
     }

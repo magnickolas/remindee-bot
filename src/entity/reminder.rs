@@ -11,7 +11,6 @@ pub struct Model {
     pub chat_id: i64,
     pub time: NaiveDateTime,
     pub desc: String,
-    pub sent: bool,
     pub edit: bool,
     pub user_id: Option<i64>,
 }

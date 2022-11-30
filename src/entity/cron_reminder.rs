@@ -12,7 +12,6 @@ pub struct Model {
     pub cron_expr: String,
     pub time: NaiveDateTime,
     pub desc: String,
-    pub sent: bool,
     pub edit: bool,
     pub user_id: Option<i64>,
     pub paused: bool,

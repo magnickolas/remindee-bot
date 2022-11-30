@@ -107,7 +107,7 @@ async fn reminders_pooling(db: &Database, bot: Bot) {
                 {
                     match send_reminder(&reminder, user_timezone, &bot).await {
                         Ok(()) => db
-                            .mark_reminder_as_sent(reminder.id)
+                            .delete_reminder(reminder.id)
                             .await
                             .unwrap_or_else(|err| {
                                 dbg!(err);
@@ -151,7 +151,7 @@ async fn reminders_pooling(db: &Database, bot: Bot) {
                     .await
                     {
                         Ok(()) => {
-                            db.mark_cron_reminder_as_sent(cron_reminder.id)
+                            db.delete_cron_reminder(cron_reminder.id)
                                 .await
                                 .unwrap_or_else(|err| {
                                     dbg!(err);
@@ -237,6 +237,32 @@ impl<'a> TgMessageController<'a> {
             msg_id,
         })
     }
+
+    pub async fn from_msg(
+        bot: &'a Bot,
+        msg: &Message,
+    ) -> Result<TgMessageController<'a>, Error> {
+        Self::new(
+            bot,
+            msg.chat.id,
+            msg.from()
+                .ok_or_else(|| Error::UserNotFound(msg.clone()))?
+                .id,
+            msg.id,
+        )
+        .await
+    }
+
+    pub async fn from_callback_query(
+        bot: &'a Bot,
+        cb_query: &CallbackQuery,
+    ) -> Result<TgMessageController<'a>, Error> {
+        let msg = cb_query
+            .message
+            .as_ref()
+            .ok_or_else(|| Error::NoQueryMessage(cb_query.clone()))?;
+        Self::new(bot, msg.chat.id, cb_query.from.id, msg.id).await
+    }
 }
 
 impl<'a> TgCallbackController<'a> {
@@ -244,18 +270,9 @@ impl<'a> TgCallbackController<'a> {
         bot: &'a Bot,
         cb_query: &'a CallbackQuery,
     ) -> Result<TgCallbackController<'a>, Error> {
-        let msg = cb_query
-            .message
-            .as_ref()
-            .ok_or_else(|| Error::NoQueryMessage(cb_query.clone()))?;
         Ok(Self {
-            msg_ctl: TgMessageController::new(
-                bot,
-                msg.chat.id,
-                cb_query.from.id,
-                msg.id,
-            )
-            .await?,
+            msg_ctl: TgMessageController::from_callback_query(bot, cb_query)
+                .await?,
             cb_id: &cb_query.id,
         })
     }
@@ -266,15 +283,7 @@ async fn command_handler(
     bot: Bot,
     cmd: Command,
 ) -> Result<(), Error> {
-    let ctl = TgMessageController::new(
-        &bot,
-        msg.chat.id,
-        msg.from()
-            .ok_or_else(|| Error::UserNotFound(msg.clone()))?
-            .id,
-        msg.id,
-    )
-    .await?;
+    let ctl = TgMessageController::from_msg(&bot, &msg).await?;
     match cmd {
         Command::Help => ctl.reply(Command::descriptions()).await,
         Command::Start => ctl.start().await,
@@ -292,15 +301,7 @@ async fn command_handler(
 }
 
 async fn message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
-    let ctl = TgMessageController::new(
-        &bot,
-        msg.chat.id,
-        msg.from()
-            .ok_or_else(|| Error::UserNotFound(msg.clone()))?
-            .id,
-        msg.id,
-    )
-    .await?;
+    let ctl = TgMessageController::from_msg(&bot, &msg).await?;
     if let Some(text) = msg.text() {
         ctl.set_or_edit_reminder(text).await.map_err(From::from)
     } else if ctl.chat_id.is_user() {

@@ -122,7 +122,6 @@ pub async fn parse_reminder(
                 .single()?
                 .naive_utc()),
             desc: Set(caps[ReminderRegexFields::DESCRIPTION].to_string()),
-            sent: Set(false),
             edit: Set(false),
         })
     })
@@ -151,7 +150,6 @@ pub async fn parse_cron_reminder(
                     .unwrap_or("")
                     .trim()
                     .to_owned()),
-                sent: Set(false),
                 edit: Set(false),
                 paused: Set(false),
             })
