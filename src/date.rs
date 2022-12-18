@@ -3,16 +3,11 @@ fn is_leap_year(year: i32) -> bool {
 }
 
 pub fn days_in_month(month: u32, year: i32) -> i64 {
-    match (month, is_leap_year(year)) {
-        (2, true) => 29,
-        (2, false) => 28,
-        _ => {
-            if [4, 6, 9, 11].contains(&month) {
-                30
-            } else {
-                31
-            }
-        }
+    match month {
+        4 | 6 | 9 | 11 => 30,
+        2 if is_leap_year(year) => 29,
+        2 => 28,
+        _ => 31,
     }
 }
 

@@ -47,7 +47,7 @@ impl TgResponse {
                 ),
                 tz_name
             ),
-            Self::NoChosenTimezone => "You've not selected timezone yet, please do it with /tz command".to_owned(),
+            Self::NoChosenTimezone => "You've not selected timezone yet, please do it with /settimezone command".to_owned(),
             Self::FailedSetTimezone(tz_name) => format!("Failed to set timezone {}", tz_name),
             Self::ChooseDeleteReminder => "Choose a reminder to delete:".to_owned(),
             Self::SuccessDelete => "Deleted!".to_owned(),

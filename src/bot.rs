@@ -105,16 +105,14 @@ async fn reminders_pooling(db: &Database, bot: Bot) {
                 if let Ok(Some(user_timezone)) =
                     get_user_timezone(db, user_id).await
                 {
-                    match send_reminder(&reminder, user_timezone, &bot).await {
-                        Ok(()) => db
-                            .delete_reminder(reminder.id)
-                            .await
-                            .unwrap_or_else(|err| {
+                    if let Ok(()) =
+                        send_reminder(&reminder, user_timezone, &bot).await
+                    {
+                        db.delete_reminder(reminder.id).await.unwrap_or_else(
+                            |err| {
                                 dbg!(err);
-                            }),
-                        Err(err) => {
-                            dbg!(err);
-                        }
+                            },
+                        )
                     }
                 }
             }
@@ -302,12 +300,12 @@ async fn command_handler(
 
 async fn message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
     let ctl = TgMessageController::from_msg(&bot, &msg).await?;
-    if let Some(text) = msg.text() {
-        ctl.set_or_edit_reminder(text).await.map_err(From::from)
-    } else if ctl.chat_id.is_user() {
-        ctl.incorrect_request().await
-    } else {
+    if !ctl.chat_id.is_user() {
         Ok(())
+    } else if let Some(text) = msg.text() {
+        ctl.set_or_edit_reminder(text).await
+    } else {
+        ctl.incorrect_request().await
     }
     .map_err(From::from)
 }
