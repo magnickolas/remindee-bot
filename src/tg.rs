@@ -67,7 +67,7 @@ impl TgResponse {
                 "01.01 00:00 Happy New Year => notify at 1st of January at 12 AM\n",
                 "55 10 * * 1-5 meeting call => notify at 10:55 AM every weekday ",
                 "(CRON expression format)\n\n",
-                "Please, select your timezone with /tz command first."
+                "Please, select your timezone with /settimezone command first."
             )
             .to_owned(),
         }
