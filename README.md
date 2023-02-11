@@ -8,7 +8,7 @@ Telegram bot for managing reminders.
 
 1. Install [Rust].
 2. Setup your bot with [@botfather](https://t.me/botfather).
-3. Build crate:
+3. Install the crate:
 
 ```console
 cargo install remindee-bot
@@ -17,12 +17,15 @@ cargo install remindee-bot
 4. Start the bot:
 
 ```console
-export BOT_TOKEN=<your bot token>
-export REMINDEE_DB=<path to sqlite database> # OPTIONAL
+remindee-bot --token <BOT TOKEN> --database <FILE>
+
+# Alternatively, one can use environment variables:
+export BOT_TOKEN=<BOT TOKEN>
+export REMINDEE_DB=<FILE> # optional
 remindee-bot
 ```
 
-5. Send `/start` to it
+5. Send `/start` and follow the machine's instructions 🤖.
 
 ## Features
 
