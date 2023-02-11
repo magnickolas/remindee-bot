@@ -38,15 +38,6 @@ remindee-bot
 - Periodic reminders can be set with [crontab-like syntax][cron]:
   - `55 10 * * 1-5 go to school` (at 10:30 AM every weekday)
   - `45 10-19 * * 1-6 break for 15 minutes` (at 10:45, 11:45, ..., 19:45 from Monday to Saturday)
-- Supported commands:
-  | Command | Action |
-  | ------- | ----------------------- |
-  | /help | List supported commands |
-  | /list | List the set reminders |
-  | /del | Delete reminders |
-  | /edit | Change reminders |
-  | /tz | Select timezone |
-  | /mytz | Show current timezone |
 
 [rust]: https://doc.rust-lang.org/cargo/getting-started/installation.html
 [cron]: https://en.wikipedia.org/wiki/Cron#CRON_expression
