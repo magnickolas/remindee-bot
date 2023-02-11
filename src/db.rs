@@ -1,9 +1,9 @@
 use std::fs::OpenOptions;
+use std::path::PathBuf;
 
 use crate::entity::{cron_reminder, reminder, user_timezone};
 use crate::migration::{DbErr, Migrator, MigratorTrait};
 use chrono::Utc;
-use directories::BaseDirs;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Database as SeaOrmDatabase,
     DatabaseConnection, EntityTrait, QueryFilter, Set,
@@ -38,25 +38,12 @@ impl From<std::io::Error> for Error {
     }
 }
 
-async fn get_db_pool() -> Result<DatabaseConnection, Error> {
-    let base_dirs = BaseDirs::new();
-    let db_name = "remindee_db.sqlite";
-    let db_path = std::env::var_os("REMINDEE_DB")
-        .map(Into::into)
-        .unwrap_or_else(|| {
-            if std::env::consts::OS != "android" {
-                base_dirs
-                    .map(|x| x.data_dir().join(db_name))
-                    .unwrap_or_else(|| db_name.into())
-            } else {
-                db_name.into()
-            }
-        });
+async fn get_db_pool(db_path: &PathBuf) -> Result<DatabaseConnection, Error> {
     OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
-        .open(&db_path)?;
+        .open(db_path)?;
     let db_str = format!("sqlite:{}", db_path.display());
     let pool = SeaOrmDatabase::connect(&db_str).await?;
     Ok(pool)
@@ -68,8 +55,8 @@ pub struct Database {
 }
 
 impl Database {
-    pub async fn new() -> Result<Self, Error> {
-        get_db_pool().await.map(|pool| Self { pool })
+    pub async fn new(db_path: &PathBuf) -> Result<Self, Error> {
+        get_db_pool(db_path).await.map(|pool| Self { pool })
     }
 
     pub async fn apply_migrations(&self) -> Result<(), Error> {

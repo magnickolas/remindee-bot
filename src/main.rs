@@ -3,6 +3,7 @@ extern crate lazy_static;
 extern crate pretty_env_logger;
 
 mod bot;
+mod cli;
 mod controller;
 mod date;
 mod db;

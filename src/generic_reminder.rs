@@ -8,6 +8,8 @@ use teloxide::types::ChatId;
 use teloxide::types::UserId;
 use teloxide::utils::markdown::{bold, escape};
 
+/// Interface to grab reminders of different types together
+/// to format, display, sort or get attributes
 pub trait GenericReminder {
     fn get_time(&self) -> NaiveDateTime;
     fn get_id(&self) -> Option<i64>;

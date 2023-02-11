@@ -1,3 +1,4 @@
+use crate::cli::CLI;
 use crate::controller::{TgCallbackController, TgMessageController};
 use crate::db::Database;
 use crate::entity::{cron_reminder, reminder};
@@ -96,10 +97,15 @@ async fn send_cron_reminder(
         .map_err(From::from)
 }
 
-/// Iterate every second all reminders and send notifications if time's come
-async fn reminders_pooling(db: &Database, bot: Bot) {
+/// Periodically (every second) check for new reminders.
+/// Send and delete one-time reminders if time has come.
+/// Send cron reminders if time has come and update next reminder time.
+async fn poll_reminders(db: &Database, bot: Bot) {
     loop {
-        let reminders = db.get_active_reminders().await.unwrap();
+        let reminders = db
+            .get_active_reminders()
+            .await
+            .expect("Failed to get reminders from database");
         for reminder in reminders {
             if let Some(user_id) = reminder.user_id.map(|x| UserId(x as u64)) {
                 if let Ok(Some(user_timezone)) =
@@ -117,7 +123,10 @@ async fn reminders_pooling(db: &Database, bot: Bot) {
                 }
             }
         }
-        let cron_reminders = db.get_active_cron_reminders().await.unwrap();
+        let cron_reminders = db
+            .get_active_cron_reminders()
+            .await
+            .expect("Failed to get cron reminders from database");
         for cron_reminder in cron_reminders {
             if let Some(user_id) =
                 cron_reminder.user_id.map(|x| UserId(x as u64))
@@ -175,34 +184,34 @@ async fn reminders_pooling(db: &Database, bot: Bot) {
     }
 }
 
-fn set_token(token: &str) {
-    std::env::set_var("TELOXIDE_TOKEN", token);
-}
-
-// Create static async_once database pool
 lazy_static! {
-    static ref DATABASE: AsyncOnce<Database> =
-        AsyncOnce::new(async { Database::new().await.unwrap() });
+    /// A singleton database with a pool connection
+    /// that can be shared between threads
+    static ref DATABASE: AsyncOnce<Database> = AsyncOnce::new(async {
+        Database::new(&CLI.database)
+            .await
+            .unwrap_or_else(|err| panic!("Failed to connect to database {:?}: {}", CLI.database, err))
+    });
 }
 
 pub async fn run() {
     pretty_env_logger::init();
-    log::info!("Starting remindee bot!");
+    log::info!("Starting remindee-bot!");
 
-    // Create necessary database tables if they do not exist
-    DATABASE.get().await.apply_migrations().await.unwrap();
+    DATABASE
+        .get()
+        .await
+        .apply_migrations()
+        .await
+        .expect("Failed to apply migrations");
 
-    // Set token from an environment variable
-    let token = std::env::var("BOT_TOKEN")
-        .expect("Environment variable BOT_TOKEN is not set");
-    set_token(&token);
-    let bot = Bot::from_env();
+    let bot = Bot::new(&CLI.token);
 
-    // Set bot commands
-    bot.set_my_commands(Command::bot_commands()).await.unwrap();
+    bot.set_my_commands(Command::bot_commands())
+        .await
+        .expect("Failed to set bot commands");
 
-    // Run a database polling loop checking pending reminders asynchronously
-    tokio::spawn(reminders_pooling(DATABASE.get().await, bot.clone()));
+    tokio::spawn(poll_reminders(DATABASE.get().await, bot.clone()));
 
     let handler = dptree::entry()
         .branch(
