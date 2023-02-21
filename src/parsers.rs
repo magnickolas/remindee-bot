@@ -100,9 +100,11 @@ pub async fn parse_reminder(
                     date::days_in_month(month, year),
                     date::days_in_year(year),
                 ]
+                .map(Into::into)
                 .to_vec()
             } else {
                 [date::days_in_month(month, year), date::days_in_year(year)]
+                    .map(Into::into)
                     .to_vec()
             };
             for duration in durations.iter().map(|&x| Duration::days(x)) {
@@ -163,6 +165,7 @@ fn now_time() -> NaiveDateTime {
         NaiveDateTime::from_timestamp_opt(test::TEST_TIMESTAMP, 0).unwrap()
     }
 }
+
 #[cfg(test)]
 mod test {
     use super::*;
