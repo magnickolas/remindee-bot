@@ -1,0 +1,195 @@
+ws = _{ " " | "\t" | "\r" | "\n" }
+
+// --- literals ---
+year_unit   = _{ ^"y" ~ unit_hrsuffix }
+month_unit  = _{ ^"mo" ~ unit_hrsuffix }
+week_unit   = _{ ^"w" ~ unit_hrsuffix }
+day_unit    = _{ ^"d" ~ unit_hrsuffix }
+hour_unit   = _{ ^"h" ~ unit_hrsuffix }
+minute_unit = _{ ^"m" ~ unit_hrsuffix }
+second_unit = _{ ^"s" ~ unit_hrsuffix }
+
+monday    = @{ ^"mon" ~ ^"day"? }
+tuesday   = @{ ^"tue" ~ ^"sday"? }
+wednesday = @{ ^"wed" ~ ^"nesday"? }
+thursday  = @{ ^"thu" ~ ^"rsday"? }
+friday    = @{ ^"fri" ~ ^"day"? }
+saturday  = @{ ^"sat" ~ ^"urday"? }
+sunday    = @{ ^"sun" ~ ^"day"? }
+// ----------------
+
+// --- time point units ---
+day = @{
+    '1'..'2' ~ ASCII_DIGIT
+  | "3" ~ '0'..'1'
+  | "0"? ~ ASCII_NONZERO_DIGIT
+}
+month = @{
+    "1" ~ '0'..'2'
+  | "0"? ~ ASCII_NONZERO_DIGIT
+}
+year = @{ ASCII_DIGIT{4} }
+
+hour = @{ 
+    ("2" ~ '0'..'3')
+  | ('0'..'1' ~ ASCII_DIGIT)
+}
+minute_or_second = _{ '0'..'5' ~ '0'..'9' }
+minute = @{ minute_or_second }
+second = @{ minute_or_second }
+
+weekday = _{
+    monday
+  | tuesday
+  | wednesday
+  | thursday
+  | friday
+  | saturday
+  | sunday
+}
+// ------------------------
+
+// --- human-readable sugar ---
+interval_divisor_hrprefix = _{ ("/" | ^"every") ~ ws* }
+time_divisor_hrprefix     = _{ ("/" | ^"every") ~ ws* }
+time_hrprefix             = _{ ^"at"? ~ ws* }
+countdown_hrprefix        = _{ (^"after" | ^"in" | "+")? ~ ws* }
+weekdays_divisor_hrprefix = _{ ("/" | ^"every" | ^"on")? ~ ws* }
+unit_hrsuffix             = _{ ASCII_ALPHA* }
+// ----------------------------
+
+// --- interval ---
+interval = ${
+    interval_component+
+}
+interval_component = _{
+    interval_component_years
+  | interval_component_months
+  | interval_component_weeks
+  | interval_component_days
+  | interval_component_hours
+  | interval_component_minutes
+  | interval_component_seconds
+}
+time_interval = ${
+    time_interval_component+
+}
+time_interval_component = _{
+    interval_component_hours
+  | interval_component_minutes
+  | interval_component_seconds
+}
+
+interval_component_years   = _{ interval_years   ~ year_unit }
+interval_component_months  = _{ interval_months  ~ month_unit }
+interval_component_weeks   = _{ interval_weeks   ~ week_unit }
+interval_component_days    = _{ interval_days    ~ day_unit }
+interval_component_hours   = _{ interval_hours   ~ hour_unit }
+interval_component_minutes = _{ interval_minutes ~ minute_unit }
+interval_component_seconds = _{ interval_seconds ~ second_unit }
+
+interval_value   = @{ ASCII_DIGIT+ }
+interval_years   = @{ interval_value }
+interval_months  = @{ interval_value }
+interval_weeks   = @{ interval_value }
+interval_days    = @{ interval_value }
+interval_hours   = @{ interval_value }
+interval_minutes = @{ interval_value }
+interval_seconds = @{ interval_value }
+// ----------------
+
+// --- date and time formats ---
+// accept both year/month/day and day.month.year formats
+date = _{
+    ( ( year ~ "/" )? ~ month ~ "/" )? ~ day ~ !"."
+  | day ~ ( "." ~ month ~ ( "." ~ year )? )?
+}
+time = _{
+    hour ~ ( ":" ~ minute ~ ( ":" ~ second )? )?
+}
+// -----------------------------
+
+// --- date and time divisors ---
+date_divisor = _{
+    interval_divisor_hrprefix ~ interval
+  | weekdays_divisor_hrprefix ~ weekdays_ranges
+}
+time_divisor = _{
+    time_divisor_hrprefix
+    ~ time_interval
+}
+// ------------------------------
+
+// --- date and time ranges ---
+date_from  = ${ date }
+date_until = ${ date }
+dates_point = ${ date }
+dates_range = ${
+    date_divisor
+  | date_from? ~ "-" ~ date_until? ~ ws* ~ date_divisor
+  | date_from ~ ws* ~ date_divisor
+}
+dates_pattern = _{
+    dates_range | dates_point
+}
+dates_patterns = _{
+    dates_pattern ~ ("," ~ dates_pattern)*
+}
+
+time_from  = ${ time }
+time_until = ${ time }
+time_point = ${ time }
+time_range = ${
+    time_divisor
+  | time_from? ~ "-" ~ time_until? ~ ws* ~ time_divisor
+  | time_from ~ ws* ~ time_divisor
+}
+time_pattern = _{
+    time_range | time_point
+}
+time_patterns = _{
+    time_hrprefix
+  ~ time_pattern ~ ("," ~ time_pattern)*
+}
+
+weekday_from = ${ weekday }
+weekday_to   = ${ weekday }
+weekdays_range = ${
+    weekday_from ~ ("-" ~ weekday_to)?
+}
+weekdays_ranges = _{
+    weekdays_range ~ ("," ~ weekdays_range)*
+}
+// ----------------------------
+
+// --- reminder patterns ---
+// &(ws | EOI) looks ahead to not match
+// if there are no spaces between recurrence and description
+period = ${
+    interval_divisor_hrprefix ~ interval
+}
+recurrence = ${
+    (dates_patterns ~ ws+)? ~ time_patterns ~ &(ws | EOI)
+}
+countdown = ${
+    countdown_hrprefix
+    ~ interval ~ &(ws | EOI)
+}
+reminder_pattern = _{
+    recurrence | countdown | period
+}
+// ------------------
+
+// --- description ---
+// match non-empty sequence of words
+// until trailing whitespace sequence (exclusive)
+description_word = _{ (!ws ~ ANY)+ }
+description = @{ description_word ~ (ws* ~ description_word)* }
+// -------------------
+
+reminder = ${
+    SOI
+    ~ ws* ~ reminder_pattern 
+    ~ ws* ~ description?
+    ~ ws* ~ EOI
+} 

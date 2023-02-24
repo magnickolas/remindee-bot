@@ -38,7 +38,7 @@ pub fn add_interval(
     time: &NaiveDateTime,
     interval: &Interval,
 ) -> NaiveDateTime {
-    add_months(&time, interval.months + interval.years * 12)
+    add_months(time, interval.months + interval.years * 12)
         + chrono::Duration::weeks(interval.weeks as i64)
         + chrono::Duration::days(interval.days as i64)
         + chrono::Duration::hours(interval.hours as i64)
