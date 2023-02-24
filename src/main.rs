@@ -12,6 +12,7 @@ mod err;
 mod generic_reminder;
 mod migration;
 mod parsers;
+mod recurrence;
 mod tg;
 mod tz;
 
