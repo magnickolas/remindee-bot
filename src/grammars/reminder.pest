@@ -1,22 +1,25 @@
 ws = _{ " " | "\t" | "\r" | "\n" }
 
 // --- literals ---
-year_unit   = _{ ^"y" ~ unit_hrsuffix }
-month_unit  = _{ ^"mo" ~ unit_hrsuffix }
-week_unit   = _{ ^"w" ~ unit_hrsuffix }
-day_unit    = _{ ^"d" ~ unit_hrsuffix }
-hour_unit   = _{ ^"h" ~ unit_hrsuffix }
-minute_unit = _{ ^"m" ~ unit_hrsuffix }
-second_unit = _{ ^"s" ~ unit_hrsuffix }
-date_month_unit  = _{ ^"m" ~ unit_hrsuffix }
+year_unit   = _{ ^"y"~(^"e"~(^"a"~(^"r"~(^"s"?)?)?)?)? }
+month_unit  = _{ ^"mo"~(^"n"~(^"t"~(^"h"~(^"s"?)?)?)?)? }
+week_unit   = _{ ^"w"~(^"e"~(^"e"~(^"k"~(^"s"?)?)?)?)? }
+day_unit    = _{ ^"d"~(^"a"~(^"y"~(^"s"?)?)?)? }
+hour_unit   = _{ ^"h"~(^"o"~(^"u"~(^"r"~(^"s"?)?)?)?)? }
+minute_unit = _{
+    ^"m"~(^"i"~(^"n"~(^"s"?)?)?)?
+  | ^"m"~(^"i"~(^"n"~(^"u"~(^"t"~(^"e"~(^"s"?)?)?)?)?)?)?
+}
+second_unit = _{ ^"s"~(^"e"~(^"c"~(^"o"~(^"n"~(^"d"~(^"s"?)?)?)?)?)?)? }
+date_month_unit  = _{ ^"m"~(^"o"~(^"n"~(^"t"~(^"h"~(^"s"?)?)?)?)?)? }
 
-monday    = @{ ^"mon" ~ ^"day"? }
-tuesday   = @{ ^"tue" ~ ^"sday"? }
-wednesday = @{ ^"wed" ~ ^"nesday"? }
-thursday  = @{ ^"thu" ~ ^"rsday"? }
-friday    = @{ ^"fri" ~ ^"day"? }
-saturday  = @{ ^"sat" ~ ^"urday"? }
-sunday    = @{ ^"sun" ~ ^"day"? }
+monday = @{ ^"m"~(^"o"~(^"n"~(^"d"~(^"a"~^"y"?)?)?)?)? }
+tuesday = @{ ^"tu"~(^"e"~(^"s"~(^"d"~(^"a"~^"y"?)?)?)?)? }
+wednesday = @{ ^"w"~(^"e"~(^"d"~(^"n"~(^"e"~(^"s"~(^"d"~(^"a"~^"y"?)?)?)?)?)?)?)? }
+thursday = @{ ^"th"~(^"u"~(^"r"~(^"s"~(^"d"~(^"a"~^"y"?)?)?)?)?)? }
+friday = @{ ^"f"~(^"r"~(^"i"~(^"d"~(^"a"~^"y"?)?)?)?)? }
+saturday = @{ ^"sa"~(^"t"~(^"u"~(^"r"~(^"d"~(^"a"~^"y"?)?)?)?)?)? }
+sunday = @{ ^"su"~(^"n"~(^"d"~(^"a"~^"y"?)?)?)? }
 // ----------------
 
 // --- time point units ---
@@ -57,7 +60,6 @@ time_divisor_hrprefix     = _{ ("/" | ^"every") ~ ws* }
 time_hrprefix             = _{ ^"at"? ~ ws* }
 countdown_hrprefix        = _{ (^"after" | ^"in" | "+")? ~ ws* }
 weekdays_divisor_hrprefix = _{ ("/" | ^"every" | ^"on")? ~ ws* }
-unit_hrsuffix             = _{ ASCII_ALPHA* }
 // ----------------------------
 
 // --- interval ---
@@ -100,7 +102,7 @@ interval_component_minutes = _{ interval_minutes ~ minute_unit }
 interval_component_seconds = _{ interval_seconds ~ second_unit }
 date_interval_component_months  = _{ interval_months  ~ date_month_unit }
 
-interval_value   = @{ ASCII_DIGIT+ }
+interval_value   = @{ ASCII_NONZERO_DIGIT+ }
 interval_years   = @{ interval_value }
 interval_months  = @{ interval_value }
 interval_weeks   = @{ interval_value }
