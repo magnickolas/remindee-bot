@@ -564,3 +564,42 @@ impl Pattern {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{grammar::parse_reminder, parsers::test::TEST_TIMESTAMP};
+
+    use super::*;
+
+    lazy_static! {
+        static ref TEST_TZ: Tz = "Europe/Amsterdam".parse::<Tz>().unwrap();
+        static ref TEST_TIME: DateTime<Tz> =
+            TEST_TZ.with_ymd_and_hms(2007, 2, 2, 12, 30, 30).unwrap();
+    }
+
+    fn get_all_times(
+        mut pattern: Pattern,
+    ) -> impl Iterator<Item = NaiveDateTime> {
+        let cur = now_time();
+        std::iter::successors(Some(cur), move |&cur| pattern.next(cur))
+            .skip(1)
+            .map(|x| TEST_TZ.from_utc_datetime(&x).naive_local())
+    }
+
+    #[test]
+    fn test_countdown() {
+        let s = "1h2m3s";
+        let parsed = parse_reminder(s).unwrap().pattern.unwrap();
+        let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
+        assert_eq!(
+            get_all_times(pattern).collect::<Vec<_>>(),
+            vec![TEST_TZ
+                .with_ymd_and_hms(2007, 2, 2, 13, 32, 33)
+                .unwrap()
+                .naive_local()]
+        );
+    }
+}

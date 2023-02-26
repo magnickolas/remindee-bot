@@ -167,7 +167,7 @@ pub fn now_time() -> NaiveDateTime {
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use super::*;
     use test_case::test_case;
     extern crate strfmt;
