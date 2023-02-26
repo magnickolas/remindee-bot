@@ -1,4 +1,5 @@
 use bitmask_enum::bitmask;
+use nonempty::{nonempty, NonEmpty};
 
 use pest::{iterators::Pair, Parser};
 
@@ -7,21 +8,21 @@ use pest::{iterators::Pair, Parser};
 struct ReminderParser;
 
 #[derive(Debug, Default)]
-struct HoleyDate {
-    year: Option<u32>,
-    month: Option<u32>,
-    day: Option<u32>,
+pub struct HoleyDate {
+    pub year: Option<i32>,
+    pub month: Option<u32>,
+    pub day: Option<u32>,
 }
 
 #[derive(Debug, Default)]
-struct Interval {
-    years: u32,
-    months: u32,
-    weeks: u32,
-    days: u32,
-    hours: u32,
-    minutes: u32,
-    seconds: u32,
+pub struct Interval {
+    pub years: i32,
+    pub months: u32,
+    pub weeks: u32,
+    pub days: u32,
+    pub hours: u32,
+    pub minutes: u32,
+    pub seconds: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -36,7 +37,7 @@ enum Weekday {
 }
 
 #[bitmask(u8)]
-enum Weekdays {
+pub enum Weekdays {
     Monday,
     Tuesday,
     Wednesday,
@@ -47,69 +48,90 @@ enum Weekdays {
 }
 
 #[derive(Debug)]
-enum DateDivisor {
+pub enum DateDivisor {
     Weekdays(Weekdays),
-    Interval(Interval),
-}
-
-#[derive(Debug, Default)]
-struct DateRange {
-    from: Option<HoleyDate>,
-    until: Option<HoleyDate>,
-    date_divisor: Option<DateDivisor>,
+    Interval(DateInterval),
 }
 
 #[derive(Debug)]
-enum DatePattern {
+pub struct DateRange {
+    pub from: HoleyDate,
+    pub until: Option<HoleyDate>,
+    pub date_divisor: DateDivisor,
+}
+
+impl Default for DateRange {
+    fn default() -> Self {
+        Self {
+            date_divisor: DateDivisor::Interval(DateInterval {
+                days: 1,
+                ..Default::default()
+            }),
+            from: Default::default(),
+            until: None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum DatePattern {
     Point(HoleyDate),
     Range(DateRange),
 }
 
 #[derive(Debug, Default)]
-struct Time {
-    hour: u32,
-    minute: u32,
-    second: u32,
+pub struct Time {
+    pub hour: u32,
+    pub minute: u32,
+    pub second: u32,
 }
 
 #[derive(Debug, Default)]
-struct TimeInterval {
-    hours: u32,
-    minutes: u32,
-    seconds: u32,
+pub struct TimeInterval {
+    pub hours: u32,
+    pub minutes: u32,
+    pub seconds: u32,
 }
 
 #[derive(Debug, Default)]
-struct TimeRange {
-    from: Option<Time>,
-    until: Option<Time>,
-    interval: TimeInterval,
+pub struct DateInterval {
+    pub years: i32,
+    pub months: u32,
+    pub weeks: u32,
+    pub days: u32,
+}
+
+#[derive(Debug, Default)]
+pub struct TimeRange {
+    pub from: Option<Time>,
+    pub until: Option<Time>,
+    pub interval: TimeInterval,
 }
 
 #[derive(Debug)]
-enum TimePattern {
+pub enum TimePattern {
     Point(Time),
     Range(TimeRange),
 }
 
-#[derive(Debug, Default)]
-struct Recurrence {
-    dates_patterns: Vec<DatePattern>,
-    time_patterns: Option<Vec<TimePattern>>,
+#[derive(Debug)]
+pub struct Recurrence {
+    pub dates_patterns: NonEmpty<DatePattern>,
+    pub time_patterns: Vec<TimePattern>,
 }
 
 #[derive(Debug, Default)]
-struct Countdown {
-    duration: Interval,
+pub struct Countdown {
+    pub duration: Interval,
 }
 
 #[derive(Debug, Default)]
-struct Period {
-    duration: Interval,
+pub struct Period {
+    pub duration: Interval,
 }
 
 #[derive(Debug)]
-enum ReminderPattern {
+pub enum ReminderPattern {
     Recurrence(Recurrence),
     Countdown(Countdown),
     Period(Period),
@@ -117,12 +139,12 @@ enum ReminderPattern {
 
 #[derive(Debug, Default)]
 pub struct Reminder {
-    description: Option<Description>,
-    pattern: Option<ReminderPattern>,
+    pub description: Option<Description>,
+    pub pattern: Option<ReminderPattern>,
 }
 
 #[derive(Debug, Default)]
-struct Description(String);
+pub struct Description(String);
 
 trait Parse {
     fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()>
@@ -258,25 +280,28 @@ impl Parse for DateRange {
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::date_from => {
-                    range.from = Some(HoleyDate::parse(rec)?);
+                    range.from = HoleyDate::parse(rec)?;
                 }
                 Rule::date_until => {
                     range.until = Some(HoleyDate::parse(rec)?);
                 }
-                Rule::interval => {
+                Rule::date_interval => {
                     range.date_divisor =
-                        Some(DateDivisor::Interval(Interval::parse(rec)?));
+                        DateDivisor::Interval(DateInterval::parse(rec)?);
                 }
                 Rule::weekdays_range => {
-                    if range.date_divisor.is_none() {
-                        range.date_divisor =
-                            Some(DateDivisor::Weekdays(Weekdays::none()));
-                    }
-                    if let Some(DateDivisor::Weekdays(ref mut w)) =
-                        range.date_divisor
-                    {
-                        *w |= Weekdays::parse(rec)?;
-                    }
+                    let weekdays = match range.date_divisor {
+                        DateDivisor::Weekdays(ref mut w) => w,
+                        _ => {
+                            range.date_divisor =
+                                DateDivisor::Weekdays(Weekdays::none());
+                            match range.date_divisor {
+                                DateDivisor::Weekdays(ref mut w) => w,
+                                _ => unreachable!(),
+                            }
+                        }
+                    };
+                    *weekdays |= Weekdays::parse(rec)?;
                 }
                 _ => unreachable!(),
             }
@@ -330,6 +355,30 @@ impl Parse for TimeInterval {
     }
 }
 
+impl Parse for DateInterval {
+    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
+        let mut int = Self::default();
+        for rec in pair.into_inner() {
+            match rec.as_rule() {
+                Rule::interval_years => {
+                    int.years = rec.as_str().parse().map_err(|_| ())?;
+                }
+                Rule::interval_months => {
+                    int.months = rec.as_str().parse().map_err(|_| ())?;
+                }
+                Rule::interval_weeks => {
+                    int.weeks = rec.as_str().parse().map_err(|_| ())?;
+                }
+                Rule::interval_days => {
+                    int.days = rec.as_str().parse().map_err(|_| ())?;
+                }
+                _ => unreachable!(),
+            }
+        }
+        Ok(int)
+    }
+}
+
 impl Parse for TimeRange {
     fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
         let mut range = Self::default();
@@ -351,12 +400,14 @@ impl Parse for TimeRange {
     }
 }
 
-impl Recurrence {
-    fn extend_time_patterns(&mut self, time_pattern: TimePattern) {
-        if self.time_patterns.is_none() {
-            self.time_patterns = Some(vec![]);
+impl Default for Recurrence {
+    fn default() -> Self {
+        // make sure there's at least one date range
+        // the inserted holey range will correspond to the current date point
+        Self {
+            dates_patterns: nonempty![DatePattern::Point(HoleyDate::default())],
+            time_patterns: vec![],
         }
-        self.time_patterns.as_mut().unwrap().push(time_pattern);
     }
 }
 
@@ -376,24 +427,21 @@ impl Parse for Recurrence {
                         .push(DatePattern::Range(DateRange::parse(rec)?));
                 }
                 Rule::time_point => {
-                    recur.extend_time_patterns(TimePattern::Point(
-                        Time::parse(rec)?,
-                    ));
+                    recur
+                        .time_patterns
+                        .push(TimePattern::Point(Time::parse(rec)?));
                 }
                 Rule::time_range => {
-                    recur.extend_time_patterns(TimePattern::Range(
-                        TimeRange::parse(rec)?,
-                    ));
+                    recur
+                        .time_patterns
+                        .push(TimePattern::Range(TimeRange::parse(rec)?));
                 }
                 _ => unreachable!(),
             }
         }
-        // make sure there's at least one date range
-        // the inserted holey range will correspond to the current date point
-        if recur.dates_patterns.is_empty() {
-            recur
-                .dates_patterns
-                .push(DatePattern::Point(HoleyDate::default()));
+        if recur.dates_patterns.len() > 1 {
+            recur.dates_patterns =
+                NonEmpty::from_vec(recur.dates_patterns.tail).unwrap();
         }
         Ok(recur)
     }
@@ -468,7 +516,10 @@ impl Parse for Reminder {
 pub fn parse_reminder(s: &str) -> Result<Reminder, ()> {
     Reminder::parse(
         ReminderParser::parse(Rule::reminder, s)
-            .map_err(|_| ())?
+            .map_err(|err| {
+                dbg!(err);
+                ()
+            })?
             .next()
             .ok_or(())?,
     )

@@ -1454,6 +1454,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "nonempty"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aeaf4ad7403de93e699c191202f017118df734d3850b01e13a3a8b2e6953d3c9"
+
+[[package]]
 name = "num-bigint"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1961,6 +1967,7 @@ dependencies = [
  "directories",
  "lazy_static",
  "log",
+ "nonempty",
  "openssl",
  "pest",
  "pest_derive",
