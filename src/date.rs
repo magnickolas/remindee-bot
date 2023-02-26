@@ -2,6 +2,7 @@ use std::cmp::min;
 
 use crate::serializers::{DateInterval, Interval};
 use chrono::{Datelike, NaiveDate, NaiveDateTime};
+use nonempty::NonEmpty;
 
 fn is_leap_year(year: i32) -> bool {
     year % 4 == 0 && (year % 400 == 0 || year % 100 != 0)
@@ -60,6 +61,16 @@ pub fn add_date_interval(
         },
     )
     .date()
+}
+
+pub fn find_nearest_weekday(
+    mut date: NaiveDate,
+    weekdays: NonEmpty<u32>,
+) -> NaiveDate {
+    while !weekdays.contains(&date.weekday().num_days_from_monday()) {
+        date += chrono::Duration::days(1);
+    }
+    date
 }
 
 #[cfg(test)]

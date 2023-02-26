@@ -3,6 +3,7 @@ use chrono::offset::TimeZone;
 use chrono::prelude::*;
 use chrono::Duration;
 use chrono_tz::Tz;
+use nonempty::NonEmpty;
 use serde::{Deserialize, Serialize};
 
 use crate::date;
@@ -317,10 +318,23 @@ impl Recurrence {
             grammar::DatePattern::Point(date) => date,
             grammar::DatePattern::Range(range) => &range.from,
         };
+        let has_divisor = match recurrence.dates_patterns.first() {
+            grammar::DatePattern::Point(_) => false,
+            grammar::DatePattern::Range(_) => true,
+        };
+        let has_time_divisor = recurrence
+            .time_patterns
+            .iter()
+            .filter(|x| match x {
+                grammar::TimePattern::Point(_) => false,
+                grammar::TimePattern::Range(_) => true,
+            })
+            .count()
+            > 0;
         let mut init_time = fill_date_holes(first_date, lower_bound.date())
             .map(|x| x.and_time(first_time))
             .ok_or(())?;
-        if init_time < lower_bound {
+        if init_time < lower_bound && !has_divisor && !has_time_divisor {
             if first_date.day.is_none() {
                 init_time += Duration::days(1);
             } else if first_date.month.is_none() {
@@ -333,7 +347,7 @@ impl Recurrence {
                     Duration::days(date::days_in_year(init_time.year()).into());
             }
         }
-        assert!(init_time >= lower_bound);
+        assert!(has_divisor || has_time_divisor || init_time >= lower_bound);
         let mut cur_lower_bound = init_time.date();
         let mut dates_patterns = vec![];
         for pattern in recurrence.dates_patterns {
@@ -417,12 +431,12 @@ impl Recurrence {
                     } else {
                         let next_time = from
                             + Duration::seconds(
-                                (cur_time - from).num_seconds()
+                                ((cur_time - from).num_seconds()
                                     / Into::<Duration>::into(range.interval)
                                         .num_seconds()
-                                    * (Into::<Duration>::into(range.interval)
-                                        .num_seconds()
-                                        + 1),
+                                    + 1)
+                                    * Into::<Duration>::into(range.interval)
+                                        .num_seconds(),
                             );
                         if next_time > cur_time
                             && range
@@ -437,7 +451,7 @@ impl Recurrence {
                     }
                 }
             })
-            .next();
+            .min();
         if let Some(next_time) = next_time {
             return Some(cur_date.and_time(next_time));
         }
@@ -459,10 +473,20 @@ impl Recurrence {
                     } else {
                         let next_date = match range.date_divisor {
                             DateDivisor::Weekdays(weekdays) => {
-                                todo!()
+                                let weekdays = (0..7)
+                                    .filter(|i| weekdays.bits() & (1 << i) != 0)
+                                    .collect::<Vec<_>>();
+                                date::find_nearest_weekday(
+                                    cur_date + Duration::days(1),
+                                    NonEmpty::from_vec(weekdays).unwrap(),
+                                )
                             }
                             DateDivisor::Interval(int) => {
-                                date::add_date_interval(cur_date, &int)
+                                let mut from = from;
+                                while from <= cur_date {
+                                    from = date::add_date_interval(from, &int);
+                                }
+                                from
                             }
                         };
                         if range.until.map(|x| next_date <= x).unwrap_or(true) {
@@ -473,7 +497,8 @@ impl Recurrence {
                     }
                 }
             })
-            .next();
+            .min();
+
         next_date.map(|next_date| next_date.and_time(first_time))
     }
 }
