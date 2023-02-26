@@ -1,6 +1,6 @@
 use std::cmp::min;
 
-use crate::recurrence::Interval;
+use crate::serializers::{DateInterval, Interval};
 use chrono::{Datelike, NaiveDate, NaiveDateTime};
 
 fn is_leap_year(year: i32) -> bool {
@@ -24,7 +24,7 @@ pub fn days_in_year(year: i32) -> u32 {
     }
 }
 
-fn add_months(date: &NaiveDateTime, months: u32) -> NaiveDateTime {
+fn add_months(date: NaiveDateTime, months: u32) -> NaiveDateTime {
     let total_months = (date.month() - 1) + months; // 1-indexed => 0-indexed
     let year = date.year() + total_months as i32 / 12;
     let month = total_months % 12 + 1; // 0-indexed => 1-indexed
@@ -34,16 +34,32 @@ fn add_months(date: &NaiveDateTime, months: u32) -> NaiveDateTime {
         .and_time(date.time())
 }
 
-pub fn add_interval(
-    time: &NaiveDateTime,
-    interval: &Interval,
-) -> NaiveDateTime {
-    add_months(time, interval.months + interval.years * 12)
+pub fn add_interval(time: NaiveDateTime, interval: &Interval) -> NaiveDateTime {
+    add_months(time, interval.months + interval.years as u32 * 12)
         + chrono::Duration::weeks(interval.weeks as i64)
         + chrono::Duration::days(interval.days as i64)
         + chrono::Duration::hours(interval.hours as i64)
         + chrono::Duration::minutes(interval.minutes as i64)
         + chrono::Duration::seconds(interval.seconds as i64)
+}
+
+pub fn add_date_interval(
+    date: NaiveDate,
+    interval: &DateInterval,
+) -> NaiveDate {
+    add_interval(
+        date.and_hms_opt(0, 0, 0).unwrap(),
+        &Interval {
+            years: interval.years,
+            months: interval.months,
+            weeks: interval.weeks,
+            days: interval.days,
+            hours: 0,
+            minutes: 0,
+            seconds: 0,
+        },
+    )
+    .date()
 }
 
 #[cfg(test)]
@@ -122,7 +138,7 @@ mod test {
             NaiveDate::from_ymd_opt(year, month, day).unwrap(),
             NaiveTime::from_hms_opt(hour, minute, second).unwrap(),
         );
-        let result = add_interval(&datetime, &interval);
+        let result = add_interval(datetime, &interval);
         Time(
             result.year(),
             result.month(),
