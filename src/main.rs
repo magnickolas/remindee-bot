@@ -16,7 +16,7 @@ mod generic_reminder;
 mod grammar;
 mod migration;
 mod parsers;
-mod recurrence;
+mod serializers;
 mod tg;
 mod tz;
 

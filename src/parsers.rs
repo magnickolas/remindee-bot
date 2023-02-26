@@ -23,7 +23,7 @@ impl ReminderRegexFields {
 }
 
 #[cfg(not(test))]
-fn now_time() -> NaiveDateTime {
+pub fn now_time() -> NaiveDateTime {
     Utc::now().naive_utc()
 }
 
@@ -160,7 +160,7 @@ pub async fn parse_cron_reminder(
 }
 
 #[cfg(test)]
-fn now_time() -> NaiveDateTime {
+pub fn now_time() -> NaiveDateTime {
     unsafe {
         NaiveDateTime::from_timestamp_opt(test::TEST_TIMESTAMP, 0).unwrap()
     }
