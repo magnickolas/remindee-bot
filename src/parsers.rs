@@ -175,8 +175,8 @@ pub mod test {
     use strfmt::strfmt;
 
     lazy_static! {
-        static ref TEST_TZ: Tz = "Europe/Moscow".parse::<Tz>().unwrap();
-        static ref TEST_TIME: DateTime<Tz> =
+        pub static ref TEST_TZ: Tz = "Europe/Moscow".parse::<Tz>().unwrap();
+        pub static ref TEST_TIME: DateTime<Tz> =
             TEST_TZ.with_ymd_and_hms(2007, 2, 2, 12, 30, 30).unwrap();
     }
 

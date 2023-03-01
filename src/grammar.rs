@@ -138,7 +138,7 @@ pub struct Reminder {
 }
 
 #[derive(Debug, Default)]
-pub struct Description(String);
+pub struct Description(pub String);
 
 trait Parse {
     fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()>

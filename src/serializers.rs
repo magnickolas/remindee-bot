@@ -587,15 +587,13 @@ impl Pattern {
 
 #[cfg(test)]
 mod test {
-    use crate::{grammar::parse_reminder, parsers::test::TEST_TIMESTAMP};
+    use crate::{
+        grammar::parse_reminder,
+        parsers::test::TEST_TZ,
+        parsers::test::{TEST_TIME, TEST_TIMESTAMP},
+    };
 
     use super::*;
-
-    lazy_static! {
-        static ref TEST_TZ: Tz = "Europe/Amsterdam".parse::<Tz>().unwrap();
-        static ref TEST_TIME: DateTime<Tz> =
-            TEST_TZ.with_ymd_and_hms(2007, 2, 2, 12, 30, 30).unwrap();
-    }
 
     fn get_all_times(
         mut pattern: Pattern,
@@ -606,20 +604,234 @@ mod test {
             .map(|x| TEST_TZ.from_utc_datetime(&x).naive_local())
     }
 
+    fn tz(
+        year: i32,
+        month: u32,
+        day: u32,
+        hour: u32,
+        min: u32,
+        sec: u32,
+    ) -> NaiveDateTime {
+        TEST_TZ
+            .with_ymd_and_hms(year, month, day, hour, min, sec)
+            .unwrap()
+            .naive_local()
+    }
+
     #[test]
     fn test_countdown() {
-        let s = "1h2m3s";
-        let parsed = parse_reminder(s).unwrap().pattern.unwrap();
+        let s = "1w1h2m3s countdown";
+        let parsed_rem = parse_reminder(s).unwrap();
+        assert_eq!(
+            parsed_rem.description.map(|x| x.0),
+            Some("countdown".to_owned())
+        );
+        let parsed = parsed_rem.pattern.unwrap();
         let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
         unsafe {
             TEST_TIMESTAMP = TEST_TIME.timestamp();
         }
         assert_eq!(
             get_all_times(pattern).collect::<Vec<_>>(),
-            vec![TEST_TZ
-                .with_ymd_and_hms(2007, 2, 2, 13, 32, 33)
-                .unwrap()
-                .naive_local()]
+            vec![tz(2007, 2, 9, 13, 32, 33)]
+        );
+    }
+
+    #[test]
+    fn test_periodic() {
+        let s = "- 11-18/1h periodic";
+        let parsed_rem = parse_reminder(s).unwrap();
+        assert_eq!(
+            parsed_rem.description.map(|x| x.0),
+            Some("periodic".to_owned())
+        );
+        let parsed = parsed_rem.pattern.unwrap();
+        let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
+        assert_eq!(
+            get_all_times(pattern).take(15).collect::<Vec<_>>(),
+            vec![
+                tz(2007, 2, 2, 13, 0, 0),
+                tz(2007, 2, 2, 14, 0, 0),
+                tz(2007, 2, 2, 15, 0, 0),
+                tz(2007, 2, 2, 16, 0, 0),
+                tz(2007, 2, 2, 17, 0, 0),
+                tz(2007, 2, 2, 18, 0, 0),
+                tz(2007, 2, 3, 11, 0, 0),
+                tz(2007, 2, 3, 12, 0, 0),
+                tz(2007, 2, 3, 13, 0, 0),
+                tz(2007, 2, 3, 14, 0, 0),
+                tz(2007, 2, 3, 15, 0, 0),
+                tz(2007, 2, 3, 16, 0, 0),
+                tz(2007, 2, 3, 17, 0, 0),
+                tz(2007, 2, 3, 18, 0, 0),
+                tz(2007, 2, 4, 11, 0, 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_date_range() {
+        let s = "3-6/2d 13:37 date range";
+        let parsed_rem = parse_reminder(s).unwrap();
+        assert_eq!(
+            parsed_rem.description.map(|x| x.0),
+            Some("date range".to_owned())
+        );
+        let parsed = parsed_rem.pattern.unwrap();
+        let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
+        assert_eq!(
+            get_all_times(pattern).collect::<Vec<_>>(),
+            vec![tz(2007, 2, 3, 13, 37, 0), tz(2007, 2, 5, 13, 37, 0),]
+        );
+    }
+
+    #[test]
+    fn test_date_format1() {
+        let s = "07.06.2025 13:37";
+        let parsed_rem = parse_reminder(s).unwrap();
+        assert_eq!(parsed_rem.description.map(|x| x.0), None);
+        let parsed = parsed_rem.pattern.unwrap();
+        let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
+        assert_eq!(
+            get_all_times(pattern).collect::<Vec<_>>(),
+            vec![tz(2025, 6, 7, 13, 37, 0)]
+        );
+    }
+
+    #[test]
+    fn test_date_format2() {
+        let s = "2025/06/07 13:37 date format2";
+        let parsed_rem = parse_reminder(s).unwrap();
+        assert_eq!(
+            parsed_rem.description.map(|x| x.0),
+            Some("date format2".to_owned())
+        );
+        let parsed = parsed_rem.pattern.unwrap();
+        let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
+        assert_eq!(
+            get_all_times(pattern).collect::<Vec<_>>(),
+            vec![tz(2025, 6, 7, 13, 37, 0)]
+        );
+    }
+
+    #[test]
+    fn test_end_of_month_increment() {
+        let s = "12/31/1MONTH 13:37 end of month";
+        let parsed_rem = parse_reminder(s).unwrap();
+        assert_eq!(
+            parsed_rem.description.map(|x| x.0),
+            Some("end of month".to_owned())
+        );
+        let parsed = parsed_rem.pattern.unwrap();
+        let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
+        assert_eq!(
+            get_all_times(pattern).take(16).collect::<Vec<_>>(),
+            vec![
+                tz(2007, 12, 31, 13, 37, 0),
+                tz(2008, 1, 31, 13, 37, 0),
+                tz(2008, 2, 29, 13, 37, 0),
+                tz(2008, 3, 29, 13, 37, 0),
+                tz(2008, 4, 29, 13, 37, 0),
+                tz(2008, 5, 29, 13, 37, 0),
+                tz(2008, 6, 29, 13, 37, 0),
+                tz(2008, 7, 29, 13, 37, 0),
+                tz(2008, 8, 29, 13, 37, 0),
+                tz(2008, 9, 29, 13, 37, 0),
+                tz(2008, 10, 29, 13, 37, 0),
+                tz(2008, 11, 29, 13, 37, 0),
+                tz(2008, 12, 29, 13, 37, 0),
+                tz(2009, 1, 29, 13, 37, 0),
+                tz(2009, 2, 28, 13, 37, 0),
+                tz(2009, 3, 28, 13, 37, 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_weekdays() {
+        let s = "/fri,mon 11:00 weekdays";
+        let parsed_rem = parse_reminder(s).unwrap();
+        assert_eq!(
+            parsed_rem.description.map(|x| x.0),
+            Some("weekdays".to_owned())
+        );
+        let parsed = parsed_rem.pattern.unwrap();
+        let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
+        assert_eq!(
+            get_all_times(pattern).take(4).collect::<Vec<_>>(),
+            vec![
+                tz(2007, 2, 5, 11, 0, 0),
+                tz(2007, 2, 9, 11, 0, 0),
+                tz(2007, 2, 12, 11, 0, 0),
+                tz(2007, 2, 16, 11, 0, 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_weekdays_ranges() {
+        let s = "/fri-mon,wed 15:00:20 weekdays ranges";
+        let parsed_rem = parse_reminder(s).unwrap();
+        assert_eq!(
+            parsed_rem.description.map(|x| x.0),
+            Some("weekdays ranges".to_owned())
+        );
+        let parsed = parsed_rem.pattern.unwrap();
+        let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
+        assert_eq!(
+            get_all_times(pattern).take(10).collect::<Vec<_>>(),
+            vec![
+                tz(2007, 2, 2, 15, 0, 20),
+                tz(2007, 2, 3, 15, 0, 20),
+                tz(2007, 2, 4, 15, 0, 20),
+                tz(2007, 2, 5, 15, 0, 20),
+                tz(2007, 2, 7, 15, 0, 20),
+                tz(2007, 2, 9, 15, 0, 20),
+                tz(2007, 2, 10, 15, 0, 20),
+                tz(2007, 2, 11, 15, 0, 20),
+                tz(2007, 2, 12, 15, 0, 20),
+                tz(2007, 2, 14, 15, 0, 20),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_description_trim() {
+        let s = "15:16     test    description   ";
+        let parsed_rem = parse_reminder(s).unwrap();
+        assert_eq!(
+            parsed_rem.description.map(|x| x.0),
+            Some("test    description".to_owned())
+        );
+        let parsed = parsed_rem.pattern.unwrap();
+        let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
+        assert_eq!(
+            get_all_times(pattern).collect::<Vec<_>>(),
+            vec![tz(2007, 2, 2, 15, 16, 0),]
         );
     }
 }
