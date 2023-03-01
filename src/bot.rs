@@ -15,7 +15,7 @@ use chrono_tz::Tz;
 use cron_parser::parse as parse_cron;
 use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, IntoActiveModel};
 use serde_json::{from_str, to_string};
-use std::cmp::min;
+use std::cmp::max;
 use std::time::Duration;
 use teloxide::{prelude::*, types::MessageId, utils::command::BotCommands};
 
@@ -119,7 +119,7 @@ async fn poll_reminders(db: &Database, bot: Bot) {
                     if let Some(ref serialized) = reminder.pattern {
                         let mut pattern: Pattern =
                             from_str(serialized).unwrap();
-                        let lower_bound = min(reminder.time, now_time());
+                        let lower_bound = max(reminder.time, now_time());
                         if let Some(next_time) = pattern.next(lower_bound) {
                             next_reminder = Some(reminder::Model {
                                 time: next_time,

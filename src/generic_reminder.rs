@@ -1,7 +1,9 @@
 use crate::entity::{cron_reminder, reminder};
+use crate::serializers::Pattern;
 use chrono::prelude::*;
 use chrono::Utc;
 use chrono_tz::Tz;
+use serde_json::from_str;
 use std::cmp::Ord;
 use std::cmp::Ordering;
 use teloxide::types::ChatId;
@@ -61,19 +63,39 @@ impl GenericReminder for reminder::ActiveModel {
     }
 
     fn to_unescaped_string(&self, user_timezone: Tz) -> String {
-        format!(
-            "{} <{}>",
+        let main_part = format!(
+            r"{} <{}>",
             self.serialize_time_unescaped(user_timezone),
             self.desc.clone().unwrap(),
-        )
+        );
+        match self.pattern.clone().unwrap() {
+            Some(ref s) => {
+                let pattern: Pattern = from_str(s).unwrap();
+                match pattern.to_string().as_str() {
+                    "" => main_part,
+                    s => format!(r"{} [{}]", main_part, s),
+                }
+            }
+            None => main_part,
+        }
     }
 
     fn to_string(&self, user_timezone: Tz) -> String {
-        format!(
+        let main_part = format!(
             r"{} <{}\>",
             self.serialize_time(user_timezone),
             bold(&escape(&self.desc.clone().unwrap())),
-        )
+        );
+        match self.pattern.clone().unwrap() {
+            Some(ref s) => {
+                let pattern: Pattern = from_str(s).unwrap();
+                match pattern.to_string().as_str() {
+                    "" => main_part,
+                    s => format!(r"{} \[{}\]", main_part, escape(s)),
+                }
+            }
+            None => main_part,
+        }
     }
 
     fn user_id(&self) -> Option<UserId> {

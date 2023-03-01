@@ -1,4 +1,5 @@
 use std::cmp::min;
+use std::fmt::Formatter;
 
 use bitmask_enum::bitmask;
 use chrono::offset::TimeZone;
@@ -612,6 +613,193 @@ impl Pattern {
             Self::Recurrence(recurrence) => recurrence.next(cur),
             Self::Countdown(countdown) => countdown.next(cur),
         }
+    }
+}
+
+impl std::fmt::Display for Pattern {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Recurrence(recurrence) => recurrence.fmt(f),
+            Self::Countdown(countdown) => countdown.fmt(f),
+        }
+    }
+}
+
+impl std::fmt::Display for Recurrence {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.time_patterns.len() == 1
+            && self.dates_patterns.len() == 1
+            && matches!(self.time_patterns[0], TimePattern::Point(_))
+            && matches!(self.dates_patterns[0], DatePattern::Point(_))
+        {
+            return Ok(());
+        }
+        for (i, dates_pattern) in self.dates_patterns.iter().enumerate() {
+            if i != 0 {
+                write!(f, ",")?;
+            }
+            dates_pattern.fmt(f)?;
+        }
+        write!(f, " ")?;
+        for (i, time_pattern) in self.time_patterns.iter().enumerate() {
+            if i != 0 {
+                write!(f, ",")?;
+            }
+            time_pattern.fmt(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for TimePattern {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Point(time) => time.fmt(f),
+            Self::Range(range) => range.fmt(f),
+        }
+    }
+}
+
+impl std::fmt::Display for DatePattern {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Point(date) => date.fmt(f),
+            Self::Range(range) => range.fmt(f),
+        }
+    }
+}
+
+impl std::fmt::Display for TimeRange {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if let Some(from) = self.from {
+            write!(f, "{:02}:{:02}", from.hour(), from.minute())?;
+        }
+        write!(f, "-")?;
+        if let Some(until) = self.until {
+            write!(f, "{:02}:{:02}", until.hour(), until.minute())?;
+        }
+        write!(f, "/")?;
+        self.interval.fmt(f)?;
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for DateRange {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:02}.{:02}.{:04}",
+            self.from.day(),
+            self.from.month(),
+            self.from.year()
+        )?;
+        write!(f, "-")?;
+        if let Some(until) = self.until {
+            if self.from != until {
+                write!(
+                    f,
+                    "{:02}.{:02}.{:04}",
+                    until.day(),
+                    until.month(),
+                    until.year()
+                )?;
+            }
+        }
+        write!(f, "/")?;
+        self.date_divisor.fmt(f)?;
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for DateDivisor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            DateDivisor::Weekdays(weekdays) => weekdays.fmt(f),
+            DateDivisor::Interval(interval) => interval.fmt(f),
+        }
+    }
+}
+
+impl std::fmt::Display for Weekdays {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| self.bits() & (1 << i) != 0)
+            .collect::<Vec<_>>();
+        for &(i, weekday) in weekdays.iter() {
+            if i != 0 {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", weekday)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for TimeInterval {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.hours != 0 {
+            write!(f, "{}h", self.hours)?;
+        }
+        if self.minutes != 0 {
+            write!(f, "{}m", self.minutes)?;
+        }
+        if self.seconds != 0 {
+            write!(f, "{}s", self.seconds)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for DateInterval {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.years != 0 {
+            write!(f, "{}s", self.years)?;
+        }
+        if self.months != 0 {
+            write!(f, "{}m", self.months)?;
+        }
+        if self.weeks != 0 {
+            write!(f, "{}s", self.weeks)?;
+        }
+        if self.days != 0 {
+            write!(f, "{}d", self.days)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for Interval {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.years != 0 {
+            write!(f, "{}s", self.years)?;
+        }
+        if self.months != 0 {
+            write!(f, "{}mo", self.months)?;
+        }
+        if self.weeks != 0 {
+            write!(f, "{}s", self.weeks)?;
+        }
+        if self.days != 0 {
+            write!(f, "{}d", self.days)?;
+        }
+        if self.hours != 0 {
+            write!(f, "{}h", self.hours)?;
+        }
+        if self.minutes != 0 {
+            write!(f, "{}m", self.minutes)?;
+        }
+        if self.seconds != 0 {
+            write!(f, "{}s", self.seconds)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for Countdown {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.duration.fmt(f)
     }
 }
 
