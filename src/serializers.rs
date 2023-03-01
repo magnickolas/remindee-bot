@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::cmp::min;
 use std::fmt::Formatter;
 
@@ -268,7 +269,7 @@ impl DateRange {
                     .filter(|i| weekdays.bits() & (1 << i) != 0)
                     .collect::<Vec<_>>();
                 let nearest_date = date::find_nearest_weekday(
-                    date,
+                    max(date, self.from),
                     NonEmpty::from_vec(weekdays).unwrap(),
                 );
                 if self
@@ -805,13 +806,11 @@ impl std::fmt::Display for Countdown {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use crate::{
         grammar::parse_reminder,
-        parsers::test::TEST_TZ,
-        parsers::test::{TEST_TIME, TEST_TIMESTAMP},
+        parsers::test::{TEST_TIME, TEST_TIMESTAMP, TEST_TZ},
     };
-
-    use super::*;
 
     fn get_all_times(
         mut pattern: Pattern,
@@ -838,6 +837,9 @@ mod test {
 
     #[test]
     fn test_countdown() {
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
         let s = "1w1h2m3s countdown";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -846,9 +848,6 @@ mod test {
         );
         let parsed = parsed_rem.pattern.unwrap();
         let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
         assert_eq!(
             get_all_times(pattern).collect::<Vec<_>>(),
             vec![tz(2007, 2, 9, 13, 32, 33)]
@@ -857,6 +856,9 @@ mod test {
 
     #[test]
     fn test_periodic() {
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
         let s = "- 11-18/1h periodic";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -865,9 +867,6 @@ mod test {
         );
         let parsed = parsed_rem.pattern.unwrap();
         let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
         assert_eq!(
             get_all_times(pattern).take(15).collect::<Vec<_>>(),
             vec![
@@ -892,6 +891,9 @@ mod test {
 
     #[test]
     fn test_date_range() {
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
         let s = "3-6/2d 13:37 date range";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -900,9 +902,6 @@ mod test {
         );
         let parsed = parsed_rem.pattern.unwrap();
         let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
         assert_eq!(
             get_all_times(pattern).collect::<Vec<_>>(),
             vec![tz(2007, 2, 3, 13, 37, 0), tz(2007, 2, 5, 13, 37, 0),]
@@ -911,14 +910,14 @@ mod test {
 
     #[test]
     fn test_date_format1() {
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
         let s = "07.06.2025 13:37";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(parsed_rem.description.map(|x| x.0), None);
         let parsed = parsed_rem.pattern.unwrap();
         let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
         assert_eq!(
             get_all_times(pattern).collect::<Vec<_>>(),
             vec![tz(2025, 6, 7, 13, 37, 0)]
@@ -927,6 +926,9 @@ mod test {
 
     #[test]
     fn test_date_format2() {
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
         let s = "2025/06/07 13:37 date format2";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -935,9 +937,6 @@ mod test {
         );
         let parsed = parsed_rem.pattern.unwrap();
         let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
         assert_eq!(
             get_all_times(pattern).collect::<Vec<_>>(),
             vec![tz(2025, 6, 7, 13, 37, 0)]
@@ -946,6 +945,9 @@ mod test {
 
     #[test]
     fn test_end_of_month_increment() {
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
         let s = "12/31/1MONTH 13:37 end of month";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -954,9 +956,6 @@ mod test {
         );
         let parsed = parsed_rem.pattern.unwrap();
         let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
         assert_eq!(
             get_all_times(pattern).take(16).collect::<Vec<_>>(),
             vec![
@@ -982,6 +981,9 @@ mod test {
 
     #[test]
     fn test_weekdays() {
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
         let s = "/fri,mon 11:00 weekdays";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -990,9 +992,6 @@ mod test {
         );
         let parsed = parsed_rem.pattern.unwrap();
         let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
         assert_eq!(
             get_all_times(pattern).take(4).collect::<Vec<_>>(),
             vec![
@@ -1006,6 +1005,9 @@ mod test {
 
     #[test]
     fn test_weekdays_ranges() {
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
         let s = "/fri-mon,wed 15:00:20 weekdays ranges";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -1014,9 +1016,6 @@ mod test {
         );
         let parsed = parsed_rem.pattern.unwrap();
         let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
         assert_eq!(
             get_all_times(pattern).take(10).collect::<Vec<_>>(),
             vec![
@@ -1036,6 +1035,9 @@ mod test {
 
     #[test]
     fn test_description_trim() {
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
         let s = "15:16     test    description   ";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -1044,12 +1046,43 @@ mod test {
         );
         let parsed = parsed_rem.pattern.unwrap();
         let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
         assert_eq!(
             get_all_times(pattern).collect::<Vec<_>>(),
             vec![tz(2007, 2, 2, 15, 16, 0),]
+        );
+    }
+
+    #[test]
+    fn test_date_range_weekends() {
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
+        let s = "10-20/mon,fri-sun 11-12/1h date range weekends";
+        let parsed_rem = parse_reminder(s).unwrap();
+        assert_eq!(
+            parsed_rem.description.map(|x| x.0),
+            Some("date range weekends".to_owned())
+        );
+        let parsed = parsed_rem.pattern.unwrap();
+        let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
+        assert_eq!(
+            get_all_times(pattern).collect::<Vec<_>>(),
+            vec![
+                tz(2007, 2, 10, 11, 0, 0),
+                tz(2007, 2, 10, 12, 0, 0),
+                tz(2007, 2, 11, 11, 0, 0),
+                tz(2007, 2, 11, 12, 0, 0),
+                tz(2007, 2, 12, 11, 0, 0),
+                tz(2007, 2, 12, 12, 0, 0),
+                tz(2007, 2, 16, 11, 0, 0),
+                tz(2007, 2, 16, 12, 0, 0),
+                tz(2007, 2, 17, 11, 0, 0),
+                tz(2007, 2, 17, 12, 0, 0),
+                tz(2007, 2, 18, 11, 0, 0),
+                tz(2007, 2, 18, 12, 0, 0),
+                tz(2007, 2, 19, 11, 0, 0),
+                tz(2007, 2, 19, 12, 0, 0),
+            ]
         );
     }
 }
