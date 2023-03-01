@@ -59,7 +59,7 @@ interval_divisor_hrprefix = _{ ("/" | ^"every") ~ ws* }
 time_divisor_hrprefix     = _{ ("/" | ^"every") ~ ws* }
 time_hrprefix             = _{ ^"at"? ~ ws* }
 countdown_hrprefix        = _{ (^"after" | ^"in" | "+")? ~ ws* }
-weekdays_divisor_hrprefix = _{ ("/" | ^"every" | ^"on")? ~ ws* }
+weekdays_divisor_hrprefix = _{ ("/" | ^"every" | ^"on") ~ ws* }
 // ----------------------------
 
 // --- interval ---
@@ -115,7 +115,7 @@ interval_seconds = @{ interval_value }
 // --- date and time formats ---
 // accept both year/month/day and day.month.year formats
 date = _{
-    ( ( year ~ "/" )? ~ month ~ "/" )? ~ day ~ !"."
+    ( ( year ~ "/" )? ~ month ~ "/" )? ~ day ~ &("-" | "/" | ws)
   | day ~ ( "." ~ month ~ ( "." ~ year )? )?
 }
 time = _{
