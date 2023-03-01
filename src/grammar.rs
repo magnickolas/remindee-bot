@@ -125,16 +125,10 @@ pub struct Countdown {
     pub duration: Interval,
 }
 
-#[derive(Debug, Default)]
-pub struct Period {
-    pub duration: Interval,
-}
-
 #[derive(Debug)]
 pub enum ReminderPattern {
     Recurrence(Recurrence),
     Countdown(Countdown),
-    Period(Period),
 }
 
 #[derive(Debug, Default)]
@@ -462,21 +456,6 @@ impl Parse for Countdown {
     }
 }
 
-impl Parse for Period {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
-        let mut cd = Self::default();
-        for rec in pair.into_inner() {
-            match rec.as_rule() {
-                Rule::interval => {
-                    cd.duration = Interval::parse(rec)?;
-                }
-                _ => unreachable!(),
-            }
-        }
-        Ok(cd)
-    }
-}
-
 impl Parse for Description {
     fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
         Ok(Self(pair.as_str().to_string()))
@@ -501,10 +480,6 @@ impl Parse for Reminder {
                         Countdown::parse(rec)?,
                     ));
                 }
-                Rule::period => {
-                    rem.pattern =
-                        Some(ReminderPattern::Period(Period::parse(rec)?));
-                }
                 Rule::EOI => {}
                 _ => unreachable!(),
             }
@@ -518,7 +493,6 @@ pub fn parse_reminder(s: &str) -> Result<Reminder, ()> {
         ReminderParser::parse(Rule::reminder, s)
             .map_err(|err| {
                 dbg!(err);
-                ()
             })?
             .next()
             .ok_or(())?,

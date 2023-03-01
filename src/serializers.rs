@@ -114,16 +114,9 @@ pub struct Countdown {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Period {
-    #[serde(rename = "dur")]
-    pub duration: Interval,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub enum Pattern {
     Recurrence(Recurrence),
     Countdown(Countdown),
-    Period(Period),
 }
 
 pub fn fill_date_holes(
@@ -514,25 +507,11 @@ impl Countdown {
     }
 }
 
-impl Period {
-    pub fn next(&self, cur: NaiveDateTime) -> NaiveDateTime {
-        date::add_interval(cur, &self.duration)
-    }
-}
-
 impl From<grammar::Countdown> for Countdown {
     fn from(countdown: grammar::Countdown) -> Self {
         Self {
             duration: countdown.duration.into(),
             used: false,
-        }
-    }
-}
-
-impl From<grammar::Period> for Period {
-    fn from(period: grammar::Period) -> Self {
-        Self {
-            duration: period.duration.into(),
         }
     }
 }
@@ -550,9 +529,6 @@ impl Pattern {
             grammar::ReminderPattern::Countdown(countdown) => {
                 Ok(Self::Countdown(countdown.into()))
             }
-            grammar::ReminderPattern::Period(period) => {
-                Ok(Self::Period(period.into()))
-            }
         }
     }
 
@@ -560,7 +536,6 @@ impl Pattern {
         match self {
             Self::Recurrence(recurrence) => recurrence.next(cur),
             Self::Countdown(countdown) => countdown.next(cur),
-            Self::Period(period) => Some(period.next(cur)),
         }
     }
 }
