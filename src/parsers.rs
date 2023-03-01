@@ -1,4 +1,5 @@
-use crate::date;
+use crate::serializers::Pattern;
+use crate::{date, grammar};
 
 use crate::entity::{cron_reminder, reminder};
 use chrono::offset::TimeZone;
@@ -8,19 +9,7 @@ use chrono_tz::Tz;
 use cron_parser::parse as parse_cron;
 use regex::Regex;
 use sea_orm::ActiveValue::{NotSet, Set};
-
-#[non_exhaustive]
-struct ReminderRegexFields;
-
-impl ReminderRegexFields {
-    const DAY: &'static str = "day";
-    const MONTH: &'static str = "month";
-    const YEAR: &'static str = "year";
-    const HOUR: &'static str = "hour";
-    const MINUTE: &'static str = "minute";
-    const SECOND: &'static str = "second";
-    const DESCRIPTION: &'static str = "description";
-}
+use serde_json::to_string;
 
 #[cfg(not(test))]
 pub fn now_time() -> NaiveDateTime {
@@ -33,99 +22,21 @@ pub async fn parse_reminder(
     user_id: u64,
     user_timezone: Tz,
 ) -> Option<reminder::ActiveModel> {
-    lazy_static! {
-        static ref RE: Regex = Regex::new(&format!(
-            concat!(
-                r"^\s*((?P<{day}>\d{{1,2}})(\.(?P<{month}>\d{{1,2}}))?(\.(?P<{year}>\d{{4}}))?\s+)?",
-                r"(?P<{hour}>\d{{1,2}})(:(?P<{minute}>\d{{1,2}})(:(?P<{second}>\d{{1,2}}))?)?(\s|$)\s*",
-                r"(?P<{description}>(?s:.)*?)\s*$"
-            ),
-            day = ReminderRegexFields::DAY,
-            month = ReminderRegexFields::MONTH,
-            year = ReminderRegexFields::YEAR,
-            hour = ReminderRegexFields::HOUR,
-            minute = ReminderRegexFields::MINUTE,
-            second = ReminderRegexFields::SECOND,
-            description = ReminderRegexFields::DESCRIPTION
-        ))
-        .unwrap();
-    }
-
-    RE.captures(s).and_then(|caps| {
-        let now = user_timezone.from_utc_datetime(&now_time()).naive_local();
-        let get_field_by_name_or = |name, default| {
-            caps.name(name)
-                .and_then(|x| x.as_str().parse().ok())
-                .unwrap_or(default)
-        };
-        let day = get_field_by_name_or(ReminderRegexFields::DAY, now.day());
-        let month =
-            get_field_by_name_or(ReminderRegexFields::MONTH, now.month());
-        let year =
-            get_field_by_name_or(ReminderRegexFields::YEAR, now.year() as u32)
-                as i32;
-        let hour = get_field_by_name_or(ReminderRegexFields::HOUR, now.hour());
-        let default_minute_value = match caps.name(ReminderRegexFields::HOUR) {
-            Some(_) => 0,
-            None => now.minute(),
-        };
-        let minute = get_field_by_name_or(
-            ReminderRegexFields::MINUTE,
-            default_minute_value,
-        );
-        let second = get_field_by_name_or(ReminderRegexFields::SECOND, 0);
-
-        if !((0..24).contains(&hour)
-            && (0..60).contains(&minute)
-            && (0..60).contains(&second))
-        {
-            return None;
-        }
-
-        let mut time = now
-            .date()
-            .with_day(day)
-            .and_then(|x| x.with_month(month))
-            .and_then(|x| x.with_year(year))
-            .unwrap_or_else(|| now.date())
-            .and_hms_opt(hour, minute, second)?;
-
-        if time <= now {
-            let specified_day = caps.name(ReminderRegexFields::DAY).is_some();
-            let specified_month =
-                caps.name(ReminderRegexFields::MONTH).is_some();
-            let durations = if !specified_day || specified_month {
-                [
-                    1,
-                    date::days_in_month(month, year),
-                    date::days_in_year(year),
-                ]
-                .map(Into::into)
-                .to_vec()
-            } else {
-                [date::days_in_month(month, year), date::days_in_year(year)]
-                    .map(Into::into)
-                    .to_vec()
-            };
-            for duration in durations.iter().map(|&x| Duration::days(x)) {
-                if time.date().and_hms_opt(0, 0, 0)? + duration > now {
-                    time += duration;
-                    break;
-                }
-            }
-        }
-        // Convert to UTC
-        Some(reminder::ActiveModel {
-            id: NotSet,
-            chat_id: Set(chat_id),
-            user_id: Set(Some(user_id as i64)),
-            time: Set(user_timezone
-                .from_local_datetime(&time)
-                .single()?
-                .naive_utc()),
-            desc: Set(caps[ReminderRegexFields::DESCRIPTION].to_string()),
-            edit: Set(false),
-        })
+    let rem = grammar::parse_reminder(s).ok()?;
+    let description = rem.description.map(|x| x.0).unwrap_or("".to_owned());
+    let mut pattern =
+        Pattern::from_with_tz(rem.pattern?, user_timezone).ok()?;
+    let time = pattern.next(now_time())?;
+    // Convert to UTC
+    Some(reminder::ActiveModel {
+        id: NotSet,
+        chat_id: Set(chat_id),
+        user_id: Set(Some(user_id as i64)),
+        time: Set(time),
+        desc: Set(description),
+        edit: Set(false),
+        paused: Set(false),
+        pattern: Set(to_string(&pattern).ok()),
     })
 }
 

@@ -259,6 +259,46 @@ impl From<grammar::DateDivisor> for DateDivisor {
     }
 }
 
+impl DateRange {
+    pub fn get_nearest_date(&self, date: NaiveDate) -> Option<NaiveDate> {
+        match self.date_divisor {
+            DateDivisor::Weekdays(weekdays) => {
+                let weekdays = (0..7)
+                    .filter(|i| weekdays.bits() & (1 << i) != 0)
+                    .collect::<Vec<_>>();
+                let nearest_date = date::find_nearest_weekday(
+                    date,
+                    NonEmpty::from_vec(weekdays).unwrap(),
+                );
+                if self
+                    .until
+                    .map(|until| nearest_date <= until)
+                    .unwrap_or(true)
+                {
+                    Some(nearest_date)
+                } else {
+                    None
+                }
+            }
+            DateDivisor::Interval(int) => {
+                let mut nearest_date = self.from;
+                while nearest_date < date {
+                    nearest_date = date::add_date_interval(nearest_date, &int);
+                }
+                if self
+                    .until
+                    .map(|until| nearest_date <= until)
+                    .unwrap_or(true)
+                {
+                    Some(nearest_date)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
 impl Time {
     fn from(time: &grammar::Time) -> Option<NaiveTime> {
         NaiveTime::from_hms_opt(time.hour, time.minute, time.second)
@@ -421,20 +461,26 @@ impl Recurrence {
         let cur = self.timezone.0.from_utc_datetime(&cur).naive_local();
         let cur_date = cur.date();
         let cur_time = cur.time();
-        let first_date = match self.dates_patterns.first() {
-            Some(&DatePattern::Point(date)) => date,
-            Some(DatePattern::Range(ref range)) => range.from,
-            None => return None,
-        };
-        let first_time = match self.time_patterns.first() {
-            Some(time_pattern) => match time_pattern {
+        let first_date = self
+            .dates_patterns
+            .iter()
+            .flat_map(|pattern| match pattern {
+                &DatePattern::Point(date) => Some(date),
+                DatePattern::Range(ref range) => {
+                    range.get_nearest_date(cur_date)
+                }
+            })
+            .min()?;
+        let first_time = self
+            .time_patterns
+            .iter()
+            .map(|pattern| match pattern {
                 &TimePattern::Point(time) => time,
                 TimePattern::Range(ref range) => range
                     .from
                     .unwrap_or(NaiveTime::from_hms_opt(0, 0, 0).unwrap()),
-            },
-            None => cur_time,
-        };
+            })
+            .min()?;
         if first_date > cur_date {
             return self
                 .timezone
@@ -501,24 +547,8 @@ impl Recurrence {
                     if from > cur_date {
                         Some(from)
                     } else {
-                        let next_date = match range.date_divisor {
-                            DateDivisor::Weekdays(weekdays) => {
-                                let weekdays = (0..7)
-                                    .filter(|i| weekdays.bits() & (1 << i) != 0)
-                                    .collect::<Vec<_>>();
-                                date::find_nearest_weekday(
-                                    cur_date + Duration::days(1),
-                                    NonEmpty::from_vec(weekdays).unwrap(),
-                                )
-                            }
-                            DateDivisor::Interval(int) => {
-                                let mut from = from;
-                                while from <= cur_date {
-                                    from = date::add_date_interval(from, &int);
-                                }
-                                from
-                            }
-                        };
+                        let next_date = range
+                            .get_nearest_date(cur_date + Duration::days(1))?;
                         if range
                             .until
                             .map(|date_until| next_date <= date_until)

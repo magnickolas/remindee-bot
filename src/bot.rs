@@ -4,6 +4,8 @@ use crate::db::Database;
 use crate::entity::{cron_reminder, reminder};
 use crate::err::Error;
 use crate::generic_reminder::GenericReminder;
+use crate::parsers::now_time;
+use crate::serializers::Pattern;
 use crate::tg::send_message;
 use crate::tz::get_user_timezone;
 use async_once::AsyncOnce;
@@ -12,6 +14,8 @@ use chrono::Utc;
 use chrono_tz::Tz;
 use cron_parser::parse as parse_cron;
 use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, IntoActiveModel};
+use serde_json::{from_str, to_string};
+use std::cmp::min;
 use std::time::Duration;
 use teloxide::{prelude::*, types::MessageId, utils::command::BotCommands};
 
@@ -111,14 +115,38 @@ async fn poll_reminders(db: &Database, bot: Bot) {
                 if let Ok(Some(user_timezone)) =
                     get_user_timezone(db, user_id).await
                 {
-                    if let Ok(()) =
-                        send_reminder(&reminder, user_timezone, &bot).await
+                    let mut next_reminder = None;
+                    if let Some(ref serialized) = reminder.pattern {
+                        let mut pattern: Pattern =
+                            from_str(serialized).unwrap();
+                        let lower_bound = min(reminder.time, now_time());
+                        if let Some(next_time) = pattern.next(lower_bound) {
+                            next_reminder = Some(reminder::Model {
+                                time: next_time,
+                                pattern: to_string(&pattern).ok(),
+                                ..reminder.clone()
+                            });
+                        }
+                    }
+                    if send_reminder(&reminder, user_timezone, &bot)
+                        .await
+                        .is_ok()
                     {
                         db.delete_reminder(reminder.id).await.unwrap_or_else(
                             |err| {
                                 dbg!(err);
                             },
-                        )
+                        );
+                        if let Some(next_reminder) = next_reminder {
+                            let mut next_reminder: reminder::ActiveModel =
+                                next_reminder.into();
+                            next_reminder.id = NotSet;
+                            db.insert_reminder(next_reminder)
+                                .await
+                                .unwrap_or_else(|err| {
+                                    dbg!(err);
+                                });
+                        }
                     }
                 }
             }
