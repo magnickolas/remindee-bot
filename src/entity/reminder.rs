@@ -13,6 +13,8 @@ pub struct Model {
     pub desc: String,
     pub edit: bool,
     pub user_id: Option<i64>,
+    pub paused: bool,
+    pub pattern: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
