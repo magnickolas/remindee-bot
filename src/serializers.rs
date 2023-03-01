@@ -1,14 +1,18 @@
+use std::cmp::min;
+
 use bitmask_enum::bitmask;
 use chrono::offset::TimeZone;
 use chrono::prelude::*;
 use chrono::Duration;
-use chrono_tz::Tz;
 use nonempty::NonEmpty;
 use serde::{Deserialize, Serialize};
 
 use crate::date;
 use crate::grammar;
 use crate::parsers::now_time;
+
+#[derive(Debug)]
+pub struct Tz(chrono_tz::Tz);
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Interval {
@@ -104,12 +108,16 @@ pub struct Recurrence {
     pub dates_patterns: Vec<DatePattern>,
     #[serde(rename = "times")]
     pub time_patterns: Vec<TimePattern>,
+    #[serde(rename = "tz")]
+    pub timezone: Tz,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Countdown {
     #[serde(rename = "dur")]
     pub duration: Interval,
+    #[serde(rename = "tz")]
+    pub timezone: Tz,
     used: bool,
 }
 
@@ -126,6 +134,7 @@ pub fn fill_date_holes(
     let year = holey_date.year.unwrap_or(lower_bound.year());
     let month = holey_date.month.unwrap_or(lower_bound.month());
     let day = holey_date.day.unwrap_or(lower_bound.day());
+    let day = min(day, date::days_in_month(month, year));
     let time = NaiveDate::from_ymd_opt(year, month, day)?;
     if time >= lower_bound {
         return Some(time);
@@ -157,6 +166,35 @@ pub fn fill_date_holes(
         }
     }
     Some(time)
+}
+
+impl Serialize for Tz {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.0.name())
+    }
+}
+
+impl<'de> Deserialize<'de> for Tz {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let tz = s.parse().map_err(serde::de::Error::custom)?;
+        Ok(Self(tz))
+    }
+}
+
+impl Tz {
+    fn local_to_utc(&self, time: &NaiveDateTime) -> Option<NaiveDateTime> {
+        self.0
+            .from_local_datetime(time)
+            .earliest()
+            .map(|dt| dt.naive_utc())
+    }
 }
 
 impl From<grammar::Interval> for Interval {
@@ -280,20 +318,14 @@ impl TimePattern {
             }
         }
     }
-
-    fn get_first_time(&self) -> Option<NaiveTime> {
-        match self {
-            &Self::Point(time) => Some(time),
-            Self::Range(ref time_range) => time_range.from,
-        }
-    }
 }
 
 impl Recurrence {
-    pub fn from_holey(
+    pub fn from_with_tz(
         recurrence: grammar::Recurrence,
-        lower_bound: NaiveDateTime,
+        tz: chrono_tz::Tz,
     ) -> Result<Self, ()> {
+        let lower_bound = tz.from_utc_datetime(&now_time()).naive_local();
         let first_time = match recurrence.time_patterns.first() {
             Some(time_pattern) => match time_pattern {
                 grammar::TimePattern::Point(time) => {
@@ -318,14 +350,14 @@ impl Recurrence {
         let has_time_divisor = recurrence
             .time_patterns
             .iter()
-            .filter(|x| match x {
+            .filter(|time_pattern| match time_pattern {
                 grammar::TimePattern::Point(_) => false,
                 grammar::TimePattern::Range(_) => true,
             })
             .count()
             > 0;
         let mut init_time = fill_date_holes(first_date, lower_bound.date())
-            .map(|x| x.and_time(first_time))
+            .map(|date| date.and_time(first_time))
             .ok_or(())?;
         if init_time < lower_bound && !has_divisor && !has_time_divisor {
             if first_date.day.is_none() {
@@ -381,10 +413,14 @@ impl Recurrence {
         Ok(Self {
             dates_patterns,
             time_patterns,
+            timezone: Tz(tz),
         })
     }
 
     pub fn next(&self, cur: NaiveDateTime) -> Option<NaiveDateTime> {
+        let cur = self.timezone.0.from_utc_datetime(&cur).naive_local();
+        let cur_date = cur.date();
+        let cur_time = cur.time();
         let first_date = match self.dates_patterns.first() {
             Some(&DatePattern::Point(date)) => date,
             Some(DatePattern::Range(ref range)) => range.from,
@@ -397,12 +433,12 @@ impl Recurrence {
                     .from
                     .unwrap_or(NaiveTime::from_hms_opt(0, 0, 0).unwrap()),
             },
-            None => cur.time(),
+            None => cur_time,
         };
-        let cur_date = cur.date();
-        let cur_time = cur.time();
         if first_date > cur_date {
-            return Some(first_date.and_time(first_time));
+            return self
+                .timezone
+                .local_to_utc(&first_date.and_time(first_time));
         }
         let next_time = self
             .time_patterns
@@ -434,7 +470,7 @@ impl Recurrence {
                         if next_time > cur_time
                             && range
                                 .until
-                                .map(|x| next_time <= x)
+                                .map(|time_until| next_time <= time_until)
                                 .unwrap_or(true)
                         {
                             Some(next_time)
@@ -446,16 +482,17 @@ impl Recurrence {
             })
             .min();
         if let Some(next_time) = next_time {
-            return Some(cur_date.and_time(next_time));
+            return self.timezone.local_to_utc(&cur_date.and_time(next_time));
         }
         let next_date = self
             .dates_patterns
             .iter()
             .filter(|&int| match int {
                 &DatePattern::Point(date) => date > cur_date,
-                DatePattern::Range(ref range) => {
-                    range.until.map(|x| x > cur_date).unwrap_or(true)
-                }
+                DatePattern::Range(ref range) => range
+                    .until
+                    .map(|date_until| date_until > cur_date)
+                    .unwrap_or(true),
             })
             .flat_map(|int| match int {
                 &DatePattern::Point(date) => Some(date),
@@ -482,7 +519,11 @@ impl Recurrence {
                                 from
                             }
                         };
-                        if range.until.map(|x| next_date <= x).unwrap_or(true) {
+                        if range
+                            .until
+                            .map(|date_until| next_date <= date_until)
+                            .unwrap_or(true)
+                        {
                             Some(next_date)
                         } else {
                             None
@@ -492,25 +533,30 @@ impl Recurrence {
             })
             .min();
 
-        next_date.map(|next_date| next_date.and_time(first_time))
+        next_date
+            .map(|next_date| next_date.and_time(first_time))
+            .and_then(|next_dt| self.timezone.local_to_utc(&next_dt))
     }
 }
 
 impl Countdown {
     pub fn next(&mut self, cur: NaiveDateTime) -> Option<NaiveDateTime> {
+        let cur = self.timezone.0.from_utc_datetime(&cur).naive_local();
         if self.used {
             None
         } else {
             self.used = true;
-            Some(date::add_interval(cur, &self.duration))
+            let next_time = date::add_interval(cur, &self.duration);
+            self.timezone.local_to_utc(&next_time)
         }
     }
 }
 
-impl From<grammar::Countdown> for Countdown {
-    fn from(countdown: grammar::Countdown) -> Self {
+impl Countdown {
+    fn from_with_tz(countdown: grammar::Countdown, tz: chrono_tz::Tz) -> Self {
         Self {
             duration: countdown.duration.into(),
+            timezone: Tz(tz),
             used: false,
         }
     }
@@ -519,15 +565,14 @@ impl From<grammar::Countdown> for Countdown {
 impl Pattern {
     pub fn from_with_tz(
         reminder_pattern: grammar::ReminderPattern,
-        user_timezone: Tz,
+        tz: chrono_tz::Tz,
     ) -> Result<Self, ()> {
-        let now = user_timezone.from_utc_datetime(&now_time()).naive_local();
         match reminder_pattern {
             grammar::ReminderPattern::Recurrence(recurrence) => {
-                Ok(Self::Recurrence(Recurrence::from_holey(recurrence, now)?))
+                Ok(Self::Recurrence(Recurrence::from_with_tz(recurrence, tz)?))
             }
             grammar::ReminderPattern::Countdown(countdown) => {
-                Ok(Self::Countdown(countdown.into()))
+                Ok(Self::Countdown(Countdown::from_with_tz(countdown, tz)))
             }
         }
     }
