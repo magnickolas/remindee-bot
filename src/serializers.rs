@@ -129,6 +129,14 @@ pub enum Pattern {
     Countdown(Countdown),
 }
 
+trait DateDisplay {
+    fn relfmt<D: Datelike>(
+        &self,
+        f: &mut Formatter<'_>,
+        now: &D,
+    ) -> Result<bool, std::fmt::Error>;
+}
+
 pub fn fill_date_holes(
     holey_date: &grammar::HoleyDate,
     lower_bound: NaiveDate,
@@ -602,14 +610,15 @@ impl Pattern {
 impl std::fmt::Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Recurrence(recurrence) => recurrence.fmt(f),
-            Self::Countdown(countdown) => countdown.fmt(f),
+            Self::Recurrence(recurrence) => write!(f, "{}", recurrence),
+            Self::Countdown(countdown) => write!(f, "{}", countdown),
         }
     }
 }
 
 impl std::fmt::Display for Recurrence {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let now = self.timezone.0.from_utc_datetime(&now_time());
         if self.time_patterns.len() == 1
             && self.dates_patterns.len() == 1
             && matches!(self.time_patterns[0], TimePattern::Point(_))
@@ -617,18 +626,21 @@ impl std::fmt::Display for Recurrence {
         {
             return Ok(());
         }
+        let mut nonempty = false;
         for (i, dates_pattern) in self.dates_patterns.iter().enumerate() {
             if i != 0 {
                 write!(f, ",")?;
             }
-            dates_pattern.fmt(f)?;
+            nonempty |= dates_pattern.relfmt(f, &now)?;
         }
-        write!(f, " ")?;
+        if nonempty {
+            write!(f, " ")?;
+        }
         for (i, time_pattern) in self.time_patterns.iter().enumerate() {
             if i != 0 {
                 write!(f, ",")?;
             }
-            time_pattern.fmt(f)?;
+            write!(f, "{}", time_pattern)?;
         }
         Ok(())
     }
@@ -643,11 +655,15 @@ impl std::fmt::Display for TimePattern {
     }
 }
 
-impl std::fmt::Display for DatePattern {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl DateDisplay for DatePattern {
+    fn relfmt<D: Datelike>(
+        &self,
+        f: &mut Formatter<'_>,
+        now: &D,
+    ) -> Result<bool, std::fmt::Error> {
         match self {
-            Self::Point(date) => date.fmt(f),
-            Self::Range(range) => range.fmt(f),
+            Self::Point(date) => date.relfmt(f, now),
+            Self::Range(range) => range.relfmt(f, now),
         }
     }
 }
@@ -667,30 +683,45 @@ impl std::fmt::Display for TimeRange {
     }
 }
 
-impl std::fmt::Display for DateRange {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{:02}.{:02}.{:04}",
-            self.from.day(),
-            self.from.month(),
-            self.from.year()
-        )?;
+impl DateDisplay for DateRange {
+    fn relfmt<D: Datelike>(
+        &self,
+        f: &mut Formatter<'_>,
+        now: &D,
+    ) -> Result<bool, std::fmt::Error> {
+        self.from.relfmt(f, now)?;
         write!(f, "-")?;
         if let Some(until) = self.until {
             if self.from != until {
-                write!(
-                    f,
-                    "{:02}.{:02}.{:04}",
-                    until.day(),
-                    until.month(),
-                    until.year()
-                )?;
+                until.relfmt(f, now)?;
             }
         }
-        write!(f, "/")?;
-        self.date_divisor.fmt(f)?;
-        Ok(())
+        write!(f, "/{}", self.date_divisor)?;
+        Ok(true)
+    }
+}
+
+impl DateDisplay for NaiveDate {
+    fn relfmt<D: Datelike>(
+        &self,
+        f: &mut Formatter<'_>,
+        now: &D,
+    ) -> Result<bool, std::fmt::Error> {
+        let same_year = self.year() == now.year();
+        let same_month = same_year && self.month() == now.month();
+        let same_day = same_month && self.day() == now.day();
+        if same_day {
+            Ok(false)
+        } else {
+            if same_month {
+                write!(f, "{}", self.format("%d"))?;
+            } else if same_year {
+                write!(f, "{}", self.format("%d.%m"))?;
+            } else {
+                write!(f, "{}", self.format("%d.%m.%y"))?;
+            }
+            Ok(true)
+        }
     }
 }
 
