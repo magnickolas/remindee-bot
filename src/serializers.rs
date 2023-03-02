@@ -649,7 +649,9 @@ impl std::fmt::Display for Recurrence {
 impl std::fmt::Display for TimePattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Point(time) => time.fmt(f),
+            Self::Point(time) => {
+                write!(f, "{:02}:{:02}", time.hour(), time.minute())
+            }
             Self::Range(range) => range.fmt(f),
         }
     }
