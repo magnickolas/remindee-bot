@@ -1,11 +1,11 @@
 use std::cmp::max;
-use std::cmp::min;
 use std::fmt::Formatter;
 
 use bitmask_enum::bitmask;
 use chrono::offset::TimeZone;
 use chrono::prelude::*;
 use chrono::Duration;
+use chronoutil::{shift_months, shift_years};
 use nonempty::NonEmpty;
 use serde::{Deserialize, Serialize};
 
@@ -136,38 +136,21 @@ pub fn fill_date_holes(
     let year = holey_date.year.unwrap_or(lower_bound.year());
     let month = holey_date.month.unwrap_or(lower_bound.month());
     let day = holey_date.day.unwrap_or(lower_bound.day());
-    let day = min(day, date::days_in_month(month, year));
-    let time = NaiveDate::from_ymd_opt(year, month, day)?;
-    if time >= lower_bound {
-        return Some(time);
+    let day = date::normalise_day(year, month, day);
+    let date = NaiveDate::from_ymd_opt(year, month, day)?;
+    if date >= lower_bound {
+        return Some(date);
     }
-    let increments = if holey_date.day.is_none() {
-        [
-            1,
-            date::days_in_month(time.month(), time.year()),
-            date::days_in_year(time.year()),
-        ]
-        .map(Into::into)
-        .to_vec()
-    } else if holey_date.month.is_none() {
-        [
-            date::days_in_month(time.month(), time.year()),
-            date::days_in_year(time.year()),
-        ]
-        .map(Into::into)
-        .to_vec()
+    if holey_date.day.is_none() && date + Duration::days(1) > lower_bound {
+        Some(date + Duration::days(1))
+    } else if holey_date.month.is_none() && shift_months(date, 1) > lower_bound
+    {
+        Some(shift_months(date, 1))
+    } else if shift_years(date, 1) > lower_bound {
+        Some(shift_years(date, 1))
     } else {
-        [date::days_in_year(time.year())].map(Into::into).to_vec()
-    };
-
-    let mut time = time;
-    for increment in increments.iter().map(|&x| Duration::days(x)) {
-        if time + increment > lower_bound {
-            time += increment;
-            break;
-        }
+        None
     }
-    Some(time)
 }
 
 impl Serialize for Tz {
@@ -398,22 +381,21 @@ impl Recurrence {
             })
             .count()
             > 0;
-        let mut init_time = fill_date_holes(first_date, lower_bound.date())
+        let init_time = fill_date_holes(first_date, lower_bound.date())
             .map(|date| date.and_time(first_time))
             .ok_or(())?;
-        if init_time < lower_bound && !has_divisor && !has_time_divisor {
-            if first_date.day.is_none() {
-                init_time += Duration::days(1);
-            } else if first_date.month.is_none() {
-                init_time += Duration::days(
-                    date::days_in_month(init_time.month(), init_time.year())
-                        .into(),
-                );
+        let init_time =
+            if init_time < lower_bound && !has_divisor && !has_time_divisor {
+                if first_date.day.is_none() {
+                    init_time + Duration::days(1)
+                } else if first_date.month.is_none() {
+                    shift_months(init_time, 1)
+                } else {
+                    shift_years(init_time, 1)
+                }
             } else {
-                init_time +=
-                    Duration::days(date::days_in_year(init_time.year()).into());
-            }
-        }
+                init_time
+            };
         assert!(has_divisor || has_time_divisor || init_time >= lower_bound);
         let mut cur_lower_bound = init_time.date();
         let mut dates_patterns = vec![];
@@ -1082,6 +1064,31 @@ mod test {
                 tz(2007, 2, 18, 12, 0, 0),
                 tz(2007, 2, 19, 11, 0, 0),
                 tz(2007, 2, 19, 12, 0, 0),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_date_range_over_year() {
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
+        let s = "12/16-3/16/1m 18:15 date range over year";
+        let parsed_rem = parse_reminder(s).unwrap();
+        assert_eq!(
+            parsed_rem.description.map(|x| x.0),
+            Some("date range over year".to_owned())
+        );
+        let parsed = parsed_rem.pattern.unwrap();
+        let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
+        dbg!(&pattern);
+        assert_eq!(
+            get_all_times(pattern).collect::<Vec<_>>(),
+            vec![
+                tz(2007, 12, 16, 18, 15, 0),
+                tz(2008, 1, 16, 18, 15, 0),
+                tz(2008, 2, 16, 18, 15, 0),
+                tz(2008, 3, 16, 18, 15, 0),
             ]
         );
     }

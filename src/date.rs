@@ -1,42 +1,24 @@
-use std::cmp::min;
-
 use crate::serializers::{DateInterval, Interval};
 use chrono::{Datelike, NaiveDate, NaiveDateTime};
+use chronoutil::{is_leap_year, shift_months, shift_years};
 use nonempty::NonEmpty;
 
-fn is_leap_year(year: i32) -> bool {
-    year % 4 == 0 && (year % 400 == 0 || year % 100 != 0)
-}
-
-pub fn days_in_month(month: u32, year: i32) -> u32 {
-    match month {
-        4 | 6 | 9 | 11 => 30,
-        2 if is_leap_year(year) => 29,
-        2 => 28,
-        _ => 31,
-    }
-}
-
-pub fn days_in_year(year: i32) -> u32 {
-    if is_leap_year(year) {
-        366
+pub fn normalise_day(year: i32, month: u32, day: u32) -> u32 {
+    if day <= 28 {
+        day
+    } else if month == 2 {
+        28 + is_leap_year(year) as u32
+    } else if day == 31
+        && (month == 4 || month == 6 || month == 9 || month == 11)
+    {
+        30
     } else {
-        365
+        day
     }
-}
-
-fn add_months(date: NaiveDateTime, months: u32) -> NaiveDateTime {
-    let total_months = (date.month() - 1) + months; // 1-indexed => 0-indexed
-    let year = date.year() + total_months as i32 / 12;
-    let month = total_months % 12 + 1; // 0-indexed => 1-indexed
-    let day = min(date.day(), days_in_month(month, year));
-    NaiveDate::from_ymd_opt(year, month, day)
-        .unwrap()
-        .and_time(date.time())
 }
 
 pub fn add_interval(time: NaiveDateTime, interval: &Interval) -> NaiveDateTime {
-    add_months(time, interval.months + interval.years as u32 * 12)
+    shift_months(shift_years(time, interval.years), interval.months as i32)
         + chrono::Duration::weeks(interval.weeks as i64)
         + chrono::Duration::days(interval.days as i64)
         + chrono::Duration::hours(interval.hours as i64)
@@ -78,42 +60,6 @@ mod test {
     use super::*;
     use chrono::{NaiveDateTime, NaiveTime, Timelike};
     use test_case::test_case;
-
-    #[test_case( 1, 2023 => 31 ;       "january")]
-    #[test_case( 2, 2023 => 28 ;      "february")]
-    #[test_case( 3, 2023 => 31 ;         "march")]
-    #[test_case( 4, 2023 => 30 ;         "april")]
-    #[test_case( 5, 2023 => 31 ;           "may")]
-    #[test_case( 6, 2023 => 30 ;          "june")]
-    #[test_case( 7, 2023 => 31 ;          "july")]
-    #[test_case( 8, 2023 => 31 ;        "august")]
-    #[test_case( 9, 2023 => 30 ;     "september")]
-    #[test_case(10, 2023 => 31 ;       "october")]
-    #[test_case(11, 2023 => 30 ;      "november")]
-    #[test_case(12, 2023 => 31 ;      "december")]
-    #[test_case( 1, 2024 => 31 ;  "leap january")]
-    #[test_case( 2, 2024 => 29 ; "leap february")]
-    #[test_case( 3, 2024 => 31 ;    "leap march")]
-    #[test_case( 4, 2024 => 30 ;    "leap april")]
-    #[test_case( 5, 2024 => 31 ;      "leap may")]
-    #[test_case( 6, 2024 => 30 ;     "leap june")]
-    #[test_case( 7, 2024 => 31 ;     "leap july")]
-    #[test_case( 8, 2024 => 31 ;   "leap august")]
-    #[test_case( 9, 2024 => 30 ;"leap september")]
-    #[test_case(10, 2024 => 31 ;  "leap october")]
-    #[test_case(11, 2024 => 30 ; "leap november")]
-    #[test_case(12, 2024 => 31 ; "leap december")]
-    fn test_days_in_month(month: u32, year: i32) -> u32 {
-        days_in_month(month, year)
-    }
-
-    #[test_case(2019 => 365 ;              "non-divisible by 4 year isn't leap")]
-    #[test_case(2100 => 365 ; "year divisible by 100 but not by 400 isn't leap")]
-    #[test_case(2000 => 366 ;                   "year divisible by 400 is leap")]
-    #[test_case(2020 => 366 ;      "year divisible by 4 but not by 400 is leap")]
-    fn test_days_in_year(year: i32) -> u32 {
-        days_in_year(year)
-    }
 
     #[derive(Debug, PartialEq)]
     struct Time(i32, u32, u32, u32, u32, u32);
