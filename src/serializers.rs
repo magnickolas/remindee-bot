@@ -698,7 +698,17 @@ impl DateDisplay for DateRange {
                 until.relfmt(f, now)?;
             }
         }
-        write!(f, "/{}", self.date_divisor)?;
+        if !matches!(
+            self.date_divisor,
+            DateDivisor::Interval(DateInterval {
+                years: 0,
+                months: 0,
+                weeks: 0,
+                days: 1,
+            })
+        ) {
+            write!(f, "/{}", self.date_divisor)?;
+        }
         Ok(true)
     }
 }
