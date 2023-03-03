@@ -675,7 +675,7 @@ impl std::fmt::Display for TimeRange {
         if let Some(from) = self.from {
             write!(f, "{:02}:{:02}", from.hour(), from.minute())?;
         }
-        write!(f, "-")?;
+        write!(f, "—")?;
         if let Some(until) = self.until {
             write!(f, "{:02}:{:02}", until.hour(), until.minute())?;
         }
@@ -692,7 +692,7 @@ impl DateDisplay for DateRange {
         now: &D,
     ) -> Result<bool, std::fmt::Error> {
         self.from.relfmt(f, now)?;
-        write!(f, "-")?;
+        write!(f, "—")?;
         if let Some(until) = self.until {
             if self.from != until {
                 until.relfmt(f, now)?;
