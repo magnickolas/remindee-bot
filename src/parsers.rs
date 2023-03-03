@@ -123,7 +123,6 @@ pub mod test {
         unsafe {
             TEST_TIMESTAMP = TEST_TIME.timestamp();
         }
-        dbg!("{}", strfmt(fmt_str, &vars).unwrap());
         let result =
             parse_reminder(&strfmt(fmt_str, &vars).unwrap(), 0, 0u64, *TEST_TZ)
                 .await

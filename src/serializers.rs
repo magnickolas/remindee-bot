@@ -751,9 +751,14 @@ impl std::fmt::Display for Weekdays {
         let weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
             .iter()
             .enumerate()
-            .filter(|(i, _)| self.bits() & (1 << i) != 0)
-            .collect::<Vec<_>>();
-        for &(i, weekday) in weekdays.iter() {
+            .filter_map(|(i, w)| {
+                if self.bits() & (1 << i) != 0 {
+                    Some(w)
+                } else {
+                    None
+                }
+            });
+        for (i, weekday) in weekdays.enumerate() {
             if i != 0 {
                 write!(f, ",")?;
             }
