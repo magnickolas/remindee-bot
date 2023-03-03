@@ -611,7 +611,7 @@ impl std::fmt::Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Recurrence(recurrence) => write!(f, "{}", recurrence),
-            Self::Countdown(countdown) => write!(f, "{}", countdown),
+            Self::Countdown(_) => Ok(()),
         }
     }
 }
@@ -825,12 +825,6 @@ impl std::fmt::Display for Interval {
             write!(f, "{}s", self.seconds)?;
         }
         Ok(())
-    }
-}
-
-impl std::fmt::Display for Countdown {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        self.duration.fmt(f)
     }
 }
 
