@@ -68,7 +68,7 @@ impl GenericReminder for reminder::ActiveModel {
             self.serialize_time_unescaped(user_timezone),
             self.desc.clone().unwrap(),
         );
-        match self.pattern.clone().unwrap() {
+        let s = match self.pattern.clone().unwrap() {
             Some(ref s) => {
                 let pattern: Pattern = from_str(s).unwrap();
                 match pattern.to_string().as_str() {
@@ -77,6 +77,11 @@ impl GenericReminder for reminder::ActiveModel {
                 }
             }
             None => main_part,
+        };
+        if self.paused.clone().unwrap() {
+            format!("⏸ {}", s)
+        } else {
+            s
         }
     }
 

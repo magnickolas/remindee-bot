@@ -494,7 +494,7 @@ impl TgMessageController<'_> {
             num,
             "pauserem",
             user_timezone,
-            true,
+            false,
             false,
         )
         .await
@@ -674,6 +674,23 @@ impl TgCallbackController<'_> {
                 TgResponse::FailedEdit
             }
         };
+        self.answer_callback_query(response).await
+    }
+
+    pub async fn pause_reminder(
+        &self,
+        rem_id: i64,
+    ) -> Result<(), RequestError> {
+        let response =
+            match self.msg_ctl.db.toggle_reminder_paused(rem_id).await {
+                Ok(true) => TgResponse::SuccessPause,
+                Ok(false) => TgResponse::SuccessResume,
+                Err(err) => {
+                    dbg!(err);
+                    TgResponse::FailedPause
+                }
+            };
+        self.msg_ctl.pause_reminder_set_page(0).await?;
         self.answer_callback_query(response).await
     }
 

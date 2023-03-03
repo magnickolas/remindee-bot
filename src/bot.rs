@@ -412,6 +412,11 @@ async fn callback_handler(
                 .pause_reminder_set_page(page_num)
                 .await
                 .map_err(From::from)
+        } else if let Some(rem_id) = cb_data
+            .strip_prefix("pauserem::rem_alt::")
+            .and_then(|x| x.parse::<i64>().ok())
+        {
+            ctl.pause_reminder(rem_id).await.map_err(From::from)
         } else if let Some(cron_rem_id) = cb_data
             .strip_prefix("pauserem::cron_rem_alt::")
             .and_then(|x| x.parse::<i64>().ok())

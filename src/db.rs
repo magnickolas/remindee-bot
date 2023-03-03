@@ -122,6 +122,7 @@ impl Database {
         &self,
     ) -> Result<Vec<reminder::Model>, Error> {
         Ok(reminder::Entity::find()
+            .filter(reminder::Column::Paused.eq(false))
             .filter(reminder::Column::Time.lt(Utc::now().naive_utc()))
             .all(&self.pool)
             .await?)
@@ -239,6 +240,20 @@ impl Database {
             .filter(cron_reminder::Column::Edit.eq(true))
             .one(&self.pool)
             .await?)
+    }
+
+    pub async fn toggle_reminder_paused(&self, id: i64) -> Result<bool, Error> {
+        let rem: Option<reminder::Model> =
+            reminder::Entity::find_by_id(id).one(&self.pool).await?;
+        if let Some(rem) = rem {
+            let paused = !rem.paused;
+            let mut rem: reminder::ActiveModel = rem.into();
+            rem.paused = Set(paused);
+            rem.update(&self.pool).await?;
+            Ok(paused)
+        } else {
+            Err(Error::Database(DbErr::RecordNotFound(id.to_string())))
+        }
     }
 
     pub async fn toggle_cron_reminder_paused(
