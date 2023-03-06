@@ -91,7 +91,7 @@ impl GenericReminder for reminder::ActiveModel {
             self.serialize_time(user_timezone),
             bold(&escape(&self.desc.clone().unwrap())),
         );
-        match self.pattern.clone().unwrap() {
+        let s = match self.pattern.clone().unwrap() {
             Some(ref s) => {
                 let pattern: Pattern = from_str(s).unwrap();
                 match pattern.to_string().as_str() {
@@ -100,6 +100,11 @@ impl GenericReminder for reminder::ActiveModel {
                 }
             }
             None => main_part,
+        };
+        if self.paused.clone().unwrap() {
+            format!("⏸ {}", s)
+        } else {
+            s
         }
     }
 
@@ -140,12 +145,17 @@ impl GenericReminder for cron_reminder::ActiveModel {
     }
 
     fn to_string(&self, user_timezone: Tz) -> String {
-        format!(
+        let s = format!(
             r"{} <{}\> \[{}\]",
             self.serialize_time(user_timezone),
             bold(&escape(&self.desc.clone().unwrap())),
             escape(&self.cron_expr.clone().unwrap())
-        )
+        );
+        if self.paused.clone().unwrap() {
+            format!("⏸ {}", s)
+        } else {
+            s
+        }
     }
 
     fn user_id(&self) -> Option<UserId> {
