@@ -691,7 +691,14 @@ impl DateDisplay for DateRange {
         f: &mut Formatter<'_>,
         now: &D,
     ) -> Result<bool, std::fmt::Error> {
-        self.from.relfmt(f, now)?;
+        if self.from.year() > now.year()
+            || self.from.year() == now.year()
+                && (self.from.month() > now.month()
+                    || self.from.month() == now.month()
+                        && self.from.day() >= now.day())
+        {
+            self.from.relfmt(f, now)?;
+        }
         write!(f, "—")?;
         if let Some(until) = self.until {
             if self.from != until {
