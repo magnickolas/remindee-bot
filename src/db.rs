@@ -302,29 +302,27 @@ impl Database {
         exclude_reminders: bool,
         exclude_cron_reminders: bool,
     ) -> Result<Vec<Box<dyn generic_reminder::GenericReminder>>, Error> {
-        let reminders_future = self.get_pending_chat_reminders(chat_id).await?;
-        let cron_reminders_future =
-            self.get_pending_chat_cron_reminders(chat_id).await?;
+        let reminders = self
+            .get_pending_chat_reminders(chat_id)
+            .await?
+            .into_iter()
+            .map(|x| -> Box<dyn generic_reminder::GenericReminder> {
+                Box::<reminder::ActiveModel>::new(x.into())
+            });
+        let cron_reminders = self
+            .get_pending_chat_cron_reminders(chat_id)
+            .await?
+            .into_iter()
+            .map(|x| -> Box<dyn generic_reminder::GenericReminder> {
+                Box::<cron_reminder::ActiveModel>::new(x.into())
+            });
+
         let mut all_reminders = vec![];
         if !exclude_reminders {
-            all_reminders.append(
-                &mut reminders_future
-                    .into_iter()
-                    .map(|x| -> Box<dyn generic_reminder::GenericReminder> {
-                        Box::<reminder::ActiveModel>::new(x.into())
-                    })
-                    .collect::<Vec<_>>(),
-            )
+            all_reminders.extend(reminders)
         }
         if !exclude_cron_reminders {
-            all_reminders.append(
-                &mut cron_reminders_future
-                    .into_iter()
-                    .map(|x| -> Box<dyn generic_reminder::GenericReminder> {
-                        Box::<cron_reminder::ActiveModel>::new(x.into())
-                    })
-                    .collect::<Vec<_>>(),
-            )
+            all_reminders.extend(cron_reminders)
         }
         all_reminders.sort_unstable();
         Ok(all_reminders)
