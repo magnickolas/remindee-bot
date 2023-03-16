@@ -46,17 +46,16 @@ impl TgMessageController<'_> {
         let text = match tz::get_user_timezone(self.db, self.user_id).await {
             Ok(Some(user_timezone)) => {
                 match self.db.get_sorted_all_reminders(self.chat_id.0).await {
-                    Ok(sorted_reminders) => {
-                        vec![TgResponse::RemindersListHeader.to_string()]
+                    Ok(sorted_reminders) => std::iter::once(
+                        TgResponse::RemindersListHeader.to_string(),
+                    )
+                    .chain(
+                        sorted_reminders
                             .into_iter()
-                            .chain(
-                                sorted_reminders
-                                    .into_iter()
-                                    .map(|rem| rem.to_string(user_timezone)),
-                            )
-                            .collect::<Vec<String>>()
-                            .join("\n")
-                    }
+                            .map(|rem| rem.to_string(user_timezone)),
+                    )
+                    .collect::<Vec<String>>()
+                    .join("\n"),
                     Err(err) => {
                         dbg!(err);
                         TgResponse::QueryingError.to_string()
