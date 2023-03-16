@@ -2000,7 +2000,7 @@ checksum = "456c603be3e8d448b072f410900c09faf164fbce2d480456f50eea6e25f9c848"
 
 [[package]]
 name = "remindee-bot"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "async-std",
  "async_once",

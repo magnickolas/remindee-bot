@@ -14,59 +14,6 @@ use teloxide::types::{
 use teloxide::RequestError;
 use tg::TgResponse;
 
-impl db::Database {
-    async fn get_sorted_reminders(
-        &self,
-        chat_id: i64,
-        exclude_reminders: bool,
-        exclude_cron_reminders: bool,
-    ) -> Result<Vec<Box<dyn GenericReminder>>, db::Error> {
-        let reminders_future = self.get_pending_chat_reminders(chat_id).await;
-        let cron_reminders_future =
-            self.get_pending_chat_cron_reminders(chat_id).await;
-        let gen_rems = if exclude_reminders {
-            Ok(vec![])
-        } else {
-            reminders_future.map(|mut v| {
-                v.drain(..)
-                    .map(|x| -> Box<dyn GenericReminder> {
-                        Box::<reminder::ActiveModel>::new(x.into())
-                    })
-                    .collect::<Vec<_>>()
-            })
-        };
-        let gen_cron_rems = if exclude_cron_reminders {
-            Ok(vec![])
-        } else {
-            cron_reminders_future.map(|mut v| {
-                v.drain(..)
-                    .map(|x| -> Box<dyn GenericReminder> {
-                        Box::<cron_reminder::ActiveModel>::new(x.into())
-                    })
-                    .collect::<Vec<_>>()
-            })
-        };
-        gen_rems
-            .and_then(|mut rems| {
-                gen_cron_rems.map(|mut cron_rems| {
-                    rems.append(cron_rems.as_mut());
-                    rems
-                })
-            })
-            .map(|mut rems| {
-                rems.sort();
-                rems
-            })
-    }
-
-    async fn get_sorted_all_reminders(
-        &self,
-        chat_id: i64,
-    ) -> Result<Vec<Box<dyn GenericReminder>>, db::Error> {
-        self.get_sorted_reminders(chat_id, false, false).await
-    }
-}
-
 pub struct TgMessageController<'a> {
     pub db: &'a db::Database,
     pub bot: &'a Bot,

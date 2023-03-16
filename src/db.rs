@@ -2,6 +2,7 @@ use std::fs::OpenOptions;
 use std::path::PathBuf;
 
 use crate::entity::{cron_reminder, reminder, user_timezone};
+use crate::generic_reminder;
 use crate::migration::{DbErr, Migrator, MigratorTrait};
 use chrono::Utc;
 use sea_orm::{
@@ -293,5 +294,46 @@ impl Database {
             .filter(cron_reminder::Column::ChatId.eq(chat_id))
             .all(&self.pool)
             .await?)
+    }
+
+    pub async fn get_sorted_reminders(
+        &self,
+        chat_id: i64,
+        exclude_reminders: bool,
+        exclude_cron_reminders: bool,
+    ) -> Result<Vec<Box<dyn generic_reminder::GenericReminder>>, Error> {
+        let reminders_future = self.get_pending_chat_reminders(chat_id).await?;
+        let cron_reminders_future =
+            self.get_pending_chat_cron_reminders(chat_id).await?;
+        let mut all_reminders = vec![];
+        if !exclude_reminders {
+            all_reminders.append(
+                &mut reminders_future
+                    .into_iter()
+                    .map(|x| -> Box<dyn generic_reminder::GenericReminder> {
+                        Box::<reminder::ActiveModel>::new(x.into())
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        }
+        if !exclude_cron_reminders {
+            all_reminders.append(
+                &mut cron_reminders_future
+                    .into_iter()
+                    .map(|x| -> Box<dyn generic_reminder::GenericReminder> {
+                        Box::<cron_reminder::ActiveModel>::new(x.into())
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        }
+        all_reminders.sort_unstable();
+        Ok(all_reminders)
+    }
+
+    pub async fn get_sorted_all_reminders(
+        &self,
+        chat_id: i64,
+    ) -> Result<Vec<Box<dyn generic_reminder::GenericReminder>>, Error> {
+        self.get_sorted_reminders(chat_id, false, false).await
     }
 }
