@@ -83,12 +83,13 @@ impl Database {
     }
 
     pub async fn mark_reminder_as_edit(&self, id: i64) -> Result<(), Error> {
-        let rem: Option<reminder::Model> =
-            reminder::Entity::find_by_id(id).one(&self.pool).await?;
-        if let Some(rem) = rem {
-            let mut rem: reminder::ActiveModel = rem.into();
-            rem.edit = Set(true);
-            rem.update(&self.pool).await?;
+        if let Some(mut rem_act) = reminder::Entity::find_by_id(id)
+            .one(&self.pool)
+            .await?
+            .map(Into::<reminder::ActiveModel>::into)
+        {
+            rem_act.edit = Set(true);
+            rem_act.update(&self.pool).await?;
         }
         Ok(())
     }
@@ -154,13 +155,12 @@ impl Database {
         user_id: i64,
         timezone: &str,
     ) -> Result<(), Error> {
-        let model = user_timezone::ActiveModel {
+        user_timezone::Entity::insert(user_timezone::ActiveModel {
             user_id: Set(user_id),
             timezone: Set(timezone.to_string()),
-        };
-        user_timezone::Entity::insert(model)
-            .exec(&self.pool)
-            .await?;
+        })
+        .exec(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -169,14 +169,13 @@ impl Database {
         user_id: i64,
         timezone: &str,
     ) -> Result<(), Error> {
-        let tz: Option<user_timezone::Model> =
-            user_timezone::Entity::find_by_id(user_id)
-                .one(&self.pool)
-                .await?;
-        if let Some(tz) = tz {
-            let mut tz: user_timezone::ActiveModel = tz.into();
-            tz.timezone = Set(timezone.to_string());
-            tz.update(&self.pool).await?;
+        if let Some(mut tz_act) = user_timezone::Entity::find_by_id(user_id)
+            .one(&self.pool)
+            .await?
+            .map(Into::<user_timezone::ActiveModel>::into)
+        {
+            tz_act.timezone = Set(timezone.to_string());
+            tz_act.update(&self.pool).await?;
         } else {
             self.insert_user_timezone_name(user_id, timezone).await?;
         }
@@ -205,14 +204,13 @@ impl Database {
         &self,
         id: i64,
     ) -> Result<(), Error> {
-        let rem: Option<cron_reminder::Model> =
-            cron_reminder::Entity::find_by_id(id)
-                .one(&self.pool)
-                .await?;
-        if let Some(rem) = rem {
-            let mut rem: cron_reminder::ActiveModel = rem.into();
-            rem.edit = Set(true);
-            rem.update(&self.pool).await?;
+        if let Some(mut cron_rem_act) = cron_reminder::Entity::find_by_id(id)
+            .one(&self.pool)
+            .await?
+            .map(Into::<cron_reminder::ActiveModel>::into)
+        {
+            cron_rem_act.edit = Set(true);
+            cron_rem_act.update(&self.pool).await?;
         }
         Ok(())
     }
@@ -247,11 +245,11 @@ impl Database {
         let rem: Option<reminder::Model> =
             reminder::Entity::find_by_id(id).one(&self.pool).await?;
         if let Some(rem) = rem {
-            let paused = !rem.paused;
-            let mut rem: reminder::ActiveModel = rem.into();
-            rem.paused = Set(paused);
-            rem.update(&self.pool).await?;
-            Ok(paused)
+            let paused_value = !rem.paused;
+            let mut rem_act: reminder::ActiveModel = rem.into();
+            rem_act.paused = Set(paused_value);
+            rem_act.update(&self.pool).await?;
+            Ok(paused_value)
         } else {
             Err(Error::Database(DbErr::RecordNotFound(id.to_string())))
         }
@@ -261,16 +259,16 @@ impl Database {
         &self,
         id: i64,
     ) -> Result<bool, Error> {
-        let rem: Option<cron_reminder::Model> =
+        let cron_rem: Option<cron_reminder::Model> =
             cron_reminder::Entity::find_by_id(id)
                 .one(&self.pool)
                 .await?;
-        if let Some(rem) = rem {
-            let paused = !rem.paused;
-            let mut rem: cron_reminder::ActiveModel = rem.into();
-            rem.paused = Set(paused);
-            rem.update(&self.pool).await?;
-            Ok(paused)
+        if let Some(cron_rem) = cron_rem {
+            let paused_value = !cron_rem.paused;
+            let mut cron_rem_act: cron_reminder::ActiveModel = cron_rem.into();
+            cron_rem_act.paused = Set(paused_value);
+            cron_rem_act.update(&self.pool).await?;
+            Ok(paused_value)
         } else {
             Err(Error::Database(DbErr::RecordNotFound(id.to_string())))
         }
