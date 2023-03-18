@@ -122,7 +122,7 @@ pub struct Recurrence {
 
 #[derive(Debug, Default)]
 pub struct Countdown {
-    pub duration: Interval,
+    pub durations: Vec<Interval>,
 }
 
 #[derive(Debug)]
@@ -447,7 +447,7 @@ impl Parse for Countdown {
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::interval => {
-                    cd.duration = Interval::parse(rec)?;
+                    cd.durations.push(Interval::parse(rec)?);
                 }
                 _ => unreachable!(),
             }

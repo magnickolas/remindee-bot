@@ -16,7 +16,7 @@ use crate::parsers::now_time;
 #[derive(Debug)]
 pub struct Tz(chrono_tz::Tz);
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Interval {
     #[serde(rename = "y")]
     pub years: i32,
@@ -116,11 +116,12 @@ pub struct Recurrence {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Countdown {
+    #[serde(rename = "from")]
+    pub time_from: NaiveDateTime,
     #[serde(rename = "dur")]
-    pub duration: Interval,
+    pub durations: Vec<Interval>,
     #[serde(rename = "tz")]
     pub timezone: Tz,
-    used: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -562,24 +563,33 @@ impl Recurrence {
 }
 
 impl Countdown {
-    pub fn next(&mut self, cur: NaiveDateTime) -> Option<NaiveDateTime> {
-        let cur = self.timezone.0.from_utc_datetime(&cur).naive_local();
-        if self.used {
-            None
-        } else {
-            self.used = true;
-            let next_time = date::add_interval(cur, &self.duration);
-            self.timezone.local_to_utc(&next_time)
-        }
+    pub fn next(&mut self) -> Option<NaiveDateTime> {
+        let start = self
+            .timezone
+            .0
+            .from_utc_datetime(&self.time_from)
+            .naive_local();
+        let duration = *self
+            .durations
+            .iter()
+            .min_by_key(|duration| date::add_interval(start, duration))?;
+        self.durations.retain(|&x| x != duration);
+
+        let next_time = date::add_interval(start, &duration);
+        self.timezone.local_to_utc(&next_time)
     }
 }
 
 impl Countdown {
     fn from_with_tz(countdown: grammar::Countdown, tz: chrono_tz::Tz) -> Self {
         Self {
-            duration: countdown.duration.into(),
+            time_from: now_time(),
+            durations: countdown
+                .durations
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             timezone: Tz(tz),
-            used: false,
         }
     }
 }
@@ -602,7 +612,7 @@ impl Pattern {
     pub fn next(&mut self, cur: NaiveDateTime) -> Option<NaiveDateTime> {
         match self {
             Self::Recurrence(recurrence) => recurrence.next(cur),
-            Self::Countdown(countdown) => countdown.next(cur),
+            Self::Countdown(countdown) => countdown.next(),
         }
     }
 }
@@ -611,7 +621,7 @@ impl std::fmt::Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Recurrence(recurrence) => write!(f, "{}", recurrence),
-            Self::Countdown(_) => Ok(()),
+            Self::Countdown(countdown) => write!(f, "{}", countdown),
         }
     }
 }
@@ -641,6 +651,18 @@ impl std::fmt::Display for Recurrence {
                 write!(f, ",")?;
             }
             write!(f, "{}", time_pattern)?;
+        }
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for Countdown {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for (i, interval) in self.durations.iter().enumerate() {
+            if i != 0 {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", interval)?;
         }
         Ok(())
     }
@@ -882,6 +904,25 @@ mod test {
         assert_eq!(
             get_all_times(pattern).collect::<Vec<_>>(),
             vec![tz(2007, 2, 9, 13, 32, 33)]
+        );
+    }
+
+    #[test]
+    fn test_multiple_countdown() {
+        unsafe {
+            TEST_TIMESTAMP = TEST_TIME.timestamp();
+        }
+        let s = "1w1h2m3s,2w1h20m7s countdown";
+        let parsed_rem = parse_reminder(s).unwrap();
+        assert_eq!(
+            parsed_rem.description.map(|x| x.0),
+            Some("countdown".to_owned())
+        );
+        let parsed = parsed_rem.pattern.unwrap();
+        let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
+        assert_eq!(
+            get_all_times(pattern).collect::<Vec<_>>(),
+            vec![tz(2007, 2, 9, 13, 32, 33), tz(2007, 2, 16, 13, 50, 37)]
         );
     }
 

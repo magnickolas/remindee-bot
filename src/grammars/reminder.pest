@@ -186,9 +186,11 @@ recurrence = ${
     dates_patterns ~ ws+ ~ time_patterns ~ &(ws | EOI)
   | time_patterns ~ &(ws | EOI)
 }
+countdown_one = _{
+    countdown_hrprefix ~ interval
+}
 countdown = ${
-    countdown_hrprefix
-    ~ interval ~ &(ws | EOI)
+    countdown_one ~ ("," ~ countdown_one)* ~ &(ws | EOI)
 }
 reminder_pattern = _{
     recurrence | countdown
