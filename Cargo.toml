@@ -1,6 +1,6 @@
 [package]
 name = "remindee-bot"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Nikolai Oplachko <magnickolas@gmail.com>"]
 edition = "2021"
 license = "GPL-3.0-only"
@@ -20,11 +20,11 @@ async_once = "0.2"
 chrono = "0.4"
 chrono-tz = "0.8"
 chronoutil = "0.2"
-cron-parser = "0.7"
-directories = "4.0"
+cron-parser = "0.8"
+directories = "5.0"
 lazy_static = "1.4"
 log = "0.4"
-pretty_env_logger = "0.4"
+pretty_env_logger = "0.5"
 regex = "1.7"
 sea-orm = "0.11"
 pest = "2.0"
@@ -38,7 +38,7 @@ version = "1.0"
 features = ["derive"]
 
 [dependencies.serde_with]
-version = "2.2"
+version = "3.0"
 features = ["chrono"]
 
 [dependencies.clap]

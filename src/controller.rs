@@ -361,7 +361,7 @@ impl TgMessageController<'_> {
         if let Some(reminders) = sorted_reminders
             .ok()
             .as_ref()
-            .and_then(|rems| rems.chunks(45).into_iter().nth(num))
+            .and_then(|rems| rems.chunks(45).nth(num))
         {
             for chunk in reminders.chunks(1) {
                 let mut row = vec![];
