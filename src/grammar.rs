@@ -148,55 +148,58 @@ trait Parse {
 
 impl Parse for HoleyDate {
     fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
-        let mut date = Self::default();
+        let mut holey_date = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::year => {
-                    date.year = Some(rec.as_str().parse().map_err(|_| ())?);
+                    holey_date.year =
+                        Some(rec.as_str().parse().map_err(|_| ())?);
                 }
                 Rule::month => {
-                    date.month = Some(rec.as_str().parse().map_err(|_| ())?);
+                    holey_date.month =
+                        Some(rec.as_str().parse().map_err(|_| ())?);
                 }
                 Rule::day => {
-                    date.day = Some(rec.as_str().parse().map_err(|_| ())?);
+                    holey_date.day =
+                        Some(rec.as_str().parse().map_err(|_| ())?);
                 }
                 _ => unreachable!(),
             }
         }
-        Ok(date)
+        Ok(holey_date)
     }
 }
 
 impl Parse for Interval {
     fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
-        let mut int = Self::default();
+        let mut interval = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::interval_years => {
-                    int.years = rec.as_str().parse().map_err(|_| ())?;
+                    interval.years = rec.as_str().parse().map_err(|_| ())?;
                 }
                 Rule::interval_months => {
-                    int.months = rec.as_str().parse().map_err(|_| ())?;
+                    interval.months = rec.as_str().parse().map_err(|_| ())?;
                 }
                 Rule::interval_weeks => {
-                    int.weeks = rec.as_str().parse().map_err(|_| ())?;
+                    interval.weeks = rec.as_str().parse().map_err(|_| ())?;
                 }
                 Rule::interval_days => {
-                    int.days = rec.as_str().parse().map_err(|_| ())?;
+                    interval.days = rec.as_str().parse().map_err(|_| ())?;
                 }
                 Rule::interval_hours => {
-                    int.hours = rec.as_str().parse().map_err(|_| ())?;
+                    interval.hours = rec.as_str().parse().map_err(|_| ())?;
                 }
                 Rule::interval_minutes => {
-                    int.minutes = rec.as_str().parse().map_err(|_| ())?;
+                    interval.minutes = rec.as_str().parse().map_err(|_| ())?;
                 }
                 Rule::interval_seconds => {
-                    int.seconds = rec.as_str().parse().map_err(|_| ())?;
+                    interval.seconds = rec.as_str().parse().map_err(|_| ())?;
                 }
                 _ => unreachable!(),
             }
         }
-        Ok(int)
+        Ok(interval)
     }
 }
 
@@ -270,26 +273,26 @@ impl Parse for Weekdays {
 
 impl Parse for DateRange {
     fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
-        let mut range = Self::default();
+        let mut date_range = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::date_from => {
-                    range.from = HoleyDate::parse(rec)?;
+                    date_range.from = HoleyDate::parse(rec)?;
                 }
                 Rule::date_until => {
-                    range.until = Some(HoleyDate::parse(rec)?);
+                    date_range.until = Some(HoleyDate::parse(rec)?);
                 }
                 Rule::date_interval => {
-                    range.date_divisor =
+                    date_range.date_divisor =
                         DateDivisor::Interval(DateInterval::parse(rec)?);
                 }
                 Rule::weekdays_range => {
-                    let weekdays = match range.date_divisor {
+                    let weekdays = match date_range.date_divisor {
                         DateDivisor::Weekdays(ref mut w) => w,
                         _ => {
-                            range.date_divisor =
+                            date_range.date_divisor =
                                 DateDivisor::Weekdays(Weekdays::none());
-                            match range.date_divisor {
+                            match date_range.date_divisor {
                                 DateDivisor::Weekdays(ref mut w) => w,
                                 _ => unreachable!(),
                             }
@@ -300,7 +303,7 @@ impl Parse for DateRange {
                 _ => unreachable!(),
             }
         }
-        Ok(range)
+        Ok(date_range)
     }
 }
 
@@ -330,67 +333,74 @@ impl Parse for Time {
 
 impl Parse for TimeInterval {
     fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
-        let mut int = Self::default();
+        let mut time_interval = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::interval_hours => {
-                    int.hours = rec.as_str().parse().map_err(|_| ())?;
+                    time_interval.hours =
+                        rec.as_str().parse().map_err(|_| ())?;
                 }
                 Rule::interval_minutes => {
-                    int.minutes = rec.as_str().parse().map_err(|_| ())?;
+                    time_interval.minutes =
+                        rec.as_str().parse().map_err(|_| ())?;
                 }
                 Rule::interval_seconds => {
-                    int.seconds = rec.as_str().parse().map_err(|_| ())?;
+                    time_interval.seconds =
+                        rec.as_str().parse().map_err(|_| ())?;
                 }
                 _ => unreachable!(),
             }
         }
-        Ok(int)
+        Ok(time_interval)
     }
 }
 
 impl Parse for DateInterval {
     fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
-        let mut int = Self::default();
+        let mut date_interval = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::interval_years => {
-                    int.years = rec.as_str().parse().map_err(|_| ())?;
+                    date_interval.years =
+                        rec.as_str().parse().map_err(|_| ())?;
                 }
                 Rule::interval_months => {
-                    int.months = rec.as_str().parse().map_err(|_| ())?;
+                    date_interval.months =
+                        rec.as_str().parse().map_err(|_| ())?;
                 }
                 Rule::interval_weeks => {
-                    int.weeks = rec.as_str().parse().map_err(|_| ())?;
+                    date_interval.weeks =
+                        rec.as_str().parse().map_err(|_| ())?;
                 }
                 Rule::interval_days => {
-                    int.days = rec.as_str().parse().map_err(|_| ())?;
+                    date_interval.days =
+                        rec.as_str().parse().map_err(|_| ())?;
                 }
                 _ => unreachable!(),
             }
         }
-        Ok(int)
+        Ok(date_interval)
     }
 }
 
 impl Parse for TimeRange {
     fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
-        let mut range = Self::default();
+        let mut time_range = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::time_from => {
-                    range.from = Some(Time::parse(rec)?);
+                    time_range.from = Some(Time::parse(rec)?);
                 }
                 Rule::time_until => {
-                    range.until = Some(Time::parse(rec)?);
+                    time_range.until = Some(Time::parse(rec)?);
                 }
                 Rule::time_interval => {
-                    range.interval = TimeInterval::parse(rec)?;
+                    time_range.interval = TimeInterval::parse(rec)?;
                 }
                 _ => unreachable!(),
             }
         }
-        Ok(range)
+        Ok(time_range)
     }
 }
 
@@ -407,52 +417,52 @@ impl Default for Recurrence {
 
 impl Parse for Recurrence {
     fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
-        let mut recur = Self::default();
+        let mut recurrence = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::dates_point => {
-                    recur
+                    recurrence
                         .dates_patterns
                         .push(DatePattern::Point(HoleyDate::parse(rec)?));
                 }
                 Rule::dates_range => {
-                    recur
+                    recurrence
                         .dates_patterns
                         .push(DatePattern::Range(DateRange::parse(rec)?));
                 }
                 Rule::time_point => {
-                    recur
+                    recurrence
                         .time_patterns
                         .push(TimePattern::Point(Time::parse(rec)?));
                 }
                 Rule::time_range => {
-                    recur
+                    recurrence
                         .time_patterns
                         .push(TimePattern::Range(TimeRange::parse(rec)?));
                 }
                 _ => unreachable!(),
             }
         }
-        if recur.dates_patterns.len() > 1 {
-            recur.dates_patterns =
-                NonEmpty::from_vec(recur.dates_patterns.tail).unwrap();
+        if recurrence.dates_patterns.len() > 1 {
+            recurrence.dates_patterns =
+                NonEmpty::from_vec(recurrence.dates_patterns.tail).unwrap();
         }
-        Ok(recur)
+        Ok(recurrence)
     }
 }
 
 impl Parse for Countdown {
     fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
-        let mut cd = Self::default();
+        let mut countdown = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::interval => {
-                    cd.durations.push(Interval::parse(rec)?);
+                    countdown.durations.push(Interval::parse(rec)?);
                 }
                 _ => unreachable!(),
             }
         }
-        Ok(cd)
+        Ok(countdown)
     }
 }
 
@@ -464,19 +474,19 @@ impl Parse for Description {
 
 impl Parse for Reminder {
     fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
-        let mut rem = Self::default();
+        let mut reminder = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::description => {
-                    rem.description = Some(Description::parse(rec)?);
+                    reminder.description = Some(Description::parse(rec)?);
                 }
                 Rule::recurrence => {
-                    rem.pattern = Some(ReminderPattern::Recurrence(
+                    reminder.pattern = Some(ReminderPattern::Recurrence(
                         Recurrence::parse(rec)?,
                     ));
                 }
                 Rule::countdown => {
-                    rem.pattern = Some(ReminderPattern::Countdown(
+                    reminder.pattern = Some(ReminderPattern::Countdown(
                         Countdown::parse(rec)?,
                     ));
                 }
@@ -484,7 +494,7 @@ impl Parse for Reminder {
                 _ => unreachable!(),
             }
         }
-        Ok(rem)
+        Ok(reminder)
     }
 }
 
