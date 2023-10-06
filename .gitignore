@@ -1,2 +1,4 @@
 /target
 .nvimrc.lua
+# sphinx
+/docs/_build
