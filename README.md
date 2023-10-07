@@ -34,7 +34,7 @@ remindee-bot
 
 ## Setting reminders
 
-The formats descriptions with examples can be viewed at [readthedocs] or [docs/index.rst](/docs/reminders_formats.md).
+The formats descriptions with examples can be viewed at [readthedocs] or [docs/index.rst](/docs/index.rst).
 
 You may also find it useful to refer to [the pest grammar playground][pest-grammar-playground] to try out some reminders and see how they are parsed (select `reminder` at the bottom of the list of choices next to the second code block and play with it).
 
