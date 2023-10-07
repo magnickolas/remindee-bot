@@ -3,8 +3,12 @@ name: CI
 on:
   pull_request:
   push:
-    branches:
-      - master
+    paths:
+      - .github/workflows/ci.yml
+      - Cargo.toml
+      - Cargo.lock
+      - rustfmt.toml
+      - src/**
 
 jobs:
   build:
@@ -26,21 +30,21 @@ jobs:
             rust: stable
 
     steps:
-    - uses: actions/checkout@v1
-    - name: Install Rust
-      run: rustup update stable && rustup default stable && rustup component add rustfmt
-    - name: Action
-      run: cargo ${{ matrix.action }}
+      - uses: actions/checkout@v1
+      - name: Install Rust
+        run: rustup update stable && rustup default stable && rustup component add rustfmt
+      - name: Action
+        run: cargo ${{ matrix.action }}
 
   rustfmt:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
-    - name: Install Rust
-      run: rustup update stable && rustup default stable && rustup component add rustfmt
-    - name: Action
-      run: cargo fmt -- --check
+      - uses: actions/checkout@master
+      - name: Install Rust
+        run: rustup update stable && rustup default stable && rustup component add rustfmt
+      - name: Action
+        run: cargo fmt -- --check
 
   clippy_check:
     name: Clippy
