@@ -514,32 +514,14 @@ impl TgMessageController<'_> {
     ) -> Result<Option<cron_reminder::Model>, db::Error> {
         self.db.get_edit_cron_reminder(self.chat_id.0).await
     }
-}
-
-impl TgCallbackController<'_> {
-    async fn answer_callback_query(
-        &self,
-        response: TgResponse,
-    ) -> Result<(), RequestError> {
-        tg::answer_callback_query(
-            self.msg_ctl.bot,
-            self.cb_id,
-            &response.to_unescaped_string(),
-        )
-        .await
-    }
 
     pub async fn set_timezone(
         &self,
         tz_name: &str,
     ) -> Result<(), RequestError> {
         let response = match self
-            .msg_ctl
             .db
-            .insert_or_update_user_timezone(
-                self.msg_ctl.user_id.0 as i64,
-                tz_name,
-            )
+            .insert_or_update_user_timezone(self.user_id.0 as i64, tz_name)
             .await
         {
             Ok(()) => TgResponse::ChosenTimezone(tz_name.to_owned()),
@@ -548,7 +530,34 @@ impl TgCallbackController<'_> {
                 TgResponse::FailedSetTimezone(tz_name.to_owned())
             }
         };
-        self.answer_callback_query(response).await
+        self.reply(response).await
+    }
+}
+
+impl TgCallbackController<'_> {
+    async fn answer_callback_query(
+        &self,
+        response: TgResponse,
+    ) -> Result<(), RequestError> {
+        self.msg_ctl.reply(response).await?;
+        self.acknowledge_callback().await
+    }
+
+    async fn acknowledge_callback(&self) -> Result<(), RequestError> {
+        self.msg_ctl
+            .bot
+            .answer_callback_query(self.cb_id)
+            .send()
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn set_timezone(
+        &self,
+        tz_name: &str,
+    ) -> Result<(), RequestError> {
+        self.msg_ctl.set_timezone(tz_name).await?;
+        self.acknowledge_callback().await
     }
 
     pub async fn delete_reminder(

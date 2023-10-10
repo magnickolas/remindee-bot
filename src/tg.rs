@@ -139,15 +139,3 @@ pub async fn edit_markup(
         .await
         .map(|_| ())
 }
-
-pub async fn answer_callback_query(
-    bot: &Bot,
-    query_id: &str,
-    text: &str,
-) -> Result<(), RequestError> {
-    bot.answer_callback_query(query_id)
-        .text(text)
-        .send()
-        .await
-        .map(|_| ())
-}
