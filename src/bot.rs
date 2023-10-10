@@ -7,7 +7,7 @@ use crate::generic_reminder::GenericReminder;
 use crate::parsers::now_time;
 use crate::serializers::Pattern;
 use crate::tg::send_message;
-use crate::tz::get_user_timezone;
+use crate::tz::{get_timezone_name_of_location, get_user_timezone};
 use async_once::AsyncOnce;
 use async_std::task;
 use chrono::Utc;
@@ -339,12 +339,18 @@ async fn message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
     let ctl = TgMessageController::from_msg(&bot, &msg).await?;
     if !ctl.chat_id.is_user() {
         Ok(())
+    } else if let Some(location) = msg.location() {
+        ctl.set_timezone(get_timezone_name_of_location(
+            location.longitude,
+            location.latitude,
+        ))
+        .await
+        .map_err(From::from)
     } else if let Some(text) = msg.text() {
-        ctl.set_or_edit_reminder(text).await
+        ctl.set_or_edit_reminder(text).await.map_err(From::from)
     } else {
-        ctl.incorrect_request().await
+        ctl.incorrect_request().await.map_err(From::from)
     }
-    .map_err(From::from)
 }
 
 async fn callback_handler(

@@ -3,6 +3,7 @@ use crate::err;
 
 use chrono_tz::Tz;
 use teloxide::types::UserId;
+use tzf_rs::DefaultFinder;
 
 const TZ_NAMES: &[&str] = &[
     "Africa/Abidjan",
@@ -355,6 +356,10 @@ const TZ_NAMES: &[&str] = &[
     "Pacific/Wallis",
 ];
 
+lazy_static! {
+    static ref FINDER: DefaultFinder = DefaultFinder::new();
+}
+
 pub fn get_tz_names_for_page_idx(num: usize) -> Option<Vec<&'static str>> {
     TZ_NAMES.chunks(30).nth(num).map(|v| v.to_vec())
 }
@@ -367,4 +372,8 @@ pub async fn get_user_timezone(
     tz_name_opt
         .map(|tz_name| tz_name.parse::<Tz>().map_err(err::Error::Parse))
         .transpose()
+}
+
+pub fn get_timezone_name_of_location(lng: f64, lat: f64) -> &'static str {
+    FINDER.get_tz_name(lng, lat)
 }
