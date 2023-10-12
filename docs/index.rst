@@ -38,6 +38,8 @@ Examples
 -  ``15 13 doctor appointment`` => notify on the nearest 15th day at 1
    PM
 
+----
+
 Recurring reminders
 -------------------
 
@@ -110,6 +112,8 @@ Examples
 -  ``5m grab tea`` => notify in 5 minutes
 -  ``1d1h`` => notify in 25 hours
 
+----
+
 Cron-like reminders
 -------------------
 
@@ -128,6 +132,8 @@ Examples
 -  ``55 10 * * 1-5 go to school`` (at 10:55 AM every weekday)
 -  ``45 10-19 * * 1-6 break for 15 minutes`` (at 10:45, 11:45, ...,
    19:45 from Monday to Saturday)
+
+----
 
 Reminders grammar
 -----------------
