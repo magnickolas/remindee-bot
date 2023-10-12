@@ -2,3 +2,4 @@
 .nvimrc.lua
 # sphinx
 /docs/_build
+**/.DS_Store
