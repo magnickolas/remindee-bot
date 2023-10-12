@@ -34,7 +34,7 @@ Examples
 -  ``01.01 0:00 Happy New Year`` => notify on the 1st of January at 12
    AM
 -  ``8 wake up`` => notify **today at 8 AM** if it is currently between
-   12 AM and 7:59 AM, otherwise notify\ **tomorrow at 8 AM**
+   12 AM and 7:59 AM, otherwise notify **tomorrow at 8 AM**
 -  ``15 13 doctor appointment`` => notify on the nearest 15th day at 1
    PM
 
