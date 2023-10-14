@@ -107,11 +107,11 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            ${{ env.PREFIX }}-${{ matrix.targets[0] }}
-            ${{ env.PREFIX }}-${{ matrix.targets[1] }}
-            ${{ env.PREFIX }}-${{ matrix.targets[2] }}
-            ${{ env.PREFIX }}-${{ matrix.targets[3] }}
-            ${{ env.PREFIX }}-${{ matrix.targets[4] }}
+            ${{ env.PREFIX }}-${{ matrix.targets[0] }}.tar.gz
+            ${{ env.PREFIX }}-${{ matrix.targets[1] }}.tar.gz
+            ${{ env.PREFIX }}-${{ matrix.targets[2] }}.tar.gz
+            ${{ env.PREFIX }}-${{ matrix.targets[3] }}.tar.gz
+            ${{ env.PREFIX }}-${{ matrix.targets[4] }}.tar.gz
 
   publish-crate:
     name: Publish tagged release on crates.io
