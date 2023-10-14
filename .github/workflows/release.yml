@@ -9,9 +9,20 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release-version: ${{ steps.init.outputs.release-version }}
+      matrix: ${{ steps.init.outputs.matrix }}
+      targets: ${{ steps.init.outputs.targets }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - id: init
-        run: echo "release-version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+        run: |
+          MATRIX=$(jq -Mc . .github/workflows/release_matrix.json)
+          TARGETS=$(jq -Mc '.include | map(.target)' <<<${MATRIX})
+
+          echo "release-version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+          echo "targets=${TARGETS}" >> "$GITHUB_OUTPUT"
 
   build-release:
     name: build-release
@@ -21,33 +32,7 @@ jobs:
       STAGING: remindee-bot-${{ needs.init.outputs.release-version }}-${{ matrix.target }}
       BINARY_PATH: target/${{ matrix.target }}/release/${{ matrix.binary }}
     strategy:
-      matrix:
-        build: [linux, macos-x86_64, macos-aarch64, armv7, windows]
-        include:
-          - build: linux
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            binary: remindee-bot
-
-          - build: macos-x86_64
-            os: macos-latest
-            target: x86_64-apple-darwin
-            binary: remindee-bot
-
-          - build: macos-aarch64
-            os: macos-latest
-            target: aarch64-apple-darwin
-            binary: remindee-bot
-
-          - build: armv7
-            os: ubuntu-latest
-            target: armv7-unknown-linux-gnueabihf
-            binary: remindee-bot
-
-          - build: windows
-            os: ubuntu-latest
-            target: x86_64-pc-windows-gnu
-            binary: remindee-bot.exe
+      matrix: ${{ fromJSON(needs.init.outputs.matrix) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -68,11 +53,11 @@ jobs:
         run: cross build --verbose --release --target ${{ matrix.target }}
 
       - name: Strip release binary
-        if: ${{ matrix.build != 'armv7' && matrix.build != 'windows' }}
+        if: ${{ ! matrix.is_arm }}
         run: strip ${{ env.BINARY_PATH }}
 
       - name: Strip ARM release binary
-        if: ${{ matrix.build == 'armv7' }}
+        if: ${{ matrix.is_arm }}
         run: |
           sudo apt-get update
           sudo apt-get install -y binutils-arm-linux-gnueabihf
@@ -95,34 +80,38 @@ jobs:
     name: create-release
     needs: [init, build-release]
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - targets: ${{ fromJSON(needs.init.outputs.targets) }}
     env:
       PREFIX: remindee-bot-${{ needs.init.outputs.release-version }}
     steps:
       - uses: actions/download-artifact@v3
         with:
-          name: ${{ env.PREFIX }}-x86_64-unknown-linux-gnu
+          name: ${{ env.PREFIX }}-${{ matrix.targets[0] }}
       - uses: actions/download-artifact@v3
         with:
-          name: ${{ env.PREFIX }}-x86_64-apple-darwin
+          name: ${{ env.PREFIX }}-${{ matrix.targets[1] }}
       - uses: actions/download-artifact@v3
         with:
-          name: ${{ env.PREFIX }}-aarch64-apple-darwin
+          name: ${{ env.PREFIX }}-${{ matrix.targets[2] }}
       - uses: actions/download-artifact@v3
         with:
-          name: ${{ env.PREFIX }}-armv7-unknown-linux-gnueabihf
+          name: ${{ env.PREFIX }}-${{ matrix.targets[3] }}
       - uses: actions/download-artifact@v3
         with:
-          name: ${{ env.PREFIX }}-x86_64-pc-windows-gnu
+          name: ${{ env.PREFIX }}-${{ matrix.targets[4] }}
 
       - name: Create release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            ${{ env.PREFIX }}-x86_64-unknown-linux-gnu.tar.gz
-            ${{ env.PREFIX }}-x86_64-apple-darwin.tar.gz
-            ${{ env.PREFIX }}-aarch64-apple-darwin.tar.gz
-            ${{ env.PREFIX }}-armv7-unknown-linux-gnueabihf.tar.gz
-            ${{ env.PREFIX }}-x86_64-pc-windows-gnu.tar.gz
+            ${{ env.PREFIX }}-${{ matrix.targets[0] }}
+            ${{ env.PREFIX }}-${{ matrix.targets[1] }}
+            ${{ env.PREFIX }}-${{ matrix.targets[2] }}
+            ${{ env.PREFIX }}-${{ matrix.targets[3] }}
+            ${{ env.PREFIX }}-${{ matrix.targets[4] }}
 
   publish-crate:
     name: Publish tagged release on crates.io
