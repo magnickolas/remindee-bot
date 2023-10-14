@@ -11,15 +11,12 @@ on:
       - src/**
 
 jobs:
-  build:
-    name: Build
+  ci:
+    name: CI
 
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        action:
-          - build
-          - test
         build: [linux, macos]
         include:
           - build: linux
@@ -30,32 +27,26 @@ jobs:
             rust: stable
 
     steps:
-      - uses: actions/checkout@v1
-      - name: Install Rust
-        run: rustup update stable && rustup default stable && rustup component add rustfmt
-      - name: Action
-        run: cargo ${{ matrix.action }}
+      - uses: actions/checkout@v4
 
-  rustfmt:
-    name: Rustfmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@master
       - name: Install Rust
-        run: rustup update stable && rustup default stable && rustup component add rustfmt
-      - name: Action
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt clippy
+          override: true
+
+      - name: Build
+        run: cargo build --verbose
+
+      - name: Run tests
+        run: cargo test --verbose
+
+      - name: Check formatting
         run: cargo fmt -- --check
 
-  clippy_check:
-    name: Clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v1
-      - name: Install Rust
-        run: rustup update stable && rustup default stable && rustup component add rustfmt
-      - name: Action
-        run: rustup component add clippy
-      - uses: actions-rs/clippy-check@v1
+      - name: Run clippy
+        uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: --all-features
