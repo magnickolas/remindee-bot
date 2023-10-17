@@ -6,6 +6,7 @@ use crate::tz;
 use crate::entity::{cron_reminder, reminder};
 use crate::generic_reminder::GenericReminder;
 use chrono_tz::Tz;
+use sea_orm::IntoActiveModel;
 use teloxide::prelude::*;
 use teloxide::types::MessageId;
 use teloxide::types::{
@@ -57,7 +58,7 @@ impl TgMessageController<'_> {
                     .collect::<Vec<String>>()
                     .join("\n"),
                     Err(err) => {
-                        dbg!(err);
+                        log::error!("{}", err);
                         TgResponse::QueryingError.to_string()
                     }
                 }
@@ -85,7 +86,7 @@ impl TgMessageController<'_> {
                 Ok(Some(tz_name)) => TgResponse::ChosenTimezone(tz_name),
                 Ok(None) => TgResponse::NoChosenTimezone,
                 Err(err) => {
-                    dbg!(err);
+                    log::error!("{}", err);
                     TgResponse::NoChosenTimezone
                 }
             };
@@ -178,7 +179,7 @@ impl TgMessageController<'_> {
                             Ok(true)
                         }
                         Err(err) => {
-                            dbg!(err);
+                            log::error!("{}", err);
                             self.reply(TgResponse::FailedInsert).await?;
                             Ok(false)
                         }
@@ -202,7 +203,7 @@ impl TgMessageController<'_> {
                             Ok(true)
                         }
                         Err(err) => {
-                            dbg!(err);
+                            log::error!("{}", err);
                             self.reply(TgResponse::FailedInsert).await?;
                             Ok(false)
                         }
@@ -455,7 +456,7 @@ impl TgMessageController<'_> {
             let response = match self.db.delete_reminder(rem_id).await {
                 Ok(()) => TgResponse::SuccessEdit,
                 Err(err) => {
-                    dbg!(err);
+                    log::error!("{}", err);
                     TgResponse::FailedEdit
                 }
             };
@@ -474,7 +475,7 @@ impl TgMessageController<'_> {
             let response = match self.db.delete_cron_reminder(rem_id).await {
                 Ok(()) => TgResponse::SuccessEdit,
                 Err(err) => {
-                    dbg!(err);
+                    log::error!("{}", err);
                     TgResponse::FailedEdit
                 }
             };
@@ -526,7 +527,7 @@ impl TgMessageController<'_> {
         {
             Ok(()) => TgResponse::ChosenTimezone(tz_name.to_owned()),
             Err(err) => {
-                dbg!(err);
+                log::error!("{}", err);
                 TgResponse::FailedSetTimezone(tz_name.to_owned())
             }
         };
@@ -564,13 +565,39 @@ impl TgCallbackController<'_> {
         &self,
         rem_id: i64,
     ) -> Result<(), RequestError> {
-        let response = match self.msg_ctl.db.delete_reminder(rem_id).await {
-            Ok(()) => TgResponse::SuccessDelete,
-            Err(err) => {
-                dbg!(err);
-                TgResponse::FailedDelete
-            }
-        };
+        let response =
+            match tz::get_user_timezone(self.msg_ctl.db, self.msg_ctl.user_id)
+                .await
+            {
+                Ok(Some(user_timezone)) => {
+                    match self.msg_ctl.db.get_reminder(rem_id).await {
+                        Ok(Some(reminder)) => {
+                            match self.msg_ctl.db.delete_reminder(rem_id).await
+                            {
+                                Ok(()) => TgResponse::SuccessDelete(
+                                    reminder
+                                        .into_active_model()
+                                        .to_unescaped_string(user_timezone),
+                                ),
+                                Err(err) => {
+                                    log::error!("{}", err);
+                                    TgResponse::FailedDelete
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            log::error!("{}", err);
+                            TgResponse::FailedDelete
+                        }
+                        _ => {
+                            log::error!("missing reminder with id: {}", rem_id);
+                            TgResponse::FailedDelete
+                        }
+                    }
+                }
+                _ => TgResponse::NoChosenTimezone,
+            };
+        log::error!("{}", response.to_string());
         self.msg_ctl.delete_reminder_set_page(0).await?;
         self.answer_callback_query(response).await
     }
@@ -580,12 +607,43 @@ impl TgCallbackController<'_> {
         cron_rem_id: i64,
     ) -> Result<(), RequestError> {
         let response =
-            match self.msg_ctl.db.delete_cron_reminder(cron_rem_id).await {
-                Ok(()) => TgResponse::SuccessDelete,
-                Err(err) => {
-                    dbg!(err);
-                    TgResponse::FailedDelete
+            match tz::get_user_timezone(self.msg_ctl.db, self.msg_ctl.user_id)
+                .await
+            {
+                Ok(Some(user_timezone)) => {
+                    match self.msg_ctl.db.get_cron_reminder(cron_rem_id).await {
+                        Ok(Some(cron_reminder)) => {
+                            match self
+                                .msg_ctl
+                                .db
+                                .delete_cron_reminder(cron_rem_id)
+                                .await
+                            {
+                                Ok(()) => TgResponse::SuccessDelete(
+                                    cron_reminder
+                                        .into_active_model()
+                                        .to_unescaped_string(user_timezone),
+                                ),
+                                Err(err) => {
+                                    log::error!("{}", err);
+                                    TgResponse::FailedDelete
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            log::error!("{}", err);
+                            TgResponse::FailedDelete
+                        }
+                        _ => {
+                            log::error!(
+                                "missing cron reminder with id: {}",
+                                cron_rem_id
+                            );
+                            TgResponse::FailedDelete
+                        }
+                    }
                 }
+                _ => TgResponse::NoChosenTimezone,
             };
         self.msg_ctl.delete_reminder_set_page(0).await?;
         self.answer_callback_query(response).await
@@ -601,7 +659,7 @@ impl TgCallbackController<'_> {
         {
             Ok(()) => TgResponse::EnterNewReminder,
             Err(err) => {
-                dbg!(err);
+                log::error!("{}", err);
                 TgResponse::FailedEdit
             }
         };
@@ -625,7 +683,7 @@ impl TgCallbackController<'_> {
             ) {
             Ok(()) => TgResponse::EnterNewReminder,
             Err(err) => {
-                dbg!(err);
+                log::error!("{}", err);
                 TgResponse::FailedEdit
             }
         };
@@ -641,7 +699,7 @@ impl TgCallbackController<'_> {
                 Ok(true) => TgResponse::SuccessPause,
                 Ok(false) => TgResponse::SuccessResume,
                 Err(err) => {
-                    dbg!(err);
+                    log::error!("{}", err);
                     TgResponse::FailedPause
                 }
             };
@@ -662,7 +720,7 @@ impl TgCallbackController<'_> {
             Ok(true) => TgResponse::SuccessPause,
             Ok(false) => TgResponse::SuccessResume,
             Err(err) => {
-                dbg!(err);
+                log::error!("{}", err);
                 TgResponse::FailedPause
             }
         };

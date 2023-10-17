@@ -3,7 +3,7 @@ use crate::controller::{TgCallbackController, TgMessageController};
 use crate::db::Database;
 use crate::entity::{cron_reminder, reminder};
 use crate::err::Error;
-use crate::generic_reminder::GenericReminder;
+use crate::format;
 use crate::parsers::now_time;
 use crate::serializers::Pattern;
 use crate::tg::send_message;
@@ -13,7 +13,7 @@ use async_std::task;
 use chrono::Utc;
 use chrono_tz::Tz;
 use cron_parser::parse as parse_cron;
-use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, IntoActiveModel};
+use sea_orm::{ActiveValue::NotSet, IntoActiveModel};
 use serde_json::{from_str, to_string};
 use std::cmp::max;
 use std::time::Duration;
@@ -42,47 +42,15 @@ pub enum Command {
     Start,
 }
 
-async fn format_reminder<T: ActiveModelTrait + GenericReminder>(
-    reminder: &T,
-    user_timezone: Tz,
-) -> Result<String, Error> {
-    Ok(match reminder.user_id() {
-        Some(user_id) if reminder.chat_id().is_group() => {
-            reminder.to_string_with_mention(user_timezone, user_id.0 as i64)
-        }
-        _ => reminder.to_string(user_timezone),
-    })
-}
-
-async fn format_cron_reminder(
-    reminder: &cron_reminder::Model,
-    next_reminder: &Option<cron_reminder::Model>,
-    user_timezone: Tz,
-) -> Result<String, Error> {
-    let formatted_reminder =
-        format_reminder(&reminder.clone().into_active_model(), user_timezone)
-            .await?;
-    Ok(match next_reminder {
-        Some(next_reminder) => format!(
-            "{}\n\nNext time → {}",
-            formatted_reminder,
-            next_reminder
-                .clone()
-                .into_active_model()
-                .serialize_time(user_timezone)
-        ),
-        None => formatted_reminder,
-    })
-}
-
 async fn send_reminder(
     reminder: &reminder::Model,
     user_timezone: Tz,
     bot: &Bot,
 ) -> Result<(), Error> {
-    let text =
-        format_reminder(&reminder.clone().into_active_model(), user_timezone)
-            .await?;
+    let text = format::format_reminder(
+        &reminder.clone().into_active_model(),
+        user_timezone,
+    );
     send_message(&text, bot, ChatId(reminder.chat_id))
         .await
         .map_err(From::from)
@@ -95,7 +63,7 @@ async fn send_cron_reminder(
     bot: &Bot,
 ) -> Result<(), Error> {
     let text =
-        format_cron_reminder(reminder, next_reminder, user_timezone).await?;
+        format::format_cron_reminder(reminder, next_reminder, user_timezone);
     send_message(&text, bot, ChatId(reminder.chat_id))
         .await
         .map_err(From::from)
@@ -134,7 +102,7 @@ async fn poll_reminders(db: &Database, bot: Bot) {
                     {
                         db.delete_reminder(reminder.id).await.unwrap_or_else(
                             |err| {
-                                dbg!(err);
+                                log::error!("{}", err);
                             },
                         );
                         if let Some(next_reminder) = next_reminder {
@@ -144,7 +112,7 @@ async fn poll_reminders(db: &Database, bot: Bot) {
                             db.insert_reminder(next_reminder)
                                 .await
                                 .unwrap_or_else(|err| {
-                                    dbg!(err);
+                                    log::error!("{}", err);
                                 });
                         }
                     }
@@ -173,7 +141,7 @@ async fn poll_reminders(db: &Database, bot: Bot) {
                             ..cron_reminder.clone()
                         }),
                         Err(err) => {
-                            dbg!(err);
+                            log::error!("{}", err);
                             None
                         }
                     };
@@ -189,7 +157,7 @@ async fn poll_reminders(db: &Database, bot: Bot) {
                             db.delete_cron_reminder(cron_reminder.id)
                                 .await
                                 .unwrap_or_else(|err| {
-                                    dbg!(err);
+                                    log::error!("{}", err);
                                 });
                             if let Some(new_cron_reminder) = new_cron_reminder {
                                 let mut new_cron_reminder: cron_reminder::ActiveModel = new_cron_reminder.into();
@@ -197,12 +165,12 @@ async fn poll_reminders(db: &Database, bot: Bot) {
                                 db.insert_cron_reminder(new_cron_reminder)
                                     .await
                                     .unwrap_or_else(|err| {
-                                        dbg!(err);
+                                        log::error!("{}", err);
                                     });
                             }
                         }
                         Err(err) => {
-                            dbg!(err);
+                            log::error!("{}", err);
                         }
                     }
                 }

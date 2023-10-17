@@ -1171,7 +1171,6 @@ mod test {
         );
         let parsed = parsed_rem.pattern.unwrap();
         let pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
-        dbg!(&pattern);
         assert_eq!(
             get_all_times(pattern).collect::<Vec<_>>(),
             vec![

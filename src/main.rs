@@ -12,6 +12,7 @@ mod date;
 mod db;
 mod entity;
 mod err;
+mod format;
 mod generic_reminder;
 mod grammar;
 mod migration;
