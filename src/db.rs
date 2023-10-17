@@ -64,6 +64,16 @@ impl Database {
         Ok(Migrator::up(&self.pool, None).await?)
     }
 
+    pub async fn get_reminder(
+        &self,
+        id: i64,
+    ) -> Result<Option<reminder::Model>, Error> {
+        Ok(reminder::Entity::find()
+            .filter(reminder::Column::Id.eq(id))
+            .one(&self.pool)
+            .await?)
+    }
+
     pub async fn insert_reminder(
         &self,
         rem: reminder::ActiveModel,
@@ -180,6 +190,16 @@ impl Database {
             self.insert_user_timezone_name(user_id, timezone).await?;
         }
         Ok(())
+    }
+
+    pub async fn get_cron_reminder(
+        &self,
+        id: i64,
+    ) -> Result<Option<cron_reminder::Model>, Error> {
+        Ok(cron_reminder::Entity::find()
+            .filter(cron_reminder::Column::Id.eq(id))
+            .one(&self.pool)
+            .await?)
     }
 
     pub async fn insert_cron_reminder(
