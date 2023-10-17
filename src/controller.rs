@@ -597,7 +597,6 @@ impl TgCallbackController<'_> {
                 }
                 _ => TgResponse::NoChosenTimezone,
             };
-        log::error!("{}", response.to_string());
         self.msg_ctl.delete_reminder_set_page(0).await?;
         self.answer_callback_query(response).await
     }
@@ -695,13 +694,41 @@ impl TgCallbackController<'_> {
         rem_id: i64,
     ) -> Result<(), RequestError> {
         let response =
-            match self.msg_ctl.db.toggle_reminder_paused(rem_id).await {
-                Ok(true) => TgResponse::SuccessPause,
-                Ok(false) => TgResponse::SuccessResume,
-                Err(err) => {
-                    log::error!("{}", err);
-                    TgResponse::FailedPause
+            match tz::get_user_timezone(self.msg_ctl.db, self.msg_ctl.user_id)
+                .await
+            {
+                Ok(Some(user_timezone)) => {
+                    match self.msg_ctl.db.get_reminder(rem_id).await {
+                        Ok(Some(reminder)) => {
+                            match self
+                                .msg_ctl
+                                .db
+                                .toggle_reminder_paused(rem_id)
+                                .await
+                            {
+                                Ok(true) => TgResponse::SuccessPause(
+                                    reminder
+                                        .into_active_model()
+                                        .to_unescaped_string(user_timezone),
+                                ),
+                                Ok(false) => TgResponse::SuccessResume(
+                                    reminder
+                                        .into_active_model()
+                                        .to_unescaped_string(user_timezone),
+                                ),
+                                Err(err) => {
+                                    log::error!("{}", err);
+                                    TgResponse::FailedPause
+                                }
+                            }
+                        }
+                        _ => {
+                            log::error!("missing reminder with id: {}", rem_id);
+                            TgResponse::FailedDelete
+                        }
+                    }
                 }
+                _ => TgResponse::NoChosenTimezone,
             };
         self.msg_ctl.pause_reminder_set_page(0).await?;
         self.answer_callback_query(response).await
@@ -711,19 +738,46 @@ impl TgCallbackController<'_> {
         &self,
         cron_rem_id: i64,
     ) -> Result<(), RequestError> {
-        let response = match self
-            .msg_ctl
-            .db
-            .toggle_cron_reminder_paused(cron_rem_id)
-            .await
-        {
-            Ok(true) => TgResponse::SuccessPause,
-            Ok(false) => TgResponse::SuccessResume,
-            Err(err) => {
-                log::error!("{}", err);
-                TgResponse::FailedPause
-            }
-        };
+        let response =
+            match tz::get_user_timezone(self.msg_ctl.db, self.msg_ctl.user_id)
+                .await
+            {
+                Ok(Some(user_timezone)) => {
+                    match self.msg_ctl.db.get_cron_reminder(cron_rem_id).await {
+                        Ok(Some(cron_reminder)) => {
+                            match self
+                                .msg_ctl
+                                .db
+                                .toggle_cron_reminder_paused(cron_rem_id)
+                                .await
+                            {
+                                Ok(true) => TgResponse::SuccessPause(
+                                    cron_reminder
+                                        .into_active_model()
+                                        .to_unescaped_string(user_timezone),
+                                ),
+                                Ok(false) => TgResponse::SuccessResume(
+                                    cron_reminder
+                                        .into_active_model()
+                                        .to_unescaped_string(user_timezone),
+                                ),
+                                Err(err) => {
+                                    log::error!("{}", err);
+                                    TgResponse::FailedPause
+                                }
+                            }
+                        }
+                        _ => {
+                            log::error!(
+                                "missing cron reminder with id: {}",
+                                cron_rem_id
+                            );
+                            TgResponse::FailedDelete
+                        }
+                    }
+                }
+                _ => TgResponse::NoChosenTimezone,
+            };
         self.msg_ctl.pause_reminder_set_page(0).await?;
         self.answer_callback_query(response).await
     }

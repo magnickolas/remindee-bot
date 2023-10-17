@@ -24,8 +24,8 @@ pub enum TgResponse {
     SuccessEdit,
     FailedEdit,
     ChoosePauseReminder,
-    SuccessPause,
-    SuccessResume,
+    SuccessPause(String),
+    SuccessResume(String),
     FailedPause,
     Hello,
 }
@@ -57,8 +57,8 @@ impl TgResponse {
             Self::SuccessEdit => "Edited!".to_owned(),
             Self::FailedEdit => "Failed to edit...".to_owned(),
             Self::ChoosePauseReminder => "Choose a reminder to pause/resume:".to_owned(),
-            Self::SuccessPause => "Paused!".to_owned(),
-            Self::SuccessResume => "Resumed!".to_owned(),
+            Self::SuccessPause(reminder_str) => format!("Paused a reminder: {}", reminder_str),
+            Self::SuccessResume(reminder_str) => format!("Resumed a reminder: {}", reminder_str),
             Self::FailedPause => "Failed to pause...".to_owned(),
             Self::Hello => concat!(
                 "Hello! I'm remindee bot. My purpose is to remind you of whatever you ask and ",
