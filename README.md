@@ -8,29 +8,47 @@ Telegram bot for managing reminders.
 
 ## Quickstart
 
+0. Setup your bot with [@botfather](https://t.me/botfather)
+
+#### Installation -- the first way
+
+1. Download an archive for your architecture from [the latest release](https://github.com/magnickolas/remindee-bot/releases/latest)
+2. Unpack the archive:
+   - for Linux x86_64 and ARMv7 run `tar xf remindee-bot-<version>-<architecture>.tar.gz`
+   - for macOS x86_64 and aarch64 run `unzip remindee-bot-<version>-<architecture>.zip`
+3. Now you can start the bot executable:
+
+   ```
+   cd remindee-bot-<version>-<architecture>
+   ./remindee-bot --token <BOT TOKEN> --database <FILE>
+   ```
+
+   Alternatively, you can use environment variables to specify the token and the database location instead of flags:
+
+   ```console
+   export BOT_TOKEN=<BOT TOKEN>
+   export REMINDEE_DB=<FILE> # optional
+   ./remindee-bot
+   ```
+
+#### Installation -- the second way
+
 1. Install [Rust].
-2. Setup your bot with [@botfather](https://t.me/botfather).
-3. Install the crate by running the following command in your terminal:
+2. Install the crate by running the following command in your terminal:
 
 ```console
 cargo install remindee-bot
 ```
 
-4. Start the bot:
+3. Start the bot:
 
 ```console
 remindee-bot --token <BOT TOKEN> --database <FILE>
 ```
 
-Alternatively, you can use environment variables to specify the token and the database location.
+#### Using bot
 
-```console
-export BOT_TOKEN=<BOT TOKEN>
-export REMINDEE_DB=<FILE> # optional
-remindee-bot
-```
-
-5. Send the `/start` command to the bot and follow its instructions 🤖.
+Send `/start` to the bot and follow its instructions 🤖
 
 ## Setting reminders
 
