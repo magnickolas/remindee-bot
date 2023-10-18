@@ -502,7 +502,7 @@ pub fn parse_reminder(s: &str) -> Result<Reminder, ()> {
     Reminder::parse(
         ReminderParser::parse(Rule::reminder, s)
             .map_err(|err| {
-                log::error!("{}", err);
+                log::debug!("{}", err);
             })?
             .next()
             .ok_or(())?,

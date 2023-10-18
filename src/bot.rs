@@ -29,6 +29,8 @@ pub enum Command {
     #[command(description = "choose reminders to edit")]
     Edit,
     #[command(description = "choose reminders to pause")]
+    Cancel,
+    #[command(description = "cancel editing")]
     Pause,
     #[command(description = "set a new reminder")]
     Set(String),
@@ -297,6 +299,7 @@ async fn command_handler(
         Command::Timezone => ctl.get_timezone().await,
         Command::Delete => ctl.start_delete().await,
         Command::Edit => ctl.start_edit().await,
+        Command::Cancel => ctl.cancel_edit().await,
         Command::Pause => ctl.start_pause().await,
         Command::Set(ref reminder_text) => {
             ctl.set_or_edit_reminder(reminder_text).await

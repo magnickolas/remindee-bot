@@ -136,6 +136,23 @@ impl TgMessageController<'_> {
         }
     }
 
+    /// Send a markup to select a reminder for editing
+    pub async fn cancel_edit(&self) -> Result<(), RequestError> {
+        let response = match self
+            .db
+            .reset_reminders_edit(self.chat_id.0)
+            .await
+            .and(self.db.reset_cron_reminders_edit(self.chat_id.0).await)
+        {
+            Ok(()) => TgResponse::CancelEdit,
+            Err(err) => {
+                log::error!("{}", err);
+                TgResponse::FailedCancelEdit
+            }
+        };
+        self.reply(response).await
+    }
+
     /// Send a markup to select a reminder for pausing
     pub async fn start_pause(&self) -> Result<(), RequestError> {
         match tz::get_user_timezone(self.db, self.user_id).await {
