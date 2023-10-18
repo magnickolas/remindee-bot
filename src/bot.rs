@@ -28,9 +28,9 @@ pub enum Command {
     Delete,
     #[command(description = "choose reminders to edit")]
     Edit,
-    #[command(description = "choose reminders to pause")]
-    Cancel,
     #[command(description = "cancel editing")]
+    Cancel,
+    #[command(description = "choose reminders to pause")]
     Pause,
     #[command(description = "set a new reminder")]
     Set(String),
