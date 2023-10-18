@@ -561,14 +561,14 @@ impl TgMessageController<'_> {
                     }
                     Err(err) => {
                         log::error!("{}", err);
-                        TgResponse::FailedDelete
+                        TgResponse::FailedEdit
                     }
                     _ => {
                         log::error!(
                             "missing cron reminder with id: {}",
                             cron_rem_id
                         );
-                        TgResponse::FailedDelete
+                        TgResponse::FailedEdit
                     }
                 }
             }
@@ -817,7 +817,7 @@ impl TgCallbackController<'_> {
                         }
                         _ => {
                             log::error!("missing reminder with id: {}", rem_id);
-                            TgResponse::FailedDelete
+                            TgResponse::FailedPause
                         }
                     }
                 }
@@ -865,7 +865,7 @@ impl TgCallbackController<'_> {
                                 "missing cron reminder with id: {}",
                                 cron_rem_id
                             );
-                            TgResponse::FailedDelete
+                            TgResponse::FailedPause
                         }
                     }
                 }
