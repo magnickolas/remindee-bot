@@ -56,25 +56,69 @@ jobs:
         if: ${{ ! matrix.is_arm }}
         run: strip ${{ env.BINARY_PATH }}
 
-      - name: Strip ARM release binary
+      - name: ARMv7 - Strip release binary
         if: ${{ matrix.is_arm }}
         run: |
           sudo apt-get update
           sudo apt-get install -y binutils-arm-linux-gnueabihf
           arm-linux-gnueabihf-strip ${{ env.BINARY_PATH }}
 
-      - name: Build archive
+      - name: macOS - Import Apple certificate
+        if: ${{ matrix.is_macos }}
+        uses: apple-actions/import-codesign-certs@v1
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERT_DATA }}
+          p12-password: ${{ secrets.APPLE_CERT_PASSWORD }}
+
+      - name: macOS - Sign the binary
+        if: ${{ matrix.is_macos }}
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: codesign -s "$APPLE_TEAM_ID" --timestamp --options runtime ${{ env.BINARY_PATH }}
+
+      - name: Build tar.gz archive
+        if: ${{ ! matrix.zip_archive }}
         shell: bash
         run: |
           mkdir ${{ env.STAGING }}
 
-          cp ${{ env.BINARY_PATH }} ${{ env.STAGING }}/
+          mv ${{ env.BINARY_PATH }} ${{ env.STAGING }}/
           tar czf ${{ env.STAGING }}.tar.gz ${{ env.STAGING }}/
 
-      - uses: actions/upload-artifact@v3
+      - name: Build zip archive
+        if: ${{ matrix.zip_archive }}
+        shell: bash
+        run: |
+          mkdir ${{ env.STAGING }}
+
+          mv ${{ env.BINARY_PATH }} ${{ env.STAGING }}/
+          zip -r ${{ env.STAGING }}.zip ${{ env.STAGING }}/
+
+      - name: Store notarize credentials
+        if: ${{ matrix.is_macos }}
+        env:
+          AC_USERNAME: ${{ secrets.AC_USERNAME }}
+          AC_PASSWORD: ${{ secrets.AC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: xcrun notarytool store-credentials "notarytool-profile" --apple-id "$AC_USERNAME" --team-id "$APPLE_TEAM_ID" --password "$AC_PASSWORD"
+
+      - name: Notarize the workflow
+        if: ${{ matrix.is_macos }}
+        run: xcrun notarytool submit ${{ env.STAGING }}.zip --keychain-profile "notarytool-profile" --wait
+
+      - name: Upload tar.gz archive
+        if: ${{ ! matrix.zip_archive }}
+        uses: actions/upload-artifact@v3
         with:
           name: ${{ env.STAGING }}
           path: ${{ env.STAGING }}.tar.gz
+
+      - name: Upload zip archive
+        if: ${{ matrix.zip_archive }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.STAGING }}
+          path: ${{ env.STAGING }}.zip
 
   create-release:
     name: create-release
@@ -109,9 +153,9 @@ jobs:
           files: |
             ${{ env.PREFIX }}-${{ matrix.targets[0] }}.tar.gz
             ${{ env.PREFIX }}-${{ matrix.targets[1] }}.tar.gz
-            ${{ env.PREFIX }}-${{ matrix.targets[2] }}.tar.gz
-            ${{ env.PREFIX }}-${{ matrix.targets[3] }}.tar.gz
-            ${{ env.PREFIX }}-${{ matrix.targets[4] }}.tar.gz
+            ${{ env.PREFIX }}-${{ matrix.targets[2] }}.zip
+            ${{ env.PREFIX }}-${{ matrix.targets[3] }}.zip
+            ${{ env.PREFIX }}-${{ matrix.targets[4] }}.zip
 
   publish-crate:
     name: Publish tagged release on crates.io

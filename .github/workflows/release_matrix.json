@@ -8,12 +8,6 @@
       "binary": "remindee-bot"
     },
     {
-      "build": "windows",
-      "os": "ubuntu-latest",
-      "target": "x86_64-pc-windows-gnu",
-      "binary": "remindee-bot.exe"
-    },
-    {
       "build": "armv7",
       "os": "ubuntu-latest",
       "target": "armv7-unknown-linux-gnueabihf",
@@ -21,16 +15,27 @@
       "is_arm": true
     },
     {
+      "build": "windows",
+      "os": "ubuntu-latest",
+      "target": "x86_64-pc-windows-gnu",
+      "binary": "remindee-bot.exe",
+      "zip_archive": true
+    },
+    {
       "build": "macos-amd64",
       "os": "macos-latest",
       "target": "x86_64-apple-darwin",
-      "binary": "remindee-bot"
+      "binary": "remindee-bot",
+      "is_macos": true,
+      "zip_archive": true
     },
     {
       "build": "macos-arm64",
       "os": "macos-latest",
       "target": "aarch64-apple-darwin",
-      "binary": "remindee-bot"
+      "binary": "remindee-bot",
+      "is_macos": true,
+      "zip_archive": true
     }
   ]
 }
