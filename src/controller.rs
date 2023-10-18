@@ -136,7 +136,7 @@ impl TgMessageController<'_> {
         }
     }
 
-    /// Send a markup to select a reminder for editing
+    /// Cancel ongoing reminder editing
     pub async fn cancel_edit(&self) -> Result<(), RequestError> {
         let response = match self
             .db
