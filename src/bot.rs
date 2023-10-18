@@ -111,6 +111,7 @@ async fn poll_reminders(db: &Database, bot: Bot) {
                             next_reminder.id = NotSet;
                             db.insert_reminder(next_reminder)
                                 .await
+                                .map(|_| ())
                                 .unwrap_or_else(|err| {
                                     log::error!("{}", err);
                                 });
@@ -164,6 +165,7 @@ async fn poll_reminders(db: &Database, bot: Bot) {
                                 new_cron_reminder.id = NotSet;
                                 db.insert_cron_reminder(new_cron_reminder)
                                     .await
+                                    .map(|_| ())
                                     .unwrap_or_else(|err| {
                                         log::error!("{}", err);
                                     });

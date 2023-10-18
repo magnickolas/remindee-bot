@@ -77,9 +77,8 @@ impl Database {
     pub async fn insert_reminder(
         &self,
         rem: reminder::ActiveModel,
-    ) -> Result<(), Error> {
-        reminder::Entity::insert(rem).exec(&self.pool).await?;
-        Ok(())
+    ) -> Result<reminder::ActiveModel, Error> {
+        Ok(rem.save(&self.pool).await?)
     }
 
     pub async fn delete_reminder(&self, id: i64) -> Result<(), Error> {
@@ -205,9 +204,8 @@ impl Database {
     pub async fn insert_cron_reminder(
         &self,
         rem: cron_reminder::ActiveModel,
-    ) -> Result<(), Error> {
-        rem.save(&self.pool).await?;
-        Ok(())
+    ) -> Result<cron_reminder::ActiveModel, Error> {
+        Ok(rem.save(&self.pool).await?)
     }
 
     pub async fn delete_cron_reminder(&self, id: i64) -> Result<(), Error> {
