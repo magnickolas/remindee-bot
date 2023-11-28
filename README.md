@@ -6,49 +6,61 @@
 
 Telegram bot for managing reminders.
 
-## Quickstart
+## Installation
 
-0. Setup your bot with [@botfather](https://t.me/botfather)
+0. Setup your bot with [@botfather](https://t.me/botfather).
 
-#### Installation -- the first way
+### Method 1: Rust's package manager
 
-1. Download an archive for your architecture from [the latest release](https://github.com/magnickolas/remindee-bot/releases/latest)
+1. Install [Rust].
+2. Install the crate and start the bot:
+
+    ```console
+    cargo install remindee-bot
+    remindee-bot --token <BOT TOKEN> --database <FILE>
+    ```
+
+   Instead of flags you can use environment variables to specify the token and the database location:
+
+   ```console
+   export BOT_TOKEN=<BOT TOKEN>
+   export REMINDEE_DB=<FILE> # default is to store in the user's data directory
+   remindee-bot
+   ```
+
+### Method 2: release archive
+
+1. Download the archive for your system architecture from [the latest release page.](https://github.com/magnickolas/remindee-bot/releases/latest)
 2. Unpack the archive:
-   - for Linux x86_64 and ARMv7 run `tar xf remindee-bot-<version>-<architecture>.tar.gz`
-   - for macOS x86_64 and aarch64 run `unzip remindee-bot-<version>-<architecture>.zip`
-3. Now you can start the bot executable:
+   - for Linux, you can run `tar xf remindee-bot-<version>-<architecture>.tar.gz`;
+   - for macOS, you can use the default zip extractor or run `unzip remindee-bot-<version>-<architecture>.zip`;
+   - for Windows, you can use the default zip extractor.
+3. Navigate to the directory and start the bot:
 
    ```
    cd remindee-bot-<version>-<architecture>
    ./remindee-bot --token <BOT TOKEN> --database <FILE>
    ```
 
-   Alternatively, you can use environment variables to specify the token and the database location instead of flags:
-
-   ```console
-   export BOT_TOKEN=<BOT TOKEN>
-   export REMINDEE_DB=<FILE> # optional
-   ./remindee-bot
-   ```
-
-#### Installation -- the second way
+### Method 3: from source
 
 1. Install [Rust].
-2. Install the crate by running the following command in your terminal:
+2. Clone the repository with Git:
 
-```console
-cargo install remindee-bot
-```
+    ```console
+    git clone https://github.com/magnickolas/remindee-bot
+    ```
 
-3. Start the bot:
+3. Build the crate and start the bot:
 
-```console
-remindee-bot --token <BOT TOKEN> --database <FILE>
-```
+    ```console
+    cargo install --path remindee-bot
+    remindee-bot --token <BOT TOKEN> --database <FILE>
+    ```
 
-#### Using bot
+## Using bot
 
-Send `/start` to the bot and follow its instructions 🤖
+Send `/start` command to the bot and follow its instructions 🤖.
 
 ## Setting reminders
 
