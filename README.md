@@ -53,10 +53,10 @@ Telegram bot for managing reminders.
 2. Initialize and run a container from the built image:
 
    ```console
-    docker run -d -e BOT_TOKEN=<BOT TOKEN> remindee-bot
+    docker run -d -v <LOCAL DATABASE DIRECTORY>:/data -e BOT_TOKEN=<BOT TOKEN> remindee-bot
    ```
 
-   You can additionally pass a directory where the database file should be stored with an additional parameter `-v <PATH>:/data`. See [Docker's documentation][docker-docs] for more.
+   See [Docker's documentation][docker-docs] for more.
 
 ### Method 4: from source
 
