@@ -4,7 +4,7 @@ use std::fmt;
 #[derive(Debug)]
 pub enum Error {
     Database(db::Error),
-    Parse(String),
+    Parse(chrono_tz::ParseError),
     CronParse(cron_parser::ParseError),
     TeloxideRequest(teloxide::RequestError),
     UnmatchedQuery(teloxide::types::CallbackQuery),
