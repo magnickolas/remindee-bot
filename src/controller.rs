@@ -1,4 +1,5 @@
 use crate::db;
+use crate::entity::common::EditMode;
 use crate::parsers;
 use crate::tg;
 use crate::tz;
@@ -586,9 +587,49 @@ impl TgMessageController<'_> {
             self.get_edit_reminder().await,
             self.get_edit_cron_reminder().await,
         ) {
-            (Ok(Some(edit_reminder)), _) => {
-                self.replace_reminder(text, edit_reminder.id).await
-            }
+            (Ok(Some(edit_reminder)), _) => match edit_reminder.edit_mode {
+                EditMode::TimePattern => {
+                    self.replace_reminder(
+                        &(text.to_owned() + " " + &edit_reminder.desc),
+                        edit_reminder.id,
+                    )
+                    .await
+                }
+                EditMode::Description => {
+                    let response = match tz::get_user_timezone(
+                        self.db,
+                        self.user_id,
+                    )
+                    .await
+                    {
+                        Ok(Some(user_timezone)) => {
+                            let mut new_reminder = edit_reminder.clone();
+                            text.clone_into(&mut new_reminder.desc);
+                            match self
+                                .db
+                                .set_reminder_description(
+                                    edit_reminder.clone().into_active_model(),
+                                    text,
+                                )
+                                .await
+                            {
+                                Ok(()) => TgResponse::SuccessEdit(
+                                    edit_reminder
+                                        .into_active_model()
+                                        .to_unescaped_string(user_timezone),
+                                    new_reminder
+                                        .into_active_model()
+                                        .to_unescaped_string(user_timezone),
+                                ),
+                                Err(_) => TgResponse::FailedEdit,
+                            }
+                        }
+                        _ => TgResponse::FailedEdit,
+                    };
+                    self.reply(response).await
+                }
+                EditMode::None => self.reply(TgResponse::FailedEdit).await,
+            },
             (_, Ok(Some(edit_cron_reminder))) => {
                 self.replace_cron_reminder(text, edit_cron_reminder.id)
                     .await
@@ -741,21 +782,46 @@ impl TgCallbackController<'_> {
         self.answer_callback_query(response).await
     }
 
-    pub async fn edit_reminder(&self, rem_id: i64) -> Result<(), RequestError> {
-        let response = match self
+    pub async fn choose_edit_mode_reminder(
+        &self,
+        rem_id: i64,
+    ) -> Result<(), RequestError> {
+        match self
             .msg_ctl
             .db
             .reset_reminders_edit(self.msg_ctl.chat_id.0)
             .await
             .and(self.msg_ctl.db.mark_reminder_as_edit(rem_id).await)
         {
-            Ok(()) => TgResponse::EnterNewReminder,
+            Ok(()) => {
+                let markup = InlineKeyboardMarkup::default().append_row(vec![
+                    InlineKeyboardButton::new(
+                        "Time pattern",
+                        InlineKeyboardButtonKind::CallbackData(
+                            "edit_rem_mode::rem_time_pattern".to_owned(),
+                        ),
+                    ),
+                    InlineKeyboardButton::new(
+                        "Description",
+                        InlineKeyboardButtonKind::CallbackData(
+                            "edit_rem_mode::rem_description".to_owned(),
+                        ),
+                    ),
+                ]);
+                tg::send_markup(
+                    "What would you like to edit?",
+                    markup,
+                    self.msg_ctl.bot,
+                    self.msg_ctl.chat_id,
+                )
+                .await?;
+                self.acknowledge_callback().await
+            }
             Err(err) => {
                 log::error!("{}", err);
-                TgResponse::FailedEdit
+                self.answer_callback_query(TgResponse::FailedEdit).await
             }
-        };
-        self.answer_callback_query(response).await
+        }
     }
 
     pub async fn edit_cron_reminder(
@@ -873,5 +939,40 @@ impl TgCallbackController<'_> {
             };
         self.msg_ctl.pause_reminder_set_page(0).await?;
         self.answer_callback_query(response).await
+    }
+
+    pub async fn set_edit_mode_reminder(
+        &self,
+        edit_mode: EditMode,
+    ) -> Result<(), RequestError> {
+        let response = match self
+            .msg_ctl
+            .db
+            .set_edit_mode_reminder(self.msg_ctl.chat_id.0, edit_mode)
+            .await
+        {
+            Ok(()) => match edit_mode {
+                EditMode::TimePattern => TgResponse::EnterNewTimePattern,
+                EditMode::Description => TgResponse::EnterNewDescription,
+                EditMode::None => TgResponse::FailedEdit,
+            },
+            Err(_) => TgResponse::FailedEdit,
+        };
+        self.answer_callback_query(response).await
+    }
+
+    pub async fn set_edit_mode_cron_reminder(
+        &self,
+        edit_mode: EditMode,
+    ) -> Result<(), RequestError> {
+        match self
+            .msg_ctl
+            .db
+            .set_edit_mode_cron_reminder(self.msg_ctl.chat_id.0, edit_mode)
+            .await
+        {
+            Ok(()) => self.acknowledge_callback().await,
+            Err(_) => self.answer_callback_query(TgResponse::FailedEdit).await,
+        }
     }
 }

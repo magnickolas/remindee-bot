@@ -1,6 +1,7 @@
 use crate::cli::CLI;
 use crate::controller::{TgCallbackController, TgMessageController};
 use crate::db::Database;
+use crate::entity::common::EditMode;
 use crate::entity::{cron_reminder, reminder};
 use crate::err::Error;
 use crate::format;
@@ -375,7 +376,9 @@ async fn callback_handler(
             .strip_prefix("editrem::rem_alt::")
             .and_then(|x| x.parse::<i64>().ok())
         {
-            ctl.edit_reminder(rem_id).await.map_err(From::from)
+            ctl.choose_edit_mode_reminder(rem_id)
+                .await
+                .map_err(From::from)
         } else if let Some(cron_rem_id) = cb_data
             .strip_prefix("editrem::cron_rem_alt::")
             .and_then(|x| x.parse::<i64>().ok())
@@ -401,6 +404,22 @@ async fn callback_handler(
             .and_then(|x| x.parse::<i64>().ok())
         {
             ctl.pause_cron_reminder(cron_rem_id)
+                .await
+                .map_err(From::from)
+        } else if cb_data == "edit_rem_mode::rem_time_pattern" {
+            ctl.set_edit_mode_reminder(EditMode::TimePattern)
+                .await
+                .map_err(From::from)
+        } else if cb_data == "edit_rem_mode::rem_description" {
+            ctl.set_edit_mode_reminder(EditMode::Description)
+                .await
+                .map_err(From::from)
+        } else if cb_data == "edit_rem_mode::cron_rem_time_pattern" {
+            ctl.set_edit_mode_cron_reminder(EditMode::TimePattern)
+                .await
+                .map_err(From::from)
+        } else if cb_data == "edit_rem_mode::cron_rem_description" {
+            ctl.set_edit_mode_cron_reminder(EditMode::Description)
                 .await
                 .map_err(From::from)
         } else {

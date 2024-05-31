@@ -10,6 +10,7 @@ mod m20221130_233038_remove_sent_column;
 mod m20230224_061834_create_reminder_paused_columns;
 mod m20230301_070153_create_reminder_pattern_column;
 mod m20230526_143912_add_active_reminders_indexes;
+mod m20240503_161417_create_edit_mode_columns;
 
 pub struct Migrator;
 
@@ -31,6 +32,7 @@ impl MigratorTrait for Migrator {
                 m20230301_070153_create_reminder_pattern_column::Migration,
             ),
             Box::new(m20230526_143912_add_active_reminders_indexes::Migration),
+            Box::new(m20240503_161417_create_edit_mode_columns::Migration),
         ]
     }
 }

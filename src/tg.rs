@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode::MarkdownV2;
@@ -30,6 +32,8 @@ pub enum TgResponse {
     SuccessResume(String),
     FailedPause,
     Hello,
+    EnterNewTimePattern,
+    EnterNewDescription,
 }
 
 impl TgResponse {
@@ -74,13 +78,15 @@ impl TgResponse {
                 "Before we start, please either send me your location or manually select the timezone using the /settimezone command first."
             )
             .to_owned(),
+            Self::EnterNewTimePattern => "Enter a new time pattern for the reminder".to_owned(),
+            Self::EnterNewDescription => "Enter a new description for the reminder".to_owned(),
         }
     }
 }
 
-impl ToString for TgResponse {
-    fn to_string(&self) -> String {
-        escape(&self.to_unescaped_string())
+impl Display for TgResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", escape(&self.to_unescaped_string()))
     }
 }
 

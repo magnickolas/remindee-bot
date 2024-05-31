@@ -1,6 +1,7 @@
 use std::fs::OpenOptions;
 use std::path::PathBuf;
 
+use crate::entity::common::EditMode;
 use crate::entity::{cron_reminder, reminder, user_timezone};
 use crate::generic_reminder;
 use crate::migration::{DbErr, Migrator, MigratorTrait};
@@ -44,6 +45,7 @@ async fn get_db_pool(db_path: &PathBuf) -> Result<DatabaseConnection, Error> {
         .read(true)
         .write(true)
         .create(true)
+        .truncate(false)
         .open(db_path)?;
     let db_str = format!("sqlite:{}", db_path.display());
     let pool = SeaOrmDatabase::connect(&db_str).await?;
@@ -111,6 +113,7 @@ impl Database {
             .filter(reminder::Column::ChatId.eq(chat_id))
             .set(reminder::ActiveModel {
                 edit: Set(false),
+                edit_mode: Set(EditMode::None),
                 ..Default::default()
             })
             .exec(&self.pool)
@@ -127,6 +130,49 @@ impl Database {
             .filter(reminder::Column::Edit.eq(true))
             .one(&self.pool)
             .await?)
+    }
+
+    pub async fn set_edit_mode_reminder(
+        &self,
+        chat_id: i64,
+        edit_mode: EditMode,
+    ) -> Result<(), Error> {
+        if let Some(mut reminder) = self
+            .get_edit_reminder(chat_id)
+            .await?
+            .map(Into::<reminder::ActiveModel>::into)
+        {
+            reminder.edit_mode = Set(edit_mode);
+            reminder.update(&self.pool).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn set_edit_mode_cron_reminder(
+        &self,
+        chat_id: i64,
+        edit_mode: EditMode,
+    ) -> Result<(), Error> {
+        if let Some(mut cron_reminder) = self
+            .get_edit_cron_reminder(chat_id)
+            .await?
+            .map(Into::<cron_reminder::ActiveModel>::into)
+        {
+            cron_reminder.edit_mode = Set(edit_mode);
+            cron_reminder.update(&self.pool).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn set_reminder_description(
+        &self,
+        rem: reminder::ActiveModel,
+        desc: &str,
+    ) -> Result<(), Error> {
+        let mut rem_act = Into::<reminder::ActiveModel>::into(rem);
+        rem_act.desc = Set(desc.to_owned());
+        rem_act.update(&self.pool).await?;
+        Ok(())
     }
 
     pub async fn get_active_reminders(
@@ -241,6 +287,7 @@ impl Database {
             .filter(cron_reminder::Column::ChatId.eq(chat_id))
             .set(cron_reminder::ActiveModel {
                 edit: Set(false),
+                edit_mode: Set(EditMode::None),
                 ..Default::default()
             })
             .exec(&self.pool)
