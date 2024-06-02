@@ -1,3 +1,5 @@
+//! Reminder grammar
+
 ws = _{ " " | "\t" | "\r" | "\n" }
 
 // --- literals ---
