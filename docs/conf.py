@@ -7,9 +7,9 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "remindee-bot"
-copyright = "2023, Nikolai Oplachko"
+copyright = "2024, Nikolai Oplachko"
 author = "Nikolai Oplachko"
-release = "0.2.7"
+release = "0.2.8"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

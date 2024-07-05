@@ -815,13 +815,13 @@ impl std::fmt::Display for TimeInterval {
 impl std::fmt::Display for DateInterval {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if self.years != 0 {
-            write!(f, "{}s", self.years)?;
+            write!(f, "{}y", self.years)?;
         }
         if self.months != 0 {
-            write!(f, "{}m", self.months)?;
+            write!(f, "{}mo", self.months)?;
         }
         if self.weeks != 0 {
-            write!(f, "{}s", self.weeks)?;
+            write!(f, "{}w", self.weeks)?;
         }
         if self.days != 0 {
             write!(f, "{}d", self.days)?;
@@ -833,13 +833,13 @@ impl std::fmt::Display for DateInterval {
 impl std::fmt::Display for Interval {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if self.years != 0 {
-            write!(f, "{}s", self.years)?;
+            write!(f, "{}y", self.years)?;
         }
         if self.months != 0 {
             write!(f, "{}mo", self.months)?;
         }
         if self.weeks != 0 {
-            write!(f, "{}s", self.weeks)?;
+            write!(f, "{}w", self.weeks)?;
         }
         if self.days != 0 {
             write!(f, "{}d", self.days)?;
@@ -1180,5 +1180,57 @@ mod test {
                 tz(2008, 3, 16, 18, 15, 0),
             ]
         );
+    }
+
+    #[test]
+    fn test_intervals_display() {
+        let int1 = Interval {
+            years: 1,
+            months: 2,
+            weeks: 3,
+            days: 4,
+            hours: 5,
+            minutes: 6,
+            seconds: 7,
+        };
+        assert_eq!(int1.to_string(), "1y2mo3w4d5h6m7s");
+        let int2 = Interval {
+            years: 0,
+            months: 0,
+            weeks: 0,
+            days: 0,
+            hours: 0,
+            minutes: 0,
+            seconds: 0,
+        };
+        assert_eq!(int2.to_string(), "");
+
+        let date_int1 = DateInterval {
+            years: 1,
+            months: 2,
+            weeks: 3,
+            days: 4,
+        };
+        assert_eq!(date_int1.to_string(), "1y2mo3w4d");
+        let date_int2 = DateInterval {
+            years: 0,
+            months: 0,
+            weeks: 0,
+            days: 0,
+        };
+        assert_eq!(date_int2.to_string(), "");
+
+        let time_int1 = TimeInterval {
+            hours: 1,
+            minutes: 2,
+            seconds: 3,
+        };
+        assert_eq!(time_int1.to_string(), "1h2m3s");
+        let time_int2 = TimeInterval {
+            hours: 0,
+            minutes: 0,
+            seconds: 0,
+        };
+        assert_eq!(time_int2.to_string(), "");
     }
 }
