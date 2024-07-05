@@ -56,11 +56,9 @@ impl TgMessageController<'_> {
                     Ok(sorted_reminders) => std::iter::once(
                         TgResponse::RemindersListHeader.to_string(),
                     )
-                    .chain(
-                        sorted_reminders
-                            .into_iter()
-                            .map(|rem| rem.to_string(user_timezone)),
-                    )
+                    .chain(sorted_reminders.into_iter().map(|rem| {
+                        rem.to_string(user_timezone).replace('@', "@\u{200B}")
+                    }))
                     .collect::<Vec<String>>()
                     .join("\n"),
                     Err(err) => {
@@ -220,8 +218,9 @@ impl TgMessageController<'_> {
                     match self.db.insert_reminder(reminder.clone()).await {
                         Ok(reminder) => {
                             if !silent_success {
-                                let rem_str =
-                                    reminder.to_unescaped_string(user_timezone);
+                                let rem_str = reminder
+                                    .to_unescaped_string(user_timezone)
+                                    .replace('@', "@\u{200B}");
                                 self.reply(TgResponse::SuccessInsert(rem_str))
                                     .await?;
                             }
