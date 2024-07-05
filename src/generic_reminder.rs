@@ -34,7 +34,11 @@ pub trait GenericReminder {
         let now = Utc::now().with_timezone(&user_timezone);
         let mut s = String::new();
         if time.date_naive() != now.date_naive() {
-            s += &format!("{:02}.{:02} ", time.day(), time.month());
+            s += &format!("{:02}.{:02}", time.day(), time.month());
+            if time.year() != now.year() {
+                s += &format!(".{}", time.year())
+            }
+            s += " "
         }
         s + &format!("{:02}:{:02}", time.hour(), time.minute())
     }
