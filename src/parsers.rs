@@ -74,7 +74,9 @@ pub async fn parse_cron_reminder(
 #[cfg(test)]
 pub fn now_time() -> NaiveDateTime {
     unsafe {
-        NaiveDateTime::from_timestamp_opt(test::TEST_TIMESTAMP, 0).unwrap()
+        DateTime::from_timestamp(test::TEST_TIMESTAMP, 0)
+            .unwrap()
+            .naive_utc()
     }
 }
 
