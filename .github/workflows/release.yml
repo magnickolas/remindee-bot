@@ -5,7 +5,8 @@ on:
       - "*"
 
 jobs:
-  init:
+  init-release:
+    name: Initialize release
     runs-on: ubuntu-latest
     outputs:
       release-version: ${{ steps.init.outputs.release-version }}
@@ -25,9 +26,9 @@ jobs:
           echo "targets=${TARGETS}" >> "$GITHUB_OUTPUT"
 
   build-release:
-    name: build-release
+    name: Build release
     runs-on: ${{ matrix.os }}
-    needs: init
+    needs: init-release
     env:
       STAGING: remindee-bot-${{ needs.init.outputs.release-version }}-${{ matrix.target }}
       BINARY_PATH: target/${{ matrix.target }}/release/${{ matrix.binary }}
@@ -122,7 +123,7 @@ jobs:
 
   create-release:
     name: create-release
-    needs: [init, build-release]
+    needs: build-release
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -159,6 +160,7 @@ jobs:
 
   publish-crate:
     name: Publish tagged release on crates.io
+    needs: create-release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
