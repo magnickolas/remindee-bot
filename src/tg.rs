@@ -95,21 +95,20 @@ pub async fn _send_message(
     bot: &Bot,
     user_id: ChatId,
     silent: bool,
-) -> Result<(), RequestError> {
+) -> Result<Message, RequestError> {
     bot.send_message(user_id, text)
         .parse_mode(MarkdownV2)
         .disable_web_page_preview(true)
         .disable_notification(silent)
         .send()
         .await
-        .map(|_| ())
 }
 
 pub async fn send_message(
     text: &str,
     bot: &Bot,
     user_id: ChatId,
-) -> Result<(), RequestError> {
+) -> Result<Message, RequestError> {
     _send_message(text, bot, user_id, false).await
 }
 
@@ -117,7 +116,7 @@ pub async fn send_silent_message(
     text: &str,
     bot: &Bot,
     user_id: ChatId,
-) -> Result<(), RequestError> {
+) -> Result<Message, RequestError> {
     _send_message(text, bot, user_id, true).await
 }
 

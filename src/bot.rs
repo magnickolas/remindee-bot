@@ -56,6 +56,7 @@ async fn send_reminder(
     );
     send_message(&text, bot, ChatId(reminder.chat_id))
         .await
+        .map(|_| ())
         .map_err(From::from)
 }
 
@@ -69,6 +70,7 @@ async fn send_cron_reminder(
         format::format_cron_reminder(reminder, next_reminder, user_timezone);
     send_message(&text, bot, ChatId(reminder.chat_id))
         .await
+        .map(|_| ())
         .map_err(From::from)
 }
 
@@ -293,23 +295,27 @@ async fn command_handler(
 ) -> Result<(), Error> {
     let ctl = TgMessageController::from_msg(&bot, &msg).await?;
     match cmd {
-        Command::Help => ctl.reply(Command::descriptions()).await,
-        Command::Start => ctl.start().await,
-        Command::List => ctl.list().await,
-        Command::SetTimezone => ctl.choose_timezone().await,
-        Command::Timezone => ctl.get_timezone().await,
-        Command::Delete => ctl.start_delete().await,
-        Command::Edit => ctl.start_edit().await,
-        Command::Cancel => ctl.cancel_edit().await,
-        Command::Pause => ctl.start_pause().await,
+        Command::Help => ctl
+            .reply(Command::descriptions())
+            .await
+            .map(|_| ())
+            .map_err(From::from),
+        Command::Start => ctl.start().await.map_err(From::from),
+        Command::List => ctl.list().await.map_err(From::from),
+        Command::SetTimezone => ctl.choose_timezone().await.map_err(From::from),
+        Command::Timezone => ctl.get_timezone().await.map_err(From::from),
+        Command::Delete => ctl.start_delete().await.map_err(From::from),
+        Command::Edit => ctl.start_edit().await.map_err(From::from),
+        Command::Cancel => ctl.cancel_edit().await.map_err(From::from),
+        Command::Pause => ctl.start_pause().await.map_err(From::from),
         Command::Set(ref reminder_text) => {
-            ctl.set_or_edit_reminder(reminder_text).await
+            ctl.set_or_edit_reminder(reminder_text).await.map(|_| ())
         }
     }
-    .map_err(From::from)
 }
 
 async fn message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
+    dbg!(&msg);
     let ctl = TgMessageController::from_msg(&bot, &msg).await?;
     if !ctl.chat_id.is_user() {
         Ok(())
@@ -321,7 +327,10 @@ async fn message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
         .await
         .map_err(From::from)
     } else if let Some(text) = msg.text() {
-        ctl.set_or_edit_reminder(text).await.map_err(From::from)
+        ctl.set_or_edit_reminder(text)
+            .await
+            .map(|_| ())
+            .map_err(From::from)
     } else {
         ctl.incorrect_request().await.map_err(From::from)
     }
