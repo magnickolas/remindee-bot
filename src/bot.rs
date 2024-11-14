@@ -258,7 +258,8 @@ impl<'a> TgMessageController<'a> {
         Self::new(
             bot,
             msg.chat.id,
-            msg.from()
+            msg.clone()
+                .from
                 .ok_or_else(|| Error::UserNotFound(msg.clone()))?
                 .id,
             msg.id,
@@ -274,7 +275,7 @@ impl<'a> TgMessageController<'a> {
             .message
             .as_ref()
             .ok_or_else(|| Error::NoQueryMessage(cb_query.clone()))?;
-        Self::new(bot, msg.chat.id, cb_query.from.id, msg.id).await
+        Self::new(bot, msg.chat().id, cb_query.from.id, msg.id()).await
     }
 }
 
@@ -329,7 +330,6 @@ async fn edited_message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
 }
 
 async fn message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
-    dbg!(&msg);
     let ctl = TgMessageController::from_msg(&bot, &msg).await?;
     if !ctl.chat_id.is_user() {
         Ok(())

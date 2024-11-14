@@ -3,7 +3,9 @@ use std::fmt::Display;
 use teloxide::payloads::SendMessageSetters;
 use teloxide::prelude::*;
 use teloxide::types::ParseMode::MarkdownV2;
-use teloxide::types::{ChatId, InlineKeyboardMarkup, MessageId};
+use teloxide::types::{
+    ChatId, InlineKeyboardMarkup, LinkPreviewOptions, MessageId,
+};
 use teloxide::utils::markdown::escape;
 use teloxide::RequestError;
 
@@ -98,7 +100,13 @@ pub async fn _send_message(
 ) -> Result<Message, RequestError> {
     bot.send_message(user_id, text)
         .parse_mode(MarkdownV2)
-        .disable_web_page_preview(true)
+        .link_preview_options(LinkPreviewOptions {
+            is_disabled: true,
+            url: Default::default(),
+            prefer_small_media: Default::default(),
+            prefer_large_media: Default::default(),
+            show_above_text: Default::default(),
+        })
         .disable_notification(silent)
         .send()
         .await
@@ -128,7 +136,13 @@ pub async fn send_markup(
 ) -> Result<(), RequestError> {
     bot.send_message(user_id, text)
         .parse_mode(MarkdownV2)
-        .disable_web_page_preview(true)
+        .link_preview_options(LinkPreviewOptions {
+            is_disabled: true,
+            url: Default::default(),
+            prefer_small_media: Default::default(),
+            prefer_large_media: Default::default(),
+            show_above_text: Default::default(),
+        })
         .disable_notification(true)
         .reply_markup(markup)
         .send()
