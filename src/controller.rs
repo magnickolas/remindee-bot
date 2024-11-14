@@ -642,10 +642,10 @@ impl TgMessageController<'_> {
         text: &str,
     ) -> Result<(Option<Reminder>, Option<Message>), Error> {
         let (reminder, old_reply_id, reply) = match (
-            self.get_edit_reminder().await,
-            self.get_edit_cron_reminder().await,
+            self.get_edit_reminder().await?,
+            self.get_edit_cron_reminder().await?,
         ) {
-            (Ok(Some(old_reminder)), _) => match old_reminder.edit_mode {
+            (Some(old_reminder), _) => match old_reminder.edit_mode {
                 EditMode::TimePattern => self
                     .replace_reminder(
                         &(text.to_owned() + " " + &old_reminder.desc),
@@ -654,8 +654,7 @@ impl TgMessageController<'_> {
                     .await
                     .map(|(set_result, msg)| {
                         (set_result, old_reminder.reply_id, Some(msg))
-                    })
-                    .map_err(From::from),
+                    }),
                 EditMode::Description => {
                     let (set_result, response) = match tz::get_user_timezone(
                         self.db,
@@ -695,32 +694,25 @@ impl TgMessageController<'_> {
                         }
                         _ => (None, TgResponse::FailedEdit),
                     };
-                    self.reply(response)
-                        .await
-                        .map(|msg| {
-                            (set_result, old_reminder.reply_id, Some(msg))
-                        })
-                        .map_err(From::from)
+                    self.reply(response).await.map(|msg| {
+                        (set_result, old_reminder.reply_id, Some(msg))
+                    })
                 }
                 EditMode::None => self
                     .reply(TgResponse::FailedEdit)
                     .await
-                    .map(|msg| (None, None, Some(msg)))
-                    .map_err(From::from),
+                    .map(|msg| (None, None, Some(msg))),
             },
-            (_, Ok(Some(old_cron_reminder))) => self
+            (_, Some(old_cron_reminder)) => self
                 .replace_cron_reminder(text, old_cron_reminder.id)
                 .await
                 .map(|(set_result, msg)| {
                     (set_result, old_cron_reminder.reply_id, Some(msg))
-                })
-                .map_err(From::from),
-            (Err(err), _) | (_, Err(err)) => Err(Into::<Error>::into(err)),
+                }),
             _ => self
                 .set_reminder(text)
                 .await
-                .map(|(set_result, msg)| (set_result, None, msg))
-                .map_err(From::from),
+                .map(|(rem, msg)| (rem, None, msg)),
         }?;
 
         if let Some(ref reminder) = reminder {
