@@ -95,10 +95,10 @@ impl Display for TgResponse {
 pub async fn _send_message(
     text: &str,
     bot: &Bot,
-    user_id: ChatId,
+    chat_id: ChatId,
     silent: bool,
 ) -> Result<Message, RequestError> {
-    bot.send_message(user_id, text)
+    bot.send_message(chat_id, text)
         .parse_mode(MarkdownV2)
         .link_preview_options(LinkPreviewOptions {
             is_disabled: true,
@@ -115,26 +115,34 @@ pub async fn _send_message(
 pub async fn send_message(
     text: &str,
     bot: &Bot,
-    user_id: ChatId,
+    chat_id: ChatId,
 ) -> Result<Message, RequestError> {
-    _send_message(text, bot, user_id, false).await
+    _send_message(text, bot, chat_id, false).await
 }
 
 pub async fn send_silent_message(
     text: &str,
     bot: &Bot,
-    user_id: ChatId,
+    chat_id: ChatId,
 ) -> Result<Message, RequestError> {
-    _send_message(text, bot, user_id, true).await
+    _send_message(text, bot, chat_id, true).await
+}
+
+pub async fn delete_message(
+    bot: &Bot,
+    chat_id: ChatId,
+    msg_id: MessageId,
+) -> Result<(), RequestError> {
+    bot.delete_message(chat_id, msg_id).await.map(|_| ())
 }
 
 pub async fn send_markup(
     text: &str,
     markup: InlineKeyboardMarkup,
     bot: &Bot,
-    user_id: ChatId,
+    chat_id: ChatId,
 ) -> Result<(), RequestError> {
-    bot.send_message(user_id, text)
+    bot.send_message(chat_id, text)
         .parse_mode(MarkdownV2)
         .link_preview_options(LinkPreviewOptions {
             is_disabled: true,
@@ -154,9 +162,9 @@ pub async fn edit_markup(
     markup: InlineKeyboardMarkup,
     bot: &Bot,
     msg_id: MessageId,
-    user_id: ChatId,
+    chat_id: ChatId,
 ) -> Result<(), RequestError> {
-    bot.edit_message_reply_markup(user_id, msg_id)
+    bot.edit_message_reply_markup(chat_id, msg_id)
         .reply_markup(markup)
         .send()
         .await
