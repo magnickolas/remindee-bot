@@ -169,13 +169,15 @@ impl Database {
         Ok(())
     }
 
-    pub async fn set_reminder_description(
+    pub async fn update_edited_reminder_description(
         &self,
-        rem: reminder::ActiveModel,
-        desc: &str,
+        rem: reminder::Model,
     ) -> Result<(), Error> {
+        let desc = rem.desc.clone();
         let mut rem_act = Into::<reminder::ActiveModel>::into(rem);
-        rem_act.desc = Set(desc.to_owned());
+        rem_act.edit = Set(false);
+        rem_act.edit_mode = Set(EditMode::None);
+        rem_act.desc = Set(desc);
         rem_act.update(&self.pool).await?;
         Ok(())
     }
@@ -424,5 +426,41 @@ impl Database {
             .filter(cron_reminder::Column::MsgId.eq(msg_id))
             .one(&self.pool)
             .await?)
+    }
+
+    pub async fn set_reminder_reply_id(
+        &self,
+        id: i64,
+        reply_id: i32,
+    ) -> Result<(), Error> {
+        match reminder::Entity::find_by_id(id).one(&self.pool).await? {
+            Some(rem) => {
+                let mut rem_act: reminder::ActiveModel = rem.into();
+                rem_act.reply_id = Set(Some(reply_id));
+                rem_act.update(&self.pool).await?;
+                Ok(())
+            }
+            _ => Err(Error::Database(DbErr::RecordNotFound(id.to_string()))),
+        }
+    }
+
+    pub async fn set_cron_reminder_reply_id(
+        &self,
+        id: i64,
+        reply_id: i32,
+    ) -> Result<(), Error> {
+        match cron_reminder::Entity::find_by_id(id)
+            .one(&self.pool)
+            .await?
+        {
+            Some(cron_rem) => {
+                let mut cron_rem_act: cron_reminder::ActiveModel =
+                    cron_rem.into();
+                cron_rem_act.reply_id = Set(Some(reply_id));
+                cron_rem_act.update(&self.pool).await?;
+                Ok(())
+            }
+            _ => Err(Error::Database(DbErr::RecordNotFound(id.to_string()))),
+        }
     }
 }

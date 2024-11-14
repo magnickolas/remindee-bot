@@ -39,6 +39,7 @@ pub async fn parse_reminder(
         paused: Set(false),
         pattern: Set(to_string(&pattern).ok()),
         msg_id: Set(Some(msg_id)),
+        reply_id: Set(None), // set after replying
     })
 }
 
@@ -70,6 +71,7 @@ pub async fn parse_cron_reminder(
                 edit_mode: Set(EditMode::None),
                 paused: Set(false),
                 msg_id: Set(Some(msg_id)),
+                reply_id: Set(None), // set after replying
             })
             .ok()
     }

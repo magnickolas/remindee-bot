@@ -273,6 +273,11 @@ impl TgMessageController<'_> {
         }
     }
 
+    // async fn link_reminder_with_reply_msg(reminder: , reply: &Message) -> Result<(), Error> {
+    //     self.db.set_reminder_reply_id
+    //     Ok(())
+    // }
+
     async fn set_reminder(
         &self,
         text: &str,
@@ -661,11 +666,11 @@ impl TgMessageController<'_> {
             self.get_edit_reminder().await,
             self.get_edit_cron_reminder().await,
         ) {
-            (Ok(Some(edit_reminder)), _) => match edit_reminder.edit_mode {
+            (Ok(Some(old_reminder)), _) => match old_reminder.edit_mode {
                 EditMode::TimePattern => self
                     .replace_reminder(
-                        &(text.to_owned() + " " + &edit_reminder.desc),
-                        edit_reminder.id,
+                        &(text.to_owned() + " " + &old_reminder.desc),
+                        old_reminder.id,
                     )
                     .await
                     .map(|(set_result, msg)| (set_result, Some(msg)))
@@ -678,13 +683,13 @@ impl TgMessageController<'_> {
                     .await
                     {
                         Ok(Some(user_timezone)) => {
-                            let mut new_reminder = edit_reminder.clone();
+                            let mut new_reminder = old_reminder.clone();
                             text.clone_into(&mut new_reminder.desc);
+                            dbg!(&new_reminder);
                             match self
                                 .db
-                                .set_reminder_description(
-                                    edit_reminder.clone().into_active_model(),
-                                    text,
+                                .update_edited_reminder_description(
+                                    new_reminder.clone(),
                                 )
                                 .await
                             {
@@ -695,7 +700,7 @@ impl TgMessageController<'_> {
                                             .into_active_model(),
                                     )),
                                     TgResponse::SuccessEdit(
-                                        edit_reminder
+                                        old_reminder
                                             .into_active_model()
                                             .to_unescaped_string(user_timezone),
                                         new_reminder

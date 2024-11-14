@@ -18,6 +18,7 @@ pub struct Model {
     pub user_id: Option<i64>,
     pub paused: bool,
     pub msg_id: Option<i32>,
+    pub reply_id: Option<i32>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
