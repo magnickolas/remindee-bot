@@ -93,8 +93,13 @@ impl Database {
         Ok(())
     }
 
-    pub async fn mark_reminder_as_edit(&self, id: i64) -> Result<(), Error> {
-        if let Some(mut rem_act) = reminder::Entity::find_by_id(id)
+    pub async fn mark_reminder_as_edit(
+        &self,
+        rem_id: i64,
+        chat_id: i64,
+    ) -> Result<(), Error> {
+        self.reset_reminders_edit(chat_id).await?;
+        if let Some(mut rem_act) = reminder::Entity::find_by_id(rem_id)
             .one(&self.pool)
             .await?
             .map(Into::<reminder::ActiveModel>::into)
@@ -266,12 +271,15 @@ impl Database {
 
     pub async fn mark_cron_reminder_as_edit(
         &self,
-        id: i64,
+        rem_id: i64,
+        chat_id: i64,
     ) -> Result<(), Error> {
-        if let Some(mut cron_rem_act) = cron_reminder::Entity::find_by_id(id)
-            .one(&self.pool)
-            .await?
-            .map(Into::<cron_reminder::ActiveModel>::into)
+        self.reset_cron_reminders_edit(chat_id).await?;
+        if let Some(mut cron_rem_act) =
+            cron_reminder::Entity::find_by_id(rem_id)
+                .one(&self.pool)
+                .await?
+                .map(Into::<cron_reminder::ActiveModel>::into)
         {
             cron_rem_act.edit = Set(true);
             cron_rem_act.update(&self.pool).await?;
@@ -396,5 +404,25 @@ impl Database {
         chat_id: i64,
     ) -> Result<Vec<Box<dyn generic_reminder::GenericReminder>>, Error> {
         self.get_sorted_reminders(chat_id, false, false).await
+    }
+
+    pub async fn get_reminder_by_msg_id(
+        &self,
+        msg_id: i32,
+    ) -> Result<Option<reminder::Model>, Error> {
+        Ok(reminder::Entity::find()
+            .filter(reminder::Column::MsgId.eq(msg_id))
+            .one(&self.pool)
+            .await?)
+    }
+
+    pub async fn get_cron_reminder_by_msg_id(
+        &self,
+        msg_id: i32,
+    ) -> Result<Option<cron_reminder::Model>, Error> {
+        Ok(cron_reminder::Entity::find()
+            .filter(cron_reminder::Column::MsgId.eq(msg_id))
+            .one(&self.pool)
+            .await?)
     }
 }

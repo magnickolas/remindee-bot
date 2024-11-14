@@ -19,6 +19,7 @@ pub async fn parse_reminder(
     s: &str,
     chat_id: i64,
     user_id: u64,
+    msg_id: i32,
     user_timezone: Tz,
 ) -> Option<reminder::ActiveModel> {
     let rem = grammar::parse_reminder(s).ok()?;
@@ -37,6 +38,7 @@ pub async fn parse_reminder(
         edit_mode: Set(EditMode::None),
         paused: Set(false),
         pattern: Set(to_string(&pattern).ok()),
+        msg_id: Set(Some(msg_id)),
     })
 }
 
@@ -44,6 +46,7 @@ pub async fn parse_cron_reminder(
     text: &str,
     chat_id: i64,
     user_id: u64,
+    msg_id: i32,
     user_timezone: Tz,
 ) -> Option<cron_reminder::ActiveModel> {
     let cron_fields: Vec<&str> = text.split_whitespace().take(5).collect();
@@ -66,6 +69,7 @@ pub async fn parse_cron_reminder(
                 edit: Set(false),
                 edit_mode: Set(EditMode::None),
                 paused: Set(false),
+                msg_id: Set(Some(msg_id)),
             })
             .ok()
     }
@@ -129,7 +133,7 @@ pub mod test {
             TEST_TIMESTAMP = TEST_TIME.timestamp();
         }
         let result =
-            parse_reminder(&strfmt(fmt_str, &vars).unwrap(), 0, 0u64, *TEST_TZ)
+            parse_reminder(&strfmt(fmt_str, &vars).unwrap(), 0, 0, 0, *TEST_TZ)
                 .await
                 .map(|reminder| {
                     (

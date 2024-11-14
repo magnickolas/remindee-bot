@@ -35,6 +35,11 @@ pub enum ReminderSetResult {
     NotSet,
 }
 
+enum ParsedReminder {
+    Reminder(reminder::ActiveModel),
+    CronReminder(cron_reminder::ActiveModel),
+}
+
 impl TgMessageController<'_> {
     pub async fn reply<R: ToString>(
         &self,
@@ -167,80 +172,98 @@ impl TgMessageController<'_> {
         }
     }
 
+    async fn parse_reminder(
+        &self,
+        text: &str,
+        tz: Tz,
+    ) -> Option<ParsedReminder> {
+        parsers::parse_cron_reminder(
+            text,
+            self.chat_id.0,
+            self.user_id.0,
+            self.msg_id.0,
+            tz,
+        )
+        .await
+        .map(ParsedReminder::CronReminder)
+        .or(parsers::parse_reminder(
+            text,
+            self.chat_id.0,
+            self.user_id.0,
+            self.msg_id.0,
+            tz,
+        )
+        .await
+        .map(ParsedReminder::Reminder))
+    }
+
     /// Try to parse user's message into a one-time or periodic reminder and set it
     async fn _set_reminder(
         &self,
         text: &str,
     ) -> (ReminderSetResult, Option<TgResponse>) {
-        let user_id_raw = self.user_id.0;
         match tz::get_user_timezone(self.db, self.user_id).await {
             Ok(Some(user_timezone)) => {
-                if let Some(cron_reminder) = parsers::parse_cron_reminder(
-                    text,
-                    self.chat_id.0,
-                    user_id_raw,
-                    user_timezone,
-                )
-                .await
-                {
-                    match self
-                        .db
-                        .insert_cron_reminder(cron_reminder.clone())
-                        .await
-                    {
-                        Ok(_) => {
-                            let rem_str = cron_reminder
-                                .to_unescaped_string(user_timezone);
-                            (
-                                ReminderSetResult::Reminder(Box::new(
-                                    cron_reminder,
-                                )),
-                                Some(TgResponse::SuccessPeriodicInsert(
-                                    rem_str,
-                                )),
-                            )
-                        }
-                        Err(err) => {
-                            log::error!("{}", err);
-                            (
-                                ReminderSetResult::NotSet,
-                                Some(TgResponse::FailedInsert),
-                            )
+                match self.parse_reminder(text, user_timezone).await {
+                    Some(ParsedReminder::Reminder(reminder)) => {
+                        match self.db.insert_reminder(reminder.clone()).await {
+                            Ok(reminder) => {
+                                let rem_str = reminder
+                                    .to_unescaped_string(user_timezone)
+                                    .replace('@', "@\u{200B}");
+                                (
+                                    ReminderSetResult::Reminder(Box::new(
+                                        reminder,
+                                    )),
+                                    Some(TgResponse::SuccessInsert(rem_str)),
+                                )
+                            }
+                            Err(err) => {
+                                log::error!("{}", err);
+                                (
+                                    ReminderSetResult::NotSet,
+                                    Some(TgResponse::FailedInsert),
+                                )
+                            }
                         }
                     }
-                } else if let Some(reminder) = parsers::parse_reminder(
-                    text,
-                    self.chat_id.0,
-                    user_id_raw,
-                    user_timezone,
-                )
-                .await
-                {
-                    match self.db.insert_reminder(reminder.clone()).await {
-                        Ok(reminder) => {
-                            let rem_str = reminder
-                                .to_unescaped_string(user_timezone)
-                                .replace('@', "@\u{200B}");
-                            (
-                                ReminderSetResult::Reminder(Box::new(reminder)),
-                                Some(TgResponse::SuccessInsert(rem_str)),
-                            )
-                        }
-                        Err(err) => {
-                            log::error!("{}", err);
-                            (
-                                ReminderSetResult::NotSet,
-                                Some(TgResponse::FailedInsert),
-                            )
+                    Some(ParsedReminder::CronReminder(cron_reminder)) => {
+                        match self
+                            .db
+                            .insert_cron_reminder(cron_reminder.clone())
+                            .await
+                        {
+                            Ok(_) => {
+                                let rem_str = cron_reminder
+                                    .to_unescaped_string(user_timezone);
+                                (
+                                    ReminderSetResult::Reminder(Box::new(
+                                        cron_reminder,
+                                    )),
+                                    Some(TgResponse::SuccessPeriodicInsert(
+                                        rem_str,
+                                    )),
+                                )
+                            }
+                            Err(err) => {
+                                log::error!("{}", err);
+                                (
+                                    ReminderSetResult::NotSet,
+                                    Some(TgResponse::FailedInsert),
+                                )
+                            }
                         }
                     }
-                } else if user_id_raw == self.chat_id.0 as u64 {
-                    (
-                        ReminderSetResult::NotSet,
-                        Some(TgResponse::IncorrectRequest),
-                    )
-                } else {
-                    (ReminderSetResult::NotSet, None)
+                    None => {
+                        if self.user_id.0 == self.chat_id.0 as u64 {
+                            (
+                                ReminderSetResult::NotSet,
+                                Some(TgResponse::IncorrectRequest),
+                            )
+                        } else {
+                            (ReminderSetResult::NotSet, None)
+                        }
+                    }
                 }
             }
             _ => (
@@ -740,6 +763,31 @@ impl TgMessageController<'_> {
         };
         self.reply(response).await.map(|_| ())
     }
+
+    pub async fn edit_reminder_from_edited_message(
+        &self,
+        text: &str,
+    ) -> Result<(), Error> {
+        match self.db.get_reminder_by_msg_id(self.msg_id.0).await {
+            Ok(Some(rem)) => self
+                .replace_reminder(text, rem.id)
+                .await
+                .map(|_| ())
+                .map_err(From::from),
+            Ok(None) => {
+                match self.db.get_cron_reminder_by_msg_id(self.msg_id.0).await {
+                    Ok(Some(cron_rem)) => self
+                        .replace_cron_reminder(text, cron_rem.id)
+                        .await
+                        .map(|_| ())
+                        .map_err(From::from),
+                    Ok(None) => Ok(()),
+                    Err(err) => Err(err.into()),
+                }
+            }
+            Err(err) => Err(err.into()),
+        }
+    }
 }
 
 impl TgCallbackController<'_> {
@@ -862,9 +910,8 @@ impl TgCallbackController<'_> {
         match self
             .msg_ctl
             .db
-            .reset_reminders_edit(self.msg_ctl.chat_id.0)
+            .mark_reminder_as_edit(rem_id, self.msg_ctl.chat_id.0)
             .await
-            .and(self.msg_ctl.db.mark_reminder_as_edit(rem_id).await)
         {
             Ok(()) => {
                 let markup = InlineKeyboardMarkup::default().append_row(vec![
@@ -904,14 +951,9 @@ impl TgCallbackController<'_> {
         let response = match self
             .msg_ctl
             .db
-            .reset_cron_reminders_edit(self.msg_ctl.chat_id.0)
+            .mark_cron_reminder_as_edit(cron_rem_id, self.msg_ctl.chat_id.0)
             .await
-            .and(
-                self.msg_ctl
-                    .db
-                    .mark_cron_reminder_as_edit(cron_rem_id)
-                    .await,
-            ) {
+        {
             Ok(()) => TgResponse::EnterNewReminder,
             Err(err) => {
                 log::error!("{}", err);

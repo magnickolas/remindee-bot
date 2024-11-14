@@ -223,6 +223,9 @@ pub async fn run() {
                 .endpoint(command_handler),
         )
         .branch(Update::filter_message().endpoint(message_handler))
+        .branch(
+            Update::filter_edited_message().endpoint(edited_message_handler),
+        )
         .branch(Update::filter_callback_query().endpoint(callback_handler));
 
     Dispatcher::builder(bot, handler)
@@ -311,6 +314,17 @@ async fn command_handler(
         Command::Set(ref reminder_text) => {
             ctl.set_or_edit_reminder(reminder_text).await.map(|_| ())
         }
+    }
+}
+
+async fn edited_message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
+    let ctl = TgMessageController::from_msg(&bot, &msg).await?;
+    if !ctl.chat_id.is_user() {
+        Ok(())
+    } else if let Some(text) = msg.text() {
+        ctl.edit_reminder_from_edited_message(text).await
+    } else {
+        ctl.incorrect_request().await.map_err(From::from)
     }
 }
 
