@@ -428,6 +428,26 @@ impl Database {
             .await?)
     }
 
+    pub async fn get_reminder_by_reply_id(
+        &self,
+        reply_id: i32,
+    ) -> Result<Option<reminder::Model>, Error> {
+        Ok(reminder::Entity::find()
+            .filter(reminder::Column::ReplyId.eq(reply_id))
+            .one(&self.pool)
+            .await?)
+    }
+
+    pub async fn get_cron_reminder_by_reply_id(
+        &self,
+        reply_id: i32,
+    ) -> Result<Option<cron_reminder::Model>, Error> {
+        Ok(cron_reminder::Entity::find()
+            .filter(cron_reminder::Column::ReplyId.eq(reply_id))
+            .one(&self.pool)
+            .await?)
+    }
+
     pub async fn set_reminder_reply_id(
         &self,
         mut rem: reminder::ActiveModel,

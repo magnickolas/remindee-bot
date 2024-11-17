@@ -241,6 +241,7 @@ impl<'a> TgMessageController<'a> {
         chat_id: ChatId,
         user_id: UserId,
         msg_id: MessageId,
+        reply_to_id: Option<MessageId>,
     ) -> Result<TgMessageController<'a>, Error> {
         Ok(Self {
             db: DATABASE.get().await,
@@ -248,6 +249,7 @@ impl<'a> TgMessageController<'a> {
             chat_id,
             user_id,
             msg_id,
+            reply_to_id,
         })
     }
 
@@ -263,6 +265,7 @@ impl<'a> TgMessageController<'a> {
                 .ok_or_else(|| Error::UserNotFound(msg.clone()))?
                 .id,
             msg.id,
+            msg.reply_to_message().map(|msg| msg.id),
         )
         .await
     }
@@ -275,7 +278,7 @@ impl<'a> TgMessageController<'a> {
             .message
             .as_ref()
             .ok_or_else(|| Error::NoQueryMessage(cb_query.clone()))?;
-        Self::new(bot, msg.chat().id, cb_query.from.id, msg.id()).await
+        Self::new(bot, msg.chat().id, cb_query.from.id, msg.id(), None).await
     }
 }
 
