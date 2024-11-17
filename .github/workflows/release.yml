@@ -30,10 +30,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     needs: init-release
     env:
-      STAGING: remindee-bot-${{ needs.init.outputs.release-version }}-${{ matrix.target }}
+      STAGING: remindee-bot-${{ needs.init-release.outputs.release-version }}-${{ matrix.target }}
       BINARY_PATH: target/${{ matrix.target }}/release/${{ matrix.binary }}
     strategy:
-      matrix: ${{ fromJSON(needs.init.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.init-release.outputs.matrix) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -128,9 +128,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - targets: ${{ fromJSON(needs.init.outputs.targets) }}
+          - targets: ${{ fromJSON(needs.init-release.outputs.targets) }}
     env:
-      PREFIX: remindee-bot-${{ needs.init.outputs.release-version }}
+      PREFIX: remindee-bot-${{ needs.init-release.outputs.release-version }}
     steps:
       - uses: actions/download-artifact@v3
         with:
