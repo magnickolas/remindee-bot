@@ -51,6 +51,7 @@ pub trait GenericReminder {
         let chat_id = self.chat_id();
         chat_id.is_group() || chat_id.is_channel_or_supergroup()
     }
+    fn is_paused(&self) -> bool;
 }
 
 impl GenericReminder for reminder::ActiveModel {
@@ -119,6 +120,10 @@ impl GenericReminder for reminder::ActiveModel {
     fn chat_id(&self) -> ChatId {
         ChatId(self.chat_id.clone().unwrap())
     }
+
+    fn is_paused(&self) -> bool {
+        self.paused.clone().unwrap()
+    }
 }
 
 impl GenericReminder for cron_reminder::ActiveModel {
@@ -169,11 +174,18 @@ impl GenericReminder for cron_reminder::ActiveModel {
     fn chat_id(&self) -> ChatId {
         ChatId(self.chat_id.clone().unwrap())
     }
+
+    fn is_paused(&self) -> bool {
+        self.paused.clone().unwrap()
+    }
 }
 
 impl Ord for dyn GenericReminder {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.get_time().cmp(&other.get_time())
+        match self.is_paused().cmp(&other.is_paused()) {
+            Ordering::Equal => self.get_time().cmp(&other.get_time()),
+            ord => ord,
+        }
     }
 }
 
