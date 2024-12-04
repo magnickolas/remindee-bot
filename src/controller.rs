@@ -1,6 +1,10 @@
 use std::future::Future;
 
 use crate::db;
+#[cfg(not(test))]
+use crate::db::Database;
+#[cfg(test)]
+use crate::db::MockDatabase as Database;
 use crate::entity::common::EditMode;
 use crate::err::Error;
 use crate::parsers;
@@ -20,7 +24,7 @@ use teloxide::RequestError;
 use tg::TgResponse;
 
 pub struct TgMessageController<'a> {
-    pub db: &'a db::Database,
+    pub db: &'a Database,
     pub bot: &'a Bot,
     pub chat_id: ChatId,
     pub user_id: UserId,

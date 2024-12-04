@@ -6,6 +6,8 @@ use crate::entity::{cron_reminder, reminder, user_timezone};
 use crate::generic_reminder;
 use crate::migration::{DbErr, Migrator, MigratorTrait};
 use chrono::Utc;
+#[cfg(test)]
+use mockall::automock;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Database as SeaOrmDatabase,
     DatabaseConnection, EntityTrait, QueryFilter, Set,
@@ -57,8 +59,9 @@ pub struct Database {
     pool: DatabaseConnection,
 }
 
+#[cfg_attr(test, automock)]
 impl Database {
-    pub async fn new(db_path: &PathBuf) -> Result<Self, Error> {
+    pub async fn new_with_path(db_path: &PathBuf) -> Result<Self, Error> {
         get_db_pool(db_path).await.map(|pool| Self { pool })
     }
 

@@ -55,3 +55,5 @@ impl From<teloxide::RequestError> for Error {
         Self::TeloxideRequest(err)
     }
 }
+
+impl std::error::Error for Error {}

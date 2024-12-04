@@ -1,6 +1,9 @@
 use crate::cli::CLI;
 use crate::controller::{TgCallbackController, TgMessageController};
+#[cfg(not(test))]
 use crate::db::Database;
+#[cfg(test)]
+use crate::db::MockDatabase as Database;
 use crate::entity::common::EditMode;
 use crate::entity::{cron_reminder, reminder};
 use crate::err::Error;
@@ -187,14 +190,21 @@ async fn poll_reminders(db: &Database, bot: Bot) {
     }
 }
 
+#[cfg(not(test))]
 lazy_static! {
     /// A singleton database with a pool connection
     /// that can be shared between threads
     static ref DATABASE: AsyncOnce<Database> = AsyncOnce::new(async {
-        Database::new(&CLI.database)
+        Database::new_with_path(&CLI.database)
             .await
             .unwrap_or_else(|err| panic!("Failed to connect to database {:?}: {}", CLI.database, err))
     });
+}
+
+#[cfg(test)]
+lazy_static! {
+    static ref DATABASE: AsyncOnce<Database> =
+        AsyncOnce::new(async { Database::new() });
 }
 
 pub async fn run() {
@@ -299,7 +309,7 @@ async fn command_handler(
     msg: Message,
     bot: Bot,
     cmd: Command,
-) -> Result<(), Error> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let ctl = TgMessageController::from_msg(&bot, &msg).await?;
     match cmd {
         Command::Help => ctl
@@ -316,23 +326,29 @@ async fn command_handler(
         Command::Cancel => ctl.cancel_edit().await.map_err(From::from),
         Command::Pause => ctl.start_pause().await.map_err(From::from),
         Command::Set(ref reminder_text) => {
-            ctl.set_or_edit_reminder(reminder_text).await.map(|_| ())
+            Ok(ctl.set_or_edit_reminder(reminder_text).await.map(|_| ())?)
         }
     }
 }
 
-async fn edited_message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
+async fn edited_message_handler(
+    msg: Message,
+    bot: Bot,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let ctl = TgMessageController::from_msg(&bot, &msg).await?;
     if !ctl.chat_id.is_user() {
         Ok(())
     } else if let Some(text) = msg.text() {
-        ctl.edit_reminder_from_edited_message(text).await
+        Ok(ctl.edit_reminder_from_edited_message(text).await?)
     } else {
         ctl.incorrect_request().await.map_err(From::from)
     }
 }
 
-async fn message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
+async fn message_handler(
+    msg: Message,
+    bot: Bot,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let ctl = TgMessageController::from_msg(&bot, &msg).await?;
     if !ctl.chat_id.is_user() {
         Ok(())
@@ -356,7 +372,7 @@ async fn message_handler(msg: Message, bot: Bot) -> Result<(), Error> {
 async fn callback_handler(
     cb_query: CallbackQuery,
     bot: Bot,
-) -> Result<(), Error> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Some(cb_data) = &cb_query.data {
         let ctl = TgCallbackController::new(&bot, &cb_query).await?;
         let msg_ctl = &ctl.msg_ctl;
@@ -449,9 +465,48 @@ async fn callback_handler(
                 .await
                 .map_err(From::from)
         } else {
-            Err(Error::UnmatchedQuery(cb_query))
+            Err(Error::UnmatchedQuery(cb_query))?
         }
     } else {
-        Err(Error::NoQueryData(cb_query))
+        Err(Error::NoQueryData(cb_query))?
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use crate::{
+        bot::{
+            callback_handler, command_handler, edited_message_handler,
+            message_handler, Command, DATABASE,
+        },
+        db::MockDatabase as Database,
+        tg::TgResponse,
+    };
+    use async_once::AsyncOnce;
+    use teloxide::{dispatching::UpdateHandler, prelude::*};
+    use teloxide_tests::{MockBot, MockMessageText};
+
+    fn get_handler(
+    ) -> UpdateHandler<Box<dyn std::error::Error + Send + Sync + 'static>> {
+        dptree::entry()
+            .branch(
+                Update::filter_message()
+                    .filter_command::<Command>()
+                    .endpoint(command_handler),
+            )
+            .branch(Update::filter_message().endpoint(message_handler))
+            .branch(
+                Update::filter_edited_message()
+                    .endpoint(edited_message_handler),
+            )
+            .branch(Update::filter_callback_query().endpoint(callback_handler))
+    }
+
+    #[tokio::test]
+    async fn test_start() {
+        let message = MockMessageText::new().text("/start");
+        let bot = MockBot::new(message, get_handler());
+        bot.dispatch_and_check_last_text(&TgResponse::Hello.to_string())
+            .await;
     }
 }

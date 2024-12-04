@@ -1,4 +1,7 @@
-use crate::db;
+#[cfg(not(test))]
+use crate::db::Database;
+#[cfg(test)]
+use crate::db::MockDatabase as Database;
 use crate::err;
 
 use chrono_tz::Tz;
@@ -365,7 +368,7 @@ pub fn get_tz_names_for_page_idx(num: usize) -> Option<Vec<&'static str>> {
 }
 
 pub async fn get_user_timezone(
-    db: &db::Database,
+    db: &Database,
     user_id: UserId,
 ) -> Result<Option<Tz>, err::Error> {
     let tz_name_opt = db.get_user_timezone_name(user_id.0 as i64).await?;
