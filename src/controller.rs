@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::sync::Arc;
 
 use crate::db;
 #[cfg(not(test))]
@@ -24,7 +25,7 @@ use teloxide::RequestError;
 use tg::TgResponse;
 
 pub struct TgMessageController<'a> {
-    pub db: &'a Database,
+    pub db: Arc<Database>,
     pub bot: &'a Bot,
     pub chat_id: ChatId,
     pub user_id: UserId,
@@ -84,7 +85,7 @@ impl TgMessageController<'_> {
     /// Send a list of all notifications
     pub async fn list(&self) -> Result<(), RequestError> {
         // Format reminders
-        let text = match tz::get_user_timezone(self.db, self.user_id).await {
+        let text = match tz::get_user_timezone(&self.db, self.user_id).await {
             Ok(Some(user_timezone)) => {
                 match self.db.get_sorted_all_reminders(self.chat_id.0).await {
                     Ok(sorted_reminders) => std::iter::once(
@@ -143,7 +144,7 @@ impl TgMessageController<'_> {
 
     /// Send a markup to select a reminder for deleting
     pub async fn start_delete(&self) -> Result<(), Error> {
-        match tz::get_user_timezone(self.db, self.user_id).await {
+        match tz::get_user_timezone(&self.db, self.user_id).await {
             Ok(Some(user_timezone)) => {
                 if let Some(reply_to_id) = self.reply_to_id {
                     if let Ok(Some(generic_reminder)) =
@@ -206,7 +207,7 @@ impl TgMessageController<'_> {
 
     /// Send a markup to select a reminder for editing
     pub async fn start_edit(&self) -> Result<(), RequestError> {
-        match tz::get_user_timezone(self.db, self.user_id).await {
+        match tz::get_user_timezone(&self.db, self.user_id).await {
             Ok(Some(user_timezone)) => {
                 let markup = self
                     .get_markup_for_reminders_page_editing(0, user_timezone)
@@ -237,7 +238,7 @@ impl TgMessageController<'_> {
 
     /// Send a markup to select a reminder for pausing
     pub async fn start_pause(&self) -> Result<(), RequestError> {
-        match tz::get_user_timezone(self.db, self.user_id).await {
+        match tz::get_user_timezone(&self.db, self.user_id).await {
             Ok(Some(user_timezone)) => {
                 let markup = self
                     .get_markup_for_reminders_page_pausing(0, user_timezone)
@@ -279,7 +280,7 @@ impl TgMessageController<'_> {
         &self,
         text: &str,
     ) -> (Option<ActiveReminder>, Option<TgResponse>) {
-        match tz::get_user_timezone(self.db, self.user_id).await {
+        match tz::get_user_timezone(&self.db, self.user_id).await {
             Ok(Some(user_timezone)) => {
                 match self.parse_reminder(text, user_timezone).await {
                     Some(ActiveReminder::Reminder(reminder)) => {
@@ -408,7 +409,7 @@ impl TgMessageController<'_> {
         page_num: usize,
     ) -> Result<(), RequestError> {
         if let Ok(Some(user_timezone)) =
-            tz::get_user_timezone(self.db, self.user_id).await
+            tz::get_user_timezone(&self.db, self.user_id).await
         {
             let markup = self
                 .get_markup_for_reminders_page_deletion(page_num, user_timezone)
@@ -424,7 +425,7 @@ impl TgMessageController<'_> {
         page_num: usize,
     ) -> Result<(), RequestError> {
         if let Ok(Some(user_timezone)) =
-            tz::get_user_timezone(self.db, self.user_id).await
+            tz::get_user_timezone(&self.db, self.user_id).await
         {
             let markup = self
                 .get_markup_for_reminders_page_editing(page_num, user_timezone)
@@ -440,7 +441,7 @@ impl TgMessageController<'_> {
         page_num: usize,
     ) -> Result<(), RequestError> {
         if let Ok(Some(user_timezone)) =
-            tz::get_user_timezone(self.db, self.user_id).await
+            tz::get_user_timezone(&self.db, self.user_id).await
         {
             let markup = self
                 .get_markup_for_reminders_page_pausing(page_num, user_timezone)
@@ -616,7 +617,7 @@ impl TgMessageController<'_> {
         R: ReminderModel,
     {
         let (reminder, response) =
-            match tz::get_user_timezone(self.db, self.user_id).await {
+            match tz::get_user_timezone(&self.db, self.user_id).await {
                 Ok(Some(user_timezone)) => match get_reminder(rem_id).await {
                     Ok(Some(old_reminder)) => {
                         match self.set_reminder_silently(text).await {
@@ -736,44 +737,46 @@ impl TgMessageController<'_> {
                         (set_result, old_reminder.reply_id, Some(msg))
                     }),
                 EditMode::Description => {
-                    let (set_result, response) = match tz::get_user_timezone(
-                        self.db,
-                        self.user_id,
-                    )
-                    .await
-                    {
-                        Ok(Some(user_timezone)) => {
-                            let mut new_reminder = old_reminder.clone();
-                            text.clone_into(&mut new_reminder.desc);
-                            dbg!(&new_reminder);
-                            match self
-                                .db
-                                .update_edited_reminder_description(
-                                    new_reminder.clone(),
-                                )
-                                .await
-                            {
-                                Ok(()) => (
-                                    Some(ActiveReminder::Reminder(
-                                        new_reminder
-                                            .clone()
-                                            .into_active_model(),
-                                    )),
-                                    TgResponse::SuccessEdit(
-                                        old_reminder
-                                            .clone()
-                                            .into_active_model()
-                                            .to_unescaped_string(user_timezone),
-                                        new_reminder
-                                            .into_active_model()
-                                            .to_unescaped_string(user_timezone),
+                    let (set_result, response) =
+                        match tz::get_user_timezone(&self.db, self.user_id)
+                            .await
+                        {
+                            Ok(Some(user_timezone)) => {
+                                let mut new_reminder = old_reminder.clone();
+                                text.clone_into(&mut new_reminder.desc);
+                                dbg!(&new_reminder);
+                                match self
+                                    .db
+                                    .update_edited_reminder_description(
+                                        new_reminder.clone(),
+                                    )
+                                    .await
+                                {
+                                    Ok(()) => (
+                                        Some(ActiveReminder::Reminder(
+                                            new_reminder
+                                                .clone()
+                                                .into_active_model(),
+                                        )),
+                                        TgResponse::SuccessEdit(
+                                            old_reminder
+                                                .clone()
+                                                .into_active_model()
+                                                .to_unescaped_string(
+                                                    user_timezone,
+                                                ),
+                                            new_reminder
+                                                .into_active_model()
+                                                .to_unescaped_string(
+                                                    user_timezone,
+                                                ),
+                                        ),
                                     ),
-                                ),
-                                Err(_) => (None, TgResponse::FailedEdit),
+                                    Err(_) => (None, TgResponse::FailedEdit),
+                                }
                             }
-                        }
-                        _ => (None, TgResponse::FailedEdit),
-                    };
+                            _ => (None, TgResponse::FailedEdit),
+                        };
                     self.reply(response).await.map(|msg| {
                         (set_result, old_reminder.reply_id, Some(msg))
                     })
@@ -986,7 +989,7 @@ impl TgCallbackController<'_> {
         rem_id: i64,
     ) -> Result<(), RequestError> {
         let response =
-            match tz::get_user_timezone(self.msg_ctl.db, self.msg_ctl.user_id)
+            match tz::get_user_timezone(&self.msg_ctl.db, self.msg_ctl.user_id)
                 .await
             {
                 Ok(Some(user_timezone)) => {
@@ -1026,7 +1029,7 @@ impl TgCallbackController<'_> {
         cron_rem_id: i64,
     ) -> Result<(), RequestError> {
         let response =
-            match tz::get_user_timezone(self.msg_ctl.db, self.msg_ctl.user_id)
+            match tz::get_user_timezone(&self.msg_ctl.db, self.msg_ctl.user_id)
                 .await
             {
                 Ok(Some(user_timezone)) => {
@@ -1133,7 +1136,7 @@ impl TgCallbackController<'_> {
         rem_id: i64,
     ) -> Result<(), RequestError> {
         let response =
-            match tz::get_user_timezone(self.msg_ctl.db, self.msg_ctl.user_id)
+            match tz::get_user_timezone(&self.msg_ctl.db, self.msg_ctl.user_id)
                 .await
             {
                 Ok(Some(user_timezone)) => {
@@ -1178,7 +1181,7 @@ impl TgCallbackController<'_> {
         cron_rem_id: i64,
     ) -> Result<(), RequestError> {
         let response =
-            match tz::get_user_timezone(self.msg_ctl.db, self.msg_ctl.user_id)
+            match tz::get_user_timezone(&self.msg_ctl.db, self.msg_ctl.user_id)
                 .await
             {
                 Ok(Some(user_timezone)) => {

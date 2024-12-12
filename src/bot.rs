@@ -12,7 +12,6 @@ use crate::parsers::now_time;
 use crate::serializers::Pattern;
 use crate::tg::send_message;
 use crate::tz::{get_timezone_name_of_location, get_user_timezone};
-use async_once::AsyncOnce;
 use async_std::task;
 use chrono::Utc;
 use chrono_tz::Tz;
@@ -20,6 +19,7 @@ use cron_parser::parse as parse_cron;
 use sea_orm::{ActiveValue::NotSet, IntoActiveModel};
 use serde_json::{from_str, to_string};
 use std::cmp::max;
+use std::sync::Arc;
 use std::time::Duration;
 use teloxide::{prelude::*, types::MessageId, utils::command::BotCommands};
 
@@ -80,7 +80,7 @@ async fn send_cron_reminder(
 /// Periodically (every second) check for new reminders.
 /// Send and delete one-time reminders if time has come.
 /// Send cron reminders if time has come and update next reminder time.
-async fn poll_reminders(db: &Database, bot: Bot) {
+async fn poll_reminders(db: Arc<Database>, bot: Bot) {
     loop {
         let reminders = db
             .get_active_reminders()
@@ -89,7 +89,7 @@ async fn poll_reminders(db: &Database, bot: Bot) {
         for reminder in reminders {
             if let Some(user_id) = reminder.user_id.map(|x| UserId(x as u64)) {
                 if let Ok(Some(user_timezone)) =
-                    get_user_timezone(db, user_id).await
+                    get_user_timezone(&db, user_id).await
                 {
                     let mut next_reminder = None;
                     if let Some(ref serialized) = reminder.pattern {
@@ -137,7 +137,7 @@ async fn poll_reminders(db: &Database, bot: Bot) {
                 cron_reminder.user_id.map(|x| UserId(x as u64))
             {
                 if let Ok(Some(user_timezone)) =
-                    get_user_timezone(db, user_id).await
+                    get_user_timezone(&db, user_id).await
                 {
                     let new_time = parse_cron(
                         &cron_reminder.cron_expr,
@@ -190,31 +190,21 @@ async fn poll_reminders(db: &Database, bot: Bot) {
     }
 }
 
-#[cfg(not(test))]
-lazy_static! {
-    /// A singleton database with a pool connection
-    /// that can be shared between threads
-    static ref DATABASE: AsyncOnce<Database> = AsyncOnce::new(async {
-        Database::new_with_path(&CLI.database)
-            .await
-            .unwrap_or_else(|err| panic!("Failed to connect to database {:?}: {}", CLI.database, err))
-    });
-}
-
-#[cfg(test)]
-lazy_static! {
-    static ref DATABASE: AsyncOnce<Database> =
-        AsyncOnce::new(async { Database::new() });
-}
-
 pub async fn run() {
     pretty_env_logger::init();
     log::info!("Starting remindee-bot!");
 
-    DATABASE
-        .get()
-        .await
-        .apply_migrations()
+    let db =
+        Arc::new(Database::new_with_path(&CLI.database).await.unwrap_or_else(
+            |err| {
+                panic!(
+                    "Failed to connect to database {:?}: {}",
+                    CLI.database, err
+                )
+            },
+        ));
+
+    db.apply_migrations()
         .await
         .expect("Failed to apply migrations");
 
@@ -224,19 +214,32 @@ pub async fn run() {
         .await
         .expect("Failed to set bot commands");
 
-    tokio::spawn(poll_reminders(DATABASE.get().await, bot.clone()));
+    tokio::spawn(poll_reminders(Arc::clone(&db), bot.clone()));
+
+    let db_command_handler = Arc::clone(&db);
+    let db_message_handler = Arc::clone(&db);
+    let db_edited_message_handler = Arc::clone(&db);
+    let db_callback_handler = Arc::clone(&db);
 
     let handler = dptree::entry()
         .branch(
             Update::filter_message()
                 .filter_command::<Command>()
-                .endpoint(command_handler),
+                .endpoint(move |msg, bot, cmd| {
+                    command_handler(msg, bot, cmd, db_command_handler.clone())
+                }),
         )
-        .branch(Update::filter_message().endpoint(message_handler))
-        .branch(
-            Update::filter_edited_message().endpoint(edited_message_handler),
-        )
-        .branch(Update::filter_callback_query().endpoint(callback_handler));
+        .branch(Update::filter_message().endpoint(move |msg, bot| {
+            message_handler(msg, bot, db_message_handler.clone())
+        }))
+        .branch(Update::filter_edited_message().endpoint(move |msg, bot| {
+            edited_message_handler(msg, bot, db_edited_message_handler.clone())
+        }))
+        .branch(Update::filter_callback_query().endpoint(
+            move |cb_query, bot| {
+                callback_handler(cb_query, bot, db_callback_handler.clone())
+            },
+        ));
 
     Dispatcher::builder(bot, handler)
         .enable_ctrlc_handler()
@@ -247,6 +250,7 @@ pub async fn run() {
 
 impl<'a> TgMessageController<'a> {
     pub async fn new(
+        db: Arc<Database>,
         bot: &'a Bot,
         chat_id: ChatId,
         user_id: UserId,
@@ -254,7 +258,7 @@ impl<'a> TgMessageController<'a> {
         reply_to_id: Option<MessageId>,
     ) -> Result<TgMessageController<'a>, Error> {
         Ok(Self {
-            db: DATABASE.get().await,
+            db,
             bot,
             chat_id,
             user_id,
@@ -264,10 +268,12 @@ impl<'a> TgMessageController<'a> {
     }
 
     pub async fn from_msg(
+        db: Arc<Database>,
         bot: &'a Bot,
         msg: &Message,
     ) -> Result<TgMessageController<'a>, Error> {
         Self::new(
+            db,
             bot,
             msg.chat.id,
             msg.clone()
@@ -281,6 +287,7 @@ impl<'a> TgMessageController<'a> {
     }
 
     pub async fn from_callback_query(
+        db: Arc<Database>,
         bot: &'a Bot,
         cb_query: &CallbackQuery,
     ) -> Result<TgMessageController<'a>, Error> {
@@ -288,18 +295,22 @@ impl<'a> TgMessageController<'a> {
             .message
             .as_ref()
             .ok_or_else(|| Error::NoQueryMessage(cb_query.clone()))?;
-        Self::new(bot, msg.chat().id, cb_query.from.id, msg.id(), None).await
+        Self::new(db, bot, msg.chat().id, cb_query.from.id, msg.id(), None)
+            .await
     }
 }
 
 impl<'a> TgCallbackController<'a> {
     pub async fn new(
+        db: Arc<Database>,
         bot: &'a Bot,
         cb_query: &'a CallbackQuery,
     ) -> Result<TgCallbackController<'a>, Error> {
         Ok(Self {
-            msg_ctl: TgMessageController::from_callback_query(bot, cb_query)
-                .await?,
+            msg_ctl: TgMessageController::from_callback_query(
+                db, bot, cb_query,
+            )
+            .await?,
             cb_id: &cb_query.id,
         })
     }
@@ -309,8 +320,9 @@ async fn command_handler(
     msg: Message,
     bot: Bot,
     cmd: Command,
+    db: Arc<Database>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let ctl = TgMessageController::from_msg(&bot, &msg).await?;
+    let ctl = TgMessageController::from_msg(db, &bot, &msg).await?;
     match cmd {
         Command::Help => ctl
             .reply(Command::descriptions())
@@ -334,8 +346,9 @@ async fn command_handler(
 async fn edited_message_handler(
     msg: Message,
     bot: Bot,
+    db: Arc<Database>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let ctl = TgMessageController::from_msg(&bot, &msg).await?;
+    let ctl = TgMessageController::from_msg(db, &bot, &msg).await?;
     if !ctl.chat_id.is_user() {
         Ok(())
     } else if let Some(text) = msg.text() {
@@ -348,8 +361,9 @@ async fn edited_message_handler(
 async fn message_handler(
     msg: Message,
     bot: Bot,
+    db: Arc<Database>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let ctl = TgMessageController::from_msg(&bot, &msg).await?;
+    let ctl = TgMessageController::from_msg(db, &bot, &msg).await?;
     if !ctl.chat_id.is_user() {
         Ok(())
     } else if let Some(location) = msg.location() {
@@ -372,9 +386,10 @@ async fn message_handler(
 async fn callback_handler(
     cb_query: CallbackQuery,
     bot: Bot,
+    db: Arc<Database>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Some(cb_data) = &cb_query.data {
-        let ctl = TgCallbackController::new(&bot, &cb_query).await?;
+        let ctl = TgCallbackController::new(db, &bot, &cb_query).await?;
         let msg_ctl = &ctl.msg_ctl;
         if let Some(page_num) = cb_data
             .strip_prefix("seltz::page::")
@@ -474,38 +489,65 @@ async fn callback_handler(
 
 #[cfg(test)]
 pub mod test {
+    use std::sync::Arc;
+
     use crate::{
         bot::{
             callback_handler, command_handler, edited_message_handler,
-            message_handler, Command, DATABASE,
+            message_handler, Command,
         },
-        db::MockDatabase as Database,
+        db::MockDatabase,
         tg::TgResponse,
     };
-    use async_once::AsyncOnce;
     use teloxide::{dispatching::UpdateHandler, prelude::*};
     use teloxide_tests::{MockBot, MockMessageText};
 
     fn get_handler(
+        db: MockDatabase,
     ) -> UpdateHandler<Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let db = Arc::new(db);
+        let db_command_handler = Arc::clone(&db);
+        let db_message_handler = Arc::clone(&db);
+        let db_edited_message_handler = Arc::clone(&db);
+        let db_callback_handler = Arc::clone(&db);
+
         dptree::entry()
             .branch(
                 Update::filter_message()
                     .filter_command::<Command>()
-                    .endpoint(command_handler),
+                    .endpoint(move |msg, bot, cmd| {
+                        command_handler(
+                            msg,
+                            bot,
+                            cmd,
+                            db_command_handler.clone(),
+                        )
+                    }),
             )
-            .branch(Update::filter_message().endpoint(message_handler))
-            .branch(
-                Update::filter_edited_message()
-                    .endpoint(edited_message_handler),
-            )
-            .branch(Update::filter_callback_query().endpoint(callback_handler))
+            .branch(Update::filter_message().endpoint(move |msg, bot| {
+                message_handler(msg, bot, db_message_handler.clone())
+            }))
+            .branch(Update::filter_edited_message().endpoint(
+                move |msg, bot| {
+                    edited_message_handler(
+                        msg,
+                        bot,
+                        db_edited_message_handler.clone(),
+                    )
+                },
+            ))
+            .branch(Update::filter_callback_query().endpoint(
+                move |cb_query, bot| {
+                    callback_handler(cb_query, bot, db_callback_handler.clone())
+                },
+            ))
     }
 
     #[tokio::test]
     async fn test_start() {
+        let db = MockDatabase::new();
         let message = MockMessageText::new().text("/start");
-        let bot = MockBot::new(message, get_handler());
+        let bot = MockBot::new(message, get_handler(db));
         bot.dispatch_and_check_last_text(&TgResponse::Hello.to_string())
             .await;
     }
