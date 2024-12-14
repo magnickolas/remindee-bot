@@ -497,8 +497,12 @@ pub mod test {
             message_handler, Command,
         },
         db::MockDatabase,
+        entity::reminder,
+        generic_reminder::GenericReminder,
         tg::TgResponse,
     };
+    use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+    use chrono_tz::Tz;
     use teloxide::{dispatching::UpdateHandler, prelude::*};
     use teloxide_tests::{MockBot, MockMessageText};
 
@@ -543,6 +547,31 @@ pub mod test {
             ))
     }
 
+    fn basic_mock_reminder() -> reminder::ActiveModel {
+        reminder::ActiveModel {
+            id: sea_orm::ActiveValue::Set(1),
+            chat_id: sea_orm::ActiveValue::Set(1),
+            time: sea_orm::ActiveValue::Set(NaiveDateTime::new(
+                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                NaiveTime::from_hms_opt(0, 1, 2).unwrap(),
+            )),
+            desc: sea_orm::ActiveValue::Set("".to_owned()),
+            edit: sea_orm::ActiveValue::Set(false),
+            edit_mode: sea_orm::ActiveValue::Set(
+                crate::entity::common::EditMode::None,
+            ),
+            user_id: sea_orm::ActiveValue::Set(None),
+            paused: sea_orm::ActiveValue::Set(false),
+            pattern: sea_orm::ActiveValue::Set(None),
+            msg_id: sea_orm::ActiveValue::Set(None),
+            reply_id: sea_orm::ActiveValue::Set(None),
+        }
+    }
+
+    fn mock_timezone() -> Tz {
+        "Europe/Amsterdam".parse::<Tz>().unwrap()
+    }
+
     #[tokio::test]
     async fn test_start() {
         let db = MockDatabase::new();
@@ -550,5 +579,52 @@ pub mod test {
         let bot = MockBot::new(message, get_handler(db));
         bot.dispatch_and_check_last_text(&TgResponse::Hello.to_string())
             .await;
+    }
+
+    #[tokio::test]
+    async fn test_list_no_timezone() {
+        let mut db = MockDatabase::new();
+        db.expect_get_user_timezone_name().returning(|_| Ok(None));
+        let message = MockMessageText::new().text("/list");
+        let bot = MockBot::new(message, get_handler(db));
+        bot.dispatch_and_check_last_text(
+            &TgResponse::NoChosenTimezone.to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_list_no_reminders() {
+        let mut db = MockDatabase::new();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some("Europe/Amsterdam".to_owned())));
+        db.expect_get_sorted_all_reminders()
+            .returning(|_| Ok(vec![]));
+        let message = MockMessageText::new().text("/list");
+        let bot = MockBot::new(message, get_handler(db));
+        bot.dispatch_and_check_last_text(
+            &TgResponse::RemindersListHeader.to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_list_one_reminder() {
+        let mut db = MockDatabase::new();
+        let tz = mock_timezone();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some("Europe/Amsterdam".to_owned())));
+        let rem = basic_mock_reminder();
+        let rem_clone = rem.clone();
+        db.expect_get_sorted_all_reminders()
+            .returning(move |_| Ok(vec![Box::new(rem_clone.clone())]));
+        let message = MockMessageText::new().text("/list");
+        let bot = MockBot::new(message, get_handler(db));
+        bot.dispatch_and_check_last_text(&format!(
+            "{}\n{}",
+            TgResponse::RemindersListHeader.to_string(),
+            rem.to_string(tz)
+        ))
+        .await;
     }
 }
