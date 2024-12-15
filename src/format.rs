@@ -17,7 +17,7 @@ pub fn format_reminder<T: ActiveModelTrait + GenericReminder>(
 
 pub fn format_cron_reminder(
     reminder: &cron_reminder::Model,
-    next_reminder: &Option<cron_reminder::Model>,
+    next_reminder: Option<&cron_reminder::Model>,
     user_timezone: Tz,
 ) -> String {
     let formatted_reminder =

@@ -1,5 +1,4 @@
-use std::fs::OpenOptions;
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::entity::common::EditMode;
 use crate::entity::{cron_reminder, reminder, user_timezone};
@@ -9,7 +8,7 @@ use chrono::Utc;
 #[cfg(test)]
 use mockall::automock;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Database as SeaOrmDatabase,
+    ActiveModelTrait, ColumnTrait, ConnectOptions, Database as SeaOrmDatabase,
     DatabaseConnection, EntityTrait, QueryFilter, Set,
 };
 
@@ -42,15 +41,11 @@ impl From<std::io::Error> for Error {
     }
 }
 
-async fn get_db_pool(db_path: &PathBuf) -> Result<DatabaseConnection, Error> {
-    OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(db_path)?;
-    let db_str = format!("sqlite:{}", db_path.display());
-    let pool = SeaOrmDatabase::connect(&db_str).await?;
+async fn get_db_pool(db_path: &Path) -> Result<DatabaseConnection, Error> {
+    let db_str = format!("sqlite:{}?mode=rwc", db_path.display());
+    let mut opts = ConnectOptions::new(&db_str);
+    opts.max_connections(100);
+    let pool = SeaOrmDatabase::connect(opts).await?;
     Ok(pool)
 }
 
@@ -59,9 +54,9 @@ pub struct Database {
     pool: DatabaseConnection,
 }
 
-#[cfg_attr(test, automock)]
+#[cfg_attr(test, automock, allow(dead_code))]
 impl Database {
-    pub async fn new_with_path(db_path: &PathBuf) -> Result<Self, Error> {
+    pub async fn new_with_path(db_path: &Path) -> Result<Self, Error> {
         get_db_pool(db_path).await.map(|pool| Self { pool })
     }
 

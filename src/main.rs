@@ -15,6 +15,7 @@ mod err;
 mod format;
 mod generic_reminder;
 mod grammar;
+mod handlers;
 mod migration;
 mod parsers;
 mod serializers;

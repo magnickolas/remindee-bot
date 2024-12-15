@@ -4,14 +4,14 @@ use crate::controller::{TgCallbackController, TgMessageController};
 use crate::db::Database;
 #[cfg(test)]
 use crate::db::MockDatabase as Database;
-use crate::entity::common::EditMode;
 use crate::entity::{cron_reminder, reminder};
 use crate::err::Error;
 use crate::format;
+use crate::handlers::{get_handler, Command, State};
 use crate::parsers::now_time;
 use crate::serializers::Pattern;
 use crate::tg::send_message;
-use crate::tz::{get_timezone_name_of_location, get_user_timezone};
+use crate::tz::get_user_timezone;
 use async_std::task;
 use chrono::Utc;
 use chrono_tz::Tz;
@@ -21,32 +21,9 @@ use serde_json::{from_str, to_string};
 use std::cmp::max;
 use std::sync::Arc;
 use std::time::Duration;
+use teloxide::dispatching::dialogue::serializer::Json;
+use teloxide::dispatching::dialogue::{ErasedStorage, SqliteStorage, Storage};
 use teloxide::{prelude::*, types::MessageId, utils::command::BotCommands};
-
-#[derive(BotCommands, Clone)]
-#[command(description = "Commands:", rename_rule = "lowercase")]
-pub enum Command {
-    #[command(description = "list the set reminders")]
-    List,
-    #[command(description = "choose reminders to delete")]
-    Delete,
-    #[command(description = "choose reminders to edit")]
-    Edit,
-    #[command(description = "cancel editing")]
-    Cancel,
-    #[command(description = "choose reminders to pause")]
-    Pause,
-    #[command(description = "set a new reminder")]
-    Set(String),
-    #[command(description = "select a timezone")]
-    SetTimezone,
-    #[command(description = "show your timezone")]
-    Timezone,
-    #[command(description = "show this text")]
-    Help,
-    #[command(description = "start")]
-    Start,
-}
 
 async fn send_reminder(
     reminder: &reminder::Model,
@@ -65,7 +42,7 @@ async fn send_reminder(
 
 async fn send_cron_reminder(
     reminder: &cron_reminder::Model,
-    next_reminder: &Option<cron_reminder::Model>,
+    next_reminder: Option<&cron_reminder::Model>,
     user_timezone: Tz,
     bot: &Bot,
 ) -> Result<(), Error> {
@@ -156,7 +133,7 @@ async fn poll_reminders(db: Arc<Database>, bot: Bot) {
                     };
                     match send_cron_reminder(
                         &cron_reminder,
-                        &new_cron_reminder,
+                        new_cron_reminder.as_ref(),
                         user_timezone,
                         &bot,
                     )
@@ -190,19 +167,28 @@ async fn poll_reminders(db: Arc<Database>, bot: Bot) {
     }
 }
 
+async fn init_database() -> Database {
+    Database::new_with_path(&CLI.database)
+        .await
+        .unwrap_or_else(|err| {
+            panic!("Failed to connect to database {:?}: {}", CLI.database, err)
+        })
+}
+
+async fn init_dialogue_storage() -> Arc<ErasedStorage<State>> {
+    SqliteStorage::open(CLI.database.to_str().unwrap(), Json)
+        .await
+        .unwrap_or_else(|err| {
+            panic!("Failed to connect to database {:?}: {}", CLI.database, err)
+        })
+        .erase()
+}
+
 pub async fn run() {
     pretty_env_logger::init();
     log::info!("Starting remindee-bot!");
 
-    let db =
-        Arc::new(Database::new_with_path(&CLI.database).await.unwrap_or_else(
-            |err| {
-                panic!(
-                    "Failed to connect to database {:?}: {}",
-                    CLI.database, err
-                )
-            },
-        ));
+    let db = Arc::new(init_database().await);
 
     db.apply_migrations()
         .await
@@ -214,34 +200,16 @@ pub async fn run() {
         .await
         .expect("Failed to set bot commands");
 
-    tokio::spawn(poll_reminders(Arc::clone(&db), bot.clone()));
+    let db_clone = db.clone();
 
-    let db_command_handler = Arc::clone(&db);
-    let db_message_handler = Arc::clone(&db);
-    let db_edited_message_handler = Arc::clone(&db);
-    let db_callback_handler = Arc::clone(&db);
+    tokio::spawn(poll_reminders(db_clone, bot.clone()));
 
-    let handler = dptree::entry()
-        .branch(
-            Update::filter_message()
-                .filter_command::<Command>()
-                .endpoint(move |msg, bot, cmd| {
-                    command_handler(msg, bot, cmd, db_command_handler.clone())
-                }),
-        )
-        .branch(Update::filter_message().endpoint(move |msg, bot| {
-            message_handler(msg, bot, db_message_handler.clone())
-        }))
-        .branch(Update::filter_edited_message().endpoint(move |msg, bot| {
-            edited_message_handler(msg, bot, db_edited_message_handler.clone())
-        }))
-        .branch(Update::filter_callback_query().endpoint(
-            move |cb_query, bot| {
-                callback_handler(cb_query, bot, db_callback_handler.clone())
-            },
-        ));
+    let storage = init_dialogue_storage().await;
+
+    let handler = get_handler();
 
     Dispatcher::builder(bot, handler)
+        .dependencies(dptree::deps![storage, db])
         .enable_ctrlc_handler()
         .build()
         .dispatch()
@@ -316,236 +284,21 @@ impl<'a> TgCallbackController<'a> {
     }
 }
 
-async fn command_handler(
-    msg: Message,
-    bot: Bot,
-    cmd: Command,
-    db: Arc<Database>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let ctl = TgMessageController::from_msg(db, &bot, &msg).await?;
-    match cmd {
-        Command::Help => ctl
-            .reply(Command::descriptions())
-            .await
-            .map(|_| ())
-            .map_err(From::from),
-        Command::Start => ctl.start().await.map_err(From::from),
-        Command::List => ctl.list().await.map_err(From::from),
-        Command::SetTimezone => ctl.choose_timezone().await.map_err(From::from),
-        Command::Timezone => ctl.get_timezone().await.map_err(From::from),
-        Command::Delete => ctl.start_delete().await.map_err(From::from),
-        Command::Edit => ctl.start_edit().await.map_err(From::from),
-        Command::Cancel => ctl.cancel_edit().await.map_err(From::from),
-        Command::Pause => ctl.start_pause().await.map_err(From::from),
-        Command::Set(ref reminder_text) => {
-            Ok(ctl.set_or_edit_reminder(reminder_text).await.map(|_| ())?)
-        }
-    }
-}
-
-async fn edited_message_handler(
-    msg: Message,
-    bot: Bot,
-    db: Arc<Database>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let ctl = TgMessageController::from_msg(db, &bot, &msg).await?;
-    if !ctl.chat_id.is_user() {
-        Ok(())
-    } else if let Some(text) = msg.text() {
-        Ok(ctl.edit_reminder_from_edited_message(text).await?)
-    } else {
-        ctl.incorrect_request().await.map_err(From::from)
-    }
-}
-
-async fn message_handler(
-    msg: Message,
-    bot: Bot,
-    db: Arc<Database>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let ctl = TgMessageController::from_msg(db, &bot, &msg).await?;
-    if !ctl.chat_id.is_user() {
-        Ok(())
-    } else if let Some(location) = msg.location() {
-        ctl.set_timezone(get_timezone_name_of_location(
-            location.longitude,
-            location.latitude,
-        ))
-        .await
-        .map_err(From::from)
-    } else if let Some(text) = msg.text() {
-        ctl.set_or_edit_reminder(text)
-            .await
-            .map(|_| ())
-            .map_err(From::from)
-    } else {
-        ctl.incorrect_request().await.map_err(From::from)
-    }
-}
-
-async fn callback_handler(
-    cb_query: CallbackQuery,
-    bot: Bot,
-    db: Arc<Database>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if let Some(cb_data) = &cb_query.data {
-        let ctl = TgCallbackController::new(db, &bot, &cb_query).await?;
-        let msg_ctl = &ctl.msg_ctl;
-        if let Some(page_num) = cb_data
-            .strip_prefix("seltz::page::")
-            .and_then(|x| x.parse::<usize>().ok())
-        {
-            msg_ctl
-                .select_timezone_set_page(page_num)
-                .await
-                .map_err(From::from)
-        } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
-            ctl.set_timezone(tz_name).await.map_err(From::from)
-        } else if let Some(page_num) = cb_data
-            .strip_prefix("delrem::page::")
-            .and_then(|x| x.parse::<usize>().ok())
-        {
-            msg_ctl
-                .delete_reminder_set_page(page_num)
-                .await
-                .map_err(From::from)
-        } else if let Some(rem_id) = cb_data
-            .strip_prefix("delrem::rem_alt::")
-            .and_then(|x| x.parse::<i64>().ok())
-        {
-            ctl.delete_reminder(rem_id).await.map_err(From::from)
-        } else if let Some(cron_rem_id) = cb_data
-            .strip_prefix("delrem::cron_rem_alt::")
-            .and_then(|x| x.parse::<i64>().ok())
-        {
-            ctl.delete_cron_reminder(cron_rem_id)
-                .await
-                .map_err(From::from)
-        } else if let Some(page_num) = cb_data
-            .strip_prefix("editrem::page::")
-            .and_then(|x| x.parse::<usize>().ok())
-        {
-            msg_ctl
-                .edit_reminder_set_page(page_num)
-                .await
-                .map_err(From::from)
-        } else if let Some(rem_id) = cb_data
-            .strip_prefix("editrem::rem_alt::")
-            .and_then(|x| x.parse::<i64>().ok())
-        {
-            ctl.choose_edit_mode_reminder(rem_id)
-                .await
-                .map_err(From::from)
-        } else if let Some(cron_rem_id) = cb_data
-            .strip_prefix("editrem::cron_rem_alt::")
-            .and_then(|x| x.parse::<i64>().ok())
-        {
-            ctl.edit_cron_reminder(cron_rem_id)
-                .await
-                .map_err(From::from)
-        } else if let Some(page_num) = cb_data
-            .strip_prefix("pauserem::page::")
-            .and_then(|x| x.parse::<usize>().ok())
-        {
-            msg_ctl
-                .pause_reminder_set_page(page_num)
-                .await
-                .map_err(From::from)
-        } else if let Some(rem_id) = cb_data
-            .strip_prefix("pauserem::rem_alt::")
-            .and_then(|x| x.parse::<i64>().ok())
-        {
-            ctl.pause_reminder(rem_id).await.map_err(From::from)
-        } else if let Some(cron_rem_id) = cb_data
-            .strip_prefix("pauserem::cron_rem_alt::")
-            .and_then(|x| x.parse::<i64>().ok())
-        {
-            ctl.pause_cron_reminder(cron_rem_id)
-                .await
-                .map_err(From::from)
-        } else if cb_data == "edit_rem_mode::rem_time_pattern" {
-            ctl.set_edit_mode_reminder(EditMode::TimePattern)
-                .await
-                .map_err(From::from)
-        } else if cb_data == "edit_rem_mode::rem_description" {
-            ctl.set_edit_mode_reminder(EditMode::Description)
-                .await
-                .map_err(From::from)
-        } else if cb_data == "edit_rem_mode::cron_rem_time_pattern" {
-            ctl.set_edit_mode_cron_reminder(EditMode::TimePattern)
-                .await
-                .map_err(From::from)
-        } else if cb_data == "edit_rem_mode::cron_rem_description" {
-            ctl.set_edit_mode_cron_reminder(EditMode::Description)
-                .await
-                .map_err(From::from)
-        } else {
-            Err(Error::UnmatchedQuery(cb_query))?
-        }
-    } else {
-        Err(Error::NoQueryData(cb_query))?
-    }
-}
-
 #[cfg(test)]
 pub mod test {
     use std::sync::Arc;
 
     use crate::{
-        bot::{
-            callback_handler, command_handler, edited_message_handler,
-            message_handler, Command,
-        },
-        db::MockDatabase,
-        entity::reminder,
-        generic_reminder::GenericReminder,
-        tg::TgResponse,
+        db::MockDatabase, entity::reminder, generic_reminder::GenericReminder,
+        handlers::get_handler, tg::TgResponse,
     };
     use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
     use chrono_tz::Tz;
-    use teloxide::{dispatching::UpdateHandler, prelude::*};
-    use teloxide_tests::{MockBot, MockMessageText};
+    use dptree::deps;
+    use teloxide::{dispatching::dialogue::InMemStorage, prelude::*};
+    use teloxide_tests::{IntoUpdate, MockBot, MockMessageText};
 
-    fn get_handler(
-        db: MockDatabase,
-    ) -> UpdateHandler<Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let db = Arc::new(db);
-        let db_command_handler = Arc::clone(&db);
-        let db_message_handler = Arc::clone(&db);
-        let db_edited_message_handler = Arc::clone(&db);
-        let db_callback_handler = Arc::clone(&db);
-
-        dptree::entry()
-            .branch(
-                Update::filter_message()
-                    .filter_command::<Command>()
-                    .endpoint(move |msg, bot, cmd| {
-                        command_handler(
-                            msg,
-                            bot,
-                            cmd,
-                            db_command_handler.clone(),
-                        )
-                    }),
-            )
-            .branch(Update::filter_message().endpoint(move |msg, bot| {
-                message_handler(msg, bot, db_message_handler.clone())
-            }))
-            .branch(Update::filter_edited_message().endpoint(
-                move |msg, bot| {
-                    edited_message_handler(
-                        msg,
-                        bot,
-                        db_edited_message_handler.clone(),
-                    )
-                },
-            ))
-            .branch(Update::filter_callback_query().endpoint(
-                move |cb_query, bot| {
-                    callback_handler(cb_query, bot, db_callback_handler.clone())
-                },
-            ))
-    }
+    use super::State;
 
     fn basic_mock_reminder() -> reminder::ActiveModel {
         reminder::ActiveModel {
@@ -568,15 +321,32 @@ pub mod test {
         }
     }
 
+    fn mock_timezone_name() -> String {
+        "Europe/Amsterdam".to_owned()
+    }
+
     fn mock_timezone() -> Tz {
-        "Europe/Amsterdam".parse::<Tz>().unwrap()
+        mock_timezone_name().parse::<Tz>().unwrap()
+    }
+
+    fn mock_storage() -> Arc<InMemStorage<State>> {
+        InMemStorage::<State>::new()
+    }
+
+    fn mock_bot<T>(db: MockDatabase, update: T) -> MockBot
+    where
+        T: IntoUpdate,
+    {
+        let bot = MockBot::new(update, get_handler());
+        bot.dependencies(deps![mock_storage(), Arc::new(db)]);
+        bot
     }
 
     #[tokio::test]
     async fn test_start() {
-        let db = MockDatabase::new();
         let message = MockMessageText::new().text("/start");
-        let bot = MockBot::new(message, get_handler(db));
+        let db = MockDatabase::new();
+        let bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(&TgResponse::Hello.to_string())
             .await;
     }
@@ -586,7 +356,7 @@ pub mod test {
         let mut db = MockDatabase::new();
         db.expect_get_user_timezone_name().returning(|_| Ok(None));
         let message = MockMessageText::new().text("/list");
-        let bot = MockBot::new(message, get_handler(db));
+        let bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
             &TgResponse::NoChosenTimezone.to_string(),
         )
@@ -597,11 +367,11 @@ pub mod test {
     async fn test_list_no_reminders() {
         let mut db = MockDatabase::new();
         db.expect_get_user_timezone_name()
-            .returning(|_| Ok(Some("Europe/Amsterdam".to_owned())));
+            .returning(|_| Ok(Some(mock_timezone_name())));
         db.expect_get_sorted_all_reminders()
             .returning(|_| Ok(vec![]));
         let message = MockMessageText::new().text("/list");
-        let bot = MockBot::new(message, get_handler(db));
+        let bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
             &TgResponse::RemindersListHeader.to_string(),
         )
@@ -613,16 +383,16 @@ pub mod test {
         let mut db = MockDatabase::new();
         let tz = mock_timezone();
         db.expect_get_user_timezone_name()
-            .returning(|_| Ok(Some("Europe/Amsterdam".to_owned())));
+            .returning(|_| Ok(Some(mock_timezone_name())));
         let rem = basic_mock_reminder();
         let rem_clone = rem.clone();
         db.expect_get_sorted_all_reminders()
             .returning(move |_| Ok(vec![Box::new(rem_clone.clone())]));
         let message = MockMessageText::new().text("/list");
-        let bot = MockBot::new(message, get_handler(db));
+        let bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(&format!(
             "{}\n{}",
-            TgResponse::RemindersListHeader.to_string(),
+            TgResponse::RemindersListHeader,
             rem.to_string(tz)
         ))
         .await;
