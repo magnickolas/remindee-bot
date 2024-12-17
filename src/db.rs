@@ -1,6 +1,5 @@
 use std::path::Path;
 
-use crate::entity::common::EditMode;
 use crate::entity::{cron_reminder, reminder, user_timezone};
 use crate::generic_reminder;
 use crate::migration::{DbErr, Migrator, MigratorTrait};
@@ -91,95 +90,6 @@ impl Database {
         Ok(())
     }
 
-    pub async fn mark_reminder_as_edit(
-        &self,
-        rem_id: i64,
-        chat_id: i64,
-    ) -> Result<(), Error> {
-        self.reset_reminders_edit(chat_id).await?;
-        if let Some(mut rem_act) = reminder::Entity::find_by_id(rem_id)
-            .one(&self.pool)
-            .await?
-            .map(Into::<reminder::ActiveModel>::into)
-        {
-            rem_act.edit = Set(true);
-            rem_act.update(&self.pool).await?;
-        }
-        Ok(())
-    }
-
-    pub async fn reset_reminders_edit(
-        &self,
-        chat_id: i64,
-    ) -> Result<(), Error> {
-        reminder::Entity::update_many()
-            .filter(reminder::Column::ChatId.eq(chat_id))
-            .set(reminder::ActiveModel {
-                edit: Set(false),
-                edit_mode: Set(EditMode::None),
-                ..Default::default()
-            })
-            .exec(&self.pool)
-            .await?;
-        Ok(())
-    }
-
-    pub async fn get_edit_reminder(
-        &self,
-        chat_id: i64,
-    ) -> Result<Option<reminder::Model>, Error> {
-        Ok(reminder::Entity::find()
-            .filter(reminder::Column::ChatId.eq(chat_id))
-            .filter(reminder::Column::Edit.eq(true))
-            .one(&self.pool)
-            .await?)
-    }
-
-    pub async fn set_edit_mode_reminder(
-        &self,
-        chat_id: i64,
-        edit_mode: EditMode,
-    ) -> Result<(), Error> {
-        if let Some(mut reminder) = self
-            .get_edit_reminder(chat_id)
-            .await?
-            .map(Into::<reminder::ActiveModel>::into)
-        {
-            reminder.edit_mode = Set(edit_mode);
-            reminder.update(&self.pool).await?;
-        }
-        Ok(())
-    }
-
-    pub async fn set_edit_mode_cron_reminder(
-        &self,
-        chat_id: i64,
-        edit_mode: EditMode,
-    ) -> Result<(), Error> {
-        if let Some(mut cron_reminder) = self
-            .get_edit_cron_reminder(chat_id)
-            .await?
-            .map(Into::<cron_reminder::ActiveModel>::into)
-        {
-            cron_reminder.edit_mode = Set(edit_mode);
-            cron_reminder.update(&self.pool).await?;
-        }
-        Ok(())
-    }
-
-    pub async fn update_edited_reminder_description(
-        &self,
-        rem: reminder::Model,
-    ) -> Result<(), Error> {
-        let desc = rem.desc.clone();
-        let mut rem_act = Into::<reminder::ActiveModel>::into(rem);
-        rem_act.edit = Set(false);
-        rem_act.edit_mode = Set(EditMode::None);
-        rem_act.desc = Set(desc);
-        rem_act.update(&self.pool).await?;
-        Ok(())
-    }
-
     pub async fn get_active_reminders(
         &self,
     ) -> Result<Vec<reminder::Model>, Error> {
@@ -267,51 +177,6 @@ impl Database {
         .delete(&self.pool)
         .await?;
         Ok(())
-    }
-
-    pub async fn mark_cron_reminder_as_edit(
-        &self,
-        rem_id: i64,
-        chat_id: i64,
-    ) -> Result<(), Error> {
-        self.reset_cron_reminders_edit(chat_id).await?;
-        if let Some(mut cron_rem_act) =
-            cron_reminder::Entity::find_by_id(rem_id)
-                .one(&self.pool)
-                .await?
-                .map(Into::<cron_reminder::ActiveModel>::into)
-        {
-            cron_rem_act.edit = Set(true);
-            cron_rem_act.update(&self.pool).await?;
-        }
-        Ok(())
-    }
-
-    pub async fn reset_cron_reminders_edit(
-        &self,
-        chat_id: i64,
-    ) -> Result<(), Error> {
-        cron_reminder::Entity::update_many()
-            .filter(cron_reminder::Column::ChatId.eq(chat_id))
-            .set(cron_reminder::ActiveModel {
-                edit: Set(false),
-                edit_mode: Set(EditMode::None),
-                ..Default::default()
-            })
-            .exec(&self.pool)
-            .await?;
-        Ok(())
-    }
-
-    pub async fn get_edit_cron_reminder(
-        &self,
-        chat_id: i64,
-    ) -> Result<Option<cron_reminder::Model>, Error> {
-        Ok(cron_reminder::Entity::find()
-            .filter(cron_reminder::Column::ChatId.eq(chat_id))
-            .filter(cron_reminder::Column::Edit.eq(true))
-            .one(&self.pool)
-            .await?)
     }
 
     pub async fn toggle_reminder_paused(&self, id: i64) -> Result<bool, Error> {
@@ -463,6 +328,17 @@ impl Database {
     ) -> Result<(), Error> {
         cron_rem.reply_id = Set(Some(reply_id));
         cron_rem.update(&self.pool).await?;
+        Ok(())
+    }
+
+    pub async fn update_reminder(
+        &self,
+        rem: reminder::Model,
+    ) -> Result<(), Error> {
+        let desc = rem.desc.clone();
+        let mut rem_act = Into::<reminder::ActiveModel>::into(rem);
+        rem_act.desc = Set(desc);
+        rem_act.update(&self.pool).await?;
         Ok(())
     }
 }

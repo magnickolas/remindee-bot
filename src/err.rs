@@ -8,9 +8,8 @@ pub enum Error {
     CronParse(cron_parser::ParseError),
     TeloxideRequest(teloxide::RequestError),
     UnmatchedQuery(teloxide::types::CallbackQuery),
-    NoQueryData(teloxide::types::CallbackQuery),
-    NoQueryMessage(teloxide::types::CallbackQuery),
-    UserNotFound(teloxide::types::Message),
+    ReminderNotFound(i64),
+    CronReminderNotFound(i64),
 }
 
 impl fmt::Display for Error {
@@ -25,14 +24,11 @@ impl fmt::Display for Error {
             Self::UnmatchedQuery(ref cb_query) => {
                 write!(f, "Could not match callback query: {:?}", cb_query)
             }
-            Self::NoQueryData(ref cb_query) => {
-                write!(f, "Could not get query data: {:?}", cb_query)
+            Self::ReminderNotFound(rem_id) => {
+                write!(f, "Reminder with id {} not found", rem_id)
             }
-            Self::NoQueryMessage(ref cb_query) => {
-                write!(f, "Could not get query message: {:?}", cb_query)
-            }
-            Self::UserNotFound(ref msg) => {
-                write!(f, "Could not find user for message: {:?}", msg)
+            Self::CronReminderNotFound(cron_rem_id) => {
+                write!(f, "Cron reminder with id {} not found", cron_rem_id)
             }
         }
     }

@@ -1,5 +1,4 @@
 use crate::cli::CLI;
-use crate::controller::{TgCallbackController, TgMessageController};
 #[cfg(not(test))]
 use crate::db::Database;
 #[cfg(test)]
@@ -23,7 +22,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use teloxide::dispatching::dialogue::serializer::Json;
 use teloxide::dispatching::dialogue::{ErasedStorage, SqliteStorage, Storage};
-use teloxide::{prelude::*, types::MessageId, utils::command::BotCommands};
+use teloxide::{prelude::*, utils::command::BotCommands};
 
 async fn send_reminder(
     reminder: &reminder::Model,
@@ -214,74 +213,6 @@ pub async fn run() {
         .build()
         .dispatch()
         .await;
-}
-
-impl<'a> TgMessageController<'a> {
-    pub async fn new(
-        db: Arc<Database>,
-        bot: &'a Bot,
-        chat_id: ChatId,
-        user_id: UserId,
-        msg_id: MessageId,
-        reply_to_id: Option<MessageId>,
-    ) -> Result<TgMessageController<'a>, Error> {
-        Ok(Self {
-            db,
-            bot,
-            chat_id,
-            user_id,
-            msg_id,
-            reply_to_id,
-        })
-    }
-
-    pub async fn from_msg(
-        db: Arc<Database>,
-        bot: &'a Bot,
-        msg: &Message,
-    ) -> Result<TgMessageController<'a>, Error> {
-        Self::new(
-            db,
-            bot,
-            msg.chat.id,
-            msg.clone()
-                .from
-                .ok_or_else(|| Error::UserNotFound(msg.clone()))?
-                .id,
-            msg.id,
-            msg.reply_to_message().map(|msg| msg.id),
-        )
-        .await
-    }
-
-    pub async fn from_callback_query(
-        db: Arc<Database>,
-        bot: &'a Bot,
-        cb_query: &CallbackQuery,
-    ) -> Result<TgMessageController<'a>, Error> {
-        let msg = cb_query
-            .message
-            .as_ref()
-            .ok_or_else(|| Error::NoQueryMessage(cb_query.clone()))?;
-        Self::new(db, bot, msg.chat().id, cb_query.from.id, msg.id(), None)
-            .await
-    }
-}
-
-impl<'a> TgCallbackController<'a> {
-    pub async fn new(
-        db: Arc<Database>,
-        bot: &'a Bot,
-        cb_query: &'a CallbackQuery,
-    ) -> Result<TgCallbackController<'a>, Error> {
-        Ok(Self {
-            msg_ctl: TgMessageController::from_callback_query(
-                db, bot, cb_query,
-            )
-            .await?,
-            cb_id: &cb_query.id,
-        })
-    }
 }
 
 #[cfg(test)]

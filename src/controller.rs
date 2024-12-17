@@ -6,7 +6,6 @@ use crate::db;
 use crate::db::Database;
 #[cfg(test)]
 use crate::db::MockDatabase as Database;
-use crate::entity::common::EditMode;
 use crate::err::Error;
 use crate::parsers;
 use crate::tg;
@@ -24,18 +23,32 @@ use teloxide::types::{
 use teloxide::RequestError;
 use tg::TgResponse;
 
-pub struct TgMessageController<'a> {
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub enum EditMode {
+    TimePattern,
+    Description,
+}
+
+#[derive(Clone)]
+pub struct TgMessageController {
     pub db: Arc<Database>,
-    pub bot: &'a Bot,
+    pub bot: Bot,
     pub chat_id: ChatId,
     pub user_id: UserId,
     pub msg_id: MessageId,
     pub reply_to_id: Option<MessageId>,
 }
 
-pub struct TgCallbackController<'a> {
-    pub msg_ctl: TgMessageController<'a>,
-    pub cb_id: &'a str,
+#[derive(Clone)]
+pub struct TgCallbackController {
+    pub msg_ctl: TgMessageController,
+    pub cb_id: String,
+}
+
+pub enum ReminderUpdate {
+    ReminderDescription(i64, String),
+    ReminderTimePattern(i64, String),
+    CronReminder(i64, String),
 }
 
 pub enum Reminder {
@@ -69,12 +82,61 @@ impl ReminderModel for cron_reminder::Model {
     }
 }
 
-impl TgMessageController<'_> {
+impl TgMessageController {
+    pub fn new(
+        db: Arc<Database>,
+        bot: Bot,
+        chat_id: ChatId,
+        user_id: UserId,
+        msg_id: MessageId,
+        reply_to_id: Option<MessageId>,
+    ) -> TgMessageController {
+        Self {
+            db,
+            bot,
+            chat_id,
+            user_id,
+            msg_id,
+            reply_to_id,
+        }
+    }
+
+    pub fn from_msg(
+        db: Arc<Database>,
+        bot: Bot,
+        msg: Message,
+    ) -> Option<TgMessageController> {
+        Some(Self::new(
+            db,
+            bot,
+            msg.chat.id,
+            msg.clone().from?.id,
+            msg.id,
+            msg.reply_to_message().map(|msg| msg.id),
+        ))
+    }
+
+    pub fn from_callback_query(
+        db: Arc<Database>,
+        bot: Bot,
+        cb_query: &CallbackQuery,
+    ) -> Option<TgMessageController> {
+        let msg = cb_query.message.as_ref()?;
+        Some(Self::new(
+            db,
+            bot,
+            msg.chat().id,
+            cb_query.from.id,
+            msg.id(),
+            None,
+        ))
+    }
+
     pub async fn reply<R: ToString>(
         &self,
         response: R,
     ) -> Result<Message, RequestError> {
-        tg::send_silent_message(&response.to_string(), self.bot, self.chat_id)
+        tg::send_silent_message(&response.to_string(), &self.bot, self.chat_id)
             .await
     }
 
@@ -83,26 +145,22 @@ impl TgMessageController<'_> {
     }
 
     /// Send a list of all notifications
-    pub async fn list(&self) -> Result<(), RequestError> {
+    pub async fn list(&self, user_tz: Tz) -> Result<(), RequestError> {
         // Format reminders
-        let text = match tz::get_user_timezone(&self.db, self.user_id).await {
-            Ok(Some(user_timezone)) => {
-                match self.db.get_sorted_all_reminders(self.chat_id.0).await {
-                    Ok(sorted_reminders) => std::iter::once(
-                        TgResponse::RemindersListHeader.to_string(),
-                    )
+        let text = match self.db.get_sorted_all_reminders(self.chat_id.0).await
+        {
+            Ok(sorted_reminders) => {
+                std::iter::once(TgResponse::RemindersListHeader.to_string())
                     .chain(sorted_reminders.into_iter().map(|rem| {
-                        rem.to_string(user_timezone).replace('@', "@\u{200B}")
+                        rem.to_string(user_tz).replace('@', "@\u{200B}")
                     }))
                     .collect::<Vec<String>>()
-                    .join("\n"),
-                    Err(err) => {
-                        log::error!("{}", err);
-                        TgResponse::QueryingError.to_string()
-                    }
-                }
+                    .join("\n")
             }
-            _ => TgResponse::NoChosenTimezone.to_string(),
+            Err(err) => {
+                log::error!("{}", err);
+                TgResponse::QueryingError.to_string()
+            }
         };
         self.reply(&text).await.map(|_| ())
     }
@@ -112,24 +170,17 @@ impl TgMessageController<'_> {
         tg::send_markup(
             &TgResponse::SelectTimezone.to_string(),
             self.get_markup_for_tz_page_idx(0),
-            self.bot,
+            &self.bot,
             self.chat_id,
         )
         .await
     }
 
     /// Send user's timezone
-    pub async fn get_timezone(&self) -> Result<(), RequestError> {
-        let response =
-            match self.db.get_user_timezone_name(self.user_id.0 as i64).await {
-                Ok(Some(tz_name)) => TgResponse::ChosenTimezone(tz_name),
-                Ok(None) => TgResponse::NoChosenTimezone,
-                Err(err) => {
-                    log::error!("{}", err);
-                    TgResponse::NoChosenTimezone
-                }
-            };
-        self.reply(response).await.map(|_| ())
+    pub async fn get_timezone(&self, user_tz: Tz) -> Result<(), RequestError> {
+        self.reply(TgResponse::ChosenTimezone(user_tz.to_string()))
+            .await
+            .map(|_| ())
     }
 
     /// General way to send a markup to select a reminder for some operation
@@ -138,116 +189,82 @@ impl TgMessageController<'_> {
         response: TgResponse,
         markup: InlineKeyboardMarkup,
     ) -> Result<(), RequestError> {
-        tg::send_markup(&response.to_string(), markup, self.bot, self.chat_id)
+        tg::send_markup(&response.to_string(), markup, &self.bot, self.chat_id)
             .await
     }
 
     /// Send a markup to select a reminder for deleting
-    pub async fn start_delete(&self) -> Result<(), Error> {
-        match tz::get_user_timezone(&self.db, self.user_id).await {
-            Ok(Some(user_timezone)) => {
-                if let Some(reply_to_id) = self.reply_to_id {
-                    if let Ok(Some(generic_reminder)) =
-                        self.get_reminder_by_msg_or_reply_id(reply_to_id).await
-                    {
-                        let response = match generic_reminder {
-                            Reminder::Reminder(reminder) => {
-                                match self.db.delete_reminder(reminder.id).await
-                                {
-                                    Ok(()) => TgResponse::SuccessDelete(
-                                        reminder
-                                            .into_active_model()
-                                            .to_unescaped_string(user_timezone),
-                                    ),
-                                    Err(err) => {
-                                        log::error!("{}", err);
-                                        TgResponse::FailedDelete
-                                    }
-                                }
+    pub async fn start_delete(&self, user_tz: Tz) -> Result<(), Error> {
+        if let Some(reply_to_id) = self.reply_to_id {
+            if let Ok(Some(generic_reminder)) =
+                self.get_reminder_by_msg_or_reply_id(reply_to_id).await
+            {
+                let response = match generic_reminder {
+                    Reminder::Reminder(reminder) => {
+                        match self.db.delete_reminder(reminder.id).await {
+                            Ok(()) => TgResponse::SuccessDelete(
+                                reminder
+                                    .into_active_model()
+                                    .to_unescaped_string(user_tz),
+                            ),
+                            Err(err) => {
+                                log::error!("{}", err);
+                                TgResponse::FailedDelete
                             }
-                            Reminder::CronReminder(cron_reminder) => match self
-                                .db
-                                .delete_cron_reminder(cron_reminder.id)
-                                .await
-                            {
-                                Ok(()) => TgResponse::SuccessDelete(
-                                    cron_reminder
-                                        .into_active_model()
-                                        .to_unescaped_string(user_timezone),
-                                ),
-                                Err(err) => {
-                                    log::error!("{}", err);
-                                    TgResponse::FailedDelete
-                                }
-                            },
-                        };
-
-                        return self
-                            .reply(response)
-                            .await
-                            .map(|_| ())
-                            .map_err(From::from);
+                        }
                     }
-                }
+                    Reminder::CronReminder(cron_reminder) => match self
+                        .db
+                        .delete_cron_reminder(cron_reminder.id)
+                        .await
+                    {
+                        Ok(()) => TgResponse::SuccessDelete(
+                            cron_reminder
+                                .into_active_model()
+                                .to_unescaped_string(user_tz),
+                        ),
+                        Err(err) => {
+                            log::error!("{}", err);
+                            TgResponse::FailedDelete
+                        }
+                    },
+                };
 
-                let markup = self
-                    .get_markup_for_reminders_page_deletion(0, user_timezone)
-                    .await;
-                self.start_alter(TgResponse::ChooseDeleteReminder, markup)
+                return self
+                    .reply(response)
                     .await
-                    .map_err(From::from)
+                    .map(|_| ())
+                    .map_err(From::from);
             }
-            _ => self
-                .reply(TgResponse::NoChosenTimezone)
-                .await
-                .map(|_| ())
-                .map_err(From::from),
         }
+
+        let markup = self
+            .get_markup_for_reminders_page_deletion(0, user_tz)
+            .await;
+        self.start_alter(TgResponse::ChooseDeleteReminder, markup)
+            .await
+            .map_err(From::from)
     }
 
     /// Send a markup to select a reminder for editing
-    pub async fn start_edit(&self) -> Result<(), RequestError> {
-        match tz::get_user_timezone(&self.db, self.user_id).await {
-            Ok(Some(user_timezone)) => {
-                let markup = self
-                    .get_markup_for_reminders_page_editing(0, user_timezone)
-                    .await;
-                self.start_alter(TgResponse::ChooseEditReminder, markup)
-                    .await
-            }
-            _ => self.reply(TgResponse::NoChosenTimezone).await.map(|_| ()),
-        }
+    pub async fn start_edit(&self, user_tz: Tz) -> Result<(), RequestError> {
+        let markup =
+            self.get_markup_for_reminders_page_editing(0, user_tz).await;
+        self.start_alter(TgResponse::ChooseEditReminder, markup)
+            .await
     }
 
     /// Cancel ongoing reminder editing
     pub async fn cancel_edit(&self) -> Result<(), RequestError> {
-        let response = match self
-            .db
-            .reset_reminders_edit(self.chat_id.0)
-            .await
-            .and(self.db.reset_cron_reminders_edit(self.chat_id.0).await)
-        {
-            Ok(()) => TgResponse::CancelEdit,
-            Err(err) => {
-                log::error!("{}", err);
-                TgResponse::FailedCancelEdit
-            }
-        };
-        self.reply(response).await.map(|_| ())
+        self.reply(TgResponse::CancelEdit).await.map(|_| ())
     }
 
     /// Send a markup to select a reminder for pausing
-    pub async fn start_pause(&self) -> Result<(), RequestError> {
-        match tz::get_user_timezone(&self.db, self.user_id).await {
-            Ok(Some(user_timezone)) => {
-                let markup = self
-                    .get_markup_for_reminders_page_pausing(0, user_timezone)
-                    .await;
-                self.start_alter(TgResponse::ChoosePauseReminder, markup)
-                    .await
-            }
-            _ => self.reply(TgResponse::NoChosenTimezone).await.map(|_| ()),
-        }
+    pub async fn start_pause(&self, user_tz: Tz) -> Result<(), RequestError> {
+        let markup =
+            self.get_markup_for_reminders_page_pausing(0, user_tz).await;
+        self.start_alter(TgResponse::ChoosePauseReminder, markup)
+            .await
     }
 
     async fn parse_reminder(
@@ -279,61 +296,50 @@ impl TgMessageController<'_> {
     async fn _set_reminder(
         &self,
         text: &str,
+        user_tz: Tz,
     ) -> (Option<ActiveReminder>, Option<TgResponse>) {
-        match tz::get_user_timezone(&self.db, self.user_id).await {
-            Ok(Some(user_timezone)) => {
-                match self.parse_reminder(text, user_timezone).await {
-                    Some(ActiveReminder::Reminder(reminder)) => {
-                        match self.db.insert_reminder(reminder.clone()).await {
-                            Ok(reminder) => {
-                                let rem_str = reminder
-                                    .to_unescaped_string(user_timezone)
-                                    .replace('@', "@\u{200B}");
-                                (
-                                    Some(ActiveReminder::Reminder(reminder)),
-                                    Some(TgResponse::SuccessInsert(rem_str)),
-                                )
-                            }
-                            Err(err) => {
-                                log::error!("{}", err);
-                                (None, Some(TgResponse::FailedInsert))
-                            }
-                        }
+        match self.parse_reminder(text, user_tz).await {
+            Some(ActiveReminder::Reminder(reminder)) => {
+                match self.db.insert_reminder(reminder.clone()).await {
+                    Ok(reminder) => {
+                        let rem_str = reminder
+                            .to_unescaped_string(user_tz)
+                            .replace('@', "@\u{200B}");
+                        (
+                            Some(ActiveReminder::Reminder(reminder)),
+                            Some(TgResponse::SuccessInsert(rem_str)),
+                        )
                     }
-                    Some(ActiveReminder::CronReminder(cron_reminder)) => {
-                        match self
-                            .db
-                            .insert_cron_reminder(cron_reminder.clone())
-                            .await
-                        {
-                            Ok(cron_reminder) => {
-                                let rem_str = cron_reminder
-                                    .to_unescaped_string(user_timezone);
-                                (
-                                    Some(ActiveReminder::CronReminder(
-                                        cron_reminder,
-                                    )),
-                                    Some(TgResponse::SuccessPeriodicInsert(
-                                        rem_str,
-                                    )),
-                                )
-                            }
-                            Err(err) => {
-                                log::error!("{}", err);
-                                (None, Some(TgResponse::FailedInsert))
-                            }
-                        }
-                    }
-                    None => {
-                        if self.user_id.0 == self.chat_id.0 as u64 {
-                            (None, Some(TgResponse::IncorrectRequest))
-                        } else {
-                            (None, None)
-                        }
+                    Err(err) => {
+                        log::error!("{}", err);
+                        (None, Some(TgResponse::FailedInsert))
                     }
                 }
             }
-            _ => (None, Some(TgResponse::NoChosenTimezone)),
+            Some(ActiveReminder::CronReminder(cron_reminder)) => {
+                match self.db.insert_cron_reminder(cron_reminder.clone()).await
+                {
+                    Ok(cron_reminder) => {
+                        let rem_str =
+                            cron_reminder.to_unescaped_string(user_tz);
+                        (
+                            Some(ActiveReminder::CronReminder(cron_reminder)),
+                            Some(TgResponse::SuccessPeriodicInsert(rem_str)),
+                        )
+                    }
+                    Err(err) => {
+                        log::error!("{}", err);
+                        (None, Some(TgResponse::FailedInsert))
+                    }
+                }
+            }
+            None => {
+                if self.user_id.0 == self.chat_id.0 as u64 {
+                    (None, Some(TgResponse::IncorrectRequest))
+                } else {
+                    (None, None)
+                }
+            }
         }
     }
 
@@ -362,8 +368,9 @@ impl TgMessageController<'_> {
     async fn set_reminder(
         &self,
         text: &str,
+        user_tz: Tz,
     ) -> Result<(Option<ActiveReminder>, Option<Message>), RequestError> {
-        let (reminder, response) = self._set_reminder(text).await;
+        let (reminder, response) = self._set_reminder(text, user_tz).await;
         match response {
             Some(response) => {
                 self.reply(response).await.map(|msg| (reminder, Some(msg)))
@@ -375,8 +382,9 @@ impl TgMessageController<'_> {
     async fn set_reminder_silently(
         &self,
         text: &str,
+        user_tz: Tz,
     ) -> Option<ActiveReminder> {
-        self._set_reminder(text).await.0
+        self._set_reminder(text, user_tz).await.0
     }
 
     pub async fn incorrect_request(&self) -> Result<(), RequestError> {
@@ -390,7 +398,7 @@ impl TgMessageController<'_> {
     ) -> Result<(), RequestError> {
         tg::edit_markup(
             self.get_markup_for_tz_page_idx(page_num),
-            self.bot,
+            &self.bot,
             self.msg_id,
             self.chat_id,
         )
@@ -401,7 +409,7 @@ impl TgMessageController<'_> {
         &self,
         markup: InlineKeyboardMarkup,
     ) -> Result<(), RequestError> {
-        tg::edit_markup(markup, self.bot, self.msg_id, self.chat_id).await
+        tg::edit_markup(markup, &self.bot, self.msg_id, self.chat_id).await
     }
 
     pub async fn delete_reminder_set_page(
@@ -608,6 +616,7 @@ impl TgMessageController<'_> {
         &self,
         text: &str,
         rem_id: i64,
+        user_tz: Tz,
         get_reminder: impl FnOnce(i64) -> GetFut,
         delete_reminder: impl FnOnce(i64) -> DelFut,
     ) -> Result<(Option<ActiveReminder>, Message), RequestError>
@@ -616,186 +625,169 @@ impl TgMessageController<'_> {
         DelFut: Future<Output = Result<(), db::Error>>,
         R: ReminderModel,
     {
-        let (reminder, response) =
-            match tz::get_user_timezone(&self.db, self.user_id).await {
-                Ok(Some(user_timezone)) => match get_reminder(rem_id).await {
-                    Ok(Some(old_reminder)) => {
-                        match self.set_reminder_silently(text).await {
-                            Some(ActiveReminder::Reminder(new_reminder)) => {
-                                match delete_reminder(rem_id).await {
-                                    Ok(()) => {
-                                        let new_reminder_str = new_reminder
-                                            .to_unescaped_string(user_timezone);
-                                        (
-                                            Some(ActiveReminder::Reminder(
-                                                new_reminder,
-                                            )),
-                                            TgResponse::SuccessEdit(
-                                                old_reminder
-                                                    .into_active()
-                                                    .to_unescaped_string(
-                                                        user_timezone,
-                                                    ),
-                                                new_reminder_str,
-                                            ),
-                                        )
-                                    }
-                                    Err(err) => {
-                                        log::error!("{}", err);
-                                        (None, TgResponse::FailedEdit)
-                                    }
-                                }
+        let (reminder, response) = match get_reminder(rem_id).await {
+            Ok(Some(old_reminder)) => {
+                match self.set_reminder_silently(text, user_tz).await {
+                    Some(ActiveReminder::Reminder(new_reminder)) => {
+                        match delete_reminder(rem_id).await {
+                            Ok(()) => {
+                                let new_reminder_str =
+                                    new_reminder.to_unescaped_string(user_tz);
+                                (
+                                    Some(ActiveReminder::Reminder(
+                                        new_reminder,
+                                    )),
+                                    TgResponse::SuccessEdit(
+                                        old_reminder
+                                            .into_active()
+                                            .to_unescaped_string(user_tz),
+                                        new_reminder_str,
+                                    ),
+                                )
                             }
-                            Some(ActiveReminder::CronReminder(
-                                new_cron_reminder,
-                            )) => match delete_reminder(rem_id).await {
-                                Ok(()) => {
-                                    let new_cron_reminder_str =
-                                        new_cron_reminder
-                                            .to_unescaped_string(user_timezone);
-                                    (
-                                        Some(ActiveReminder::CronReminder(
-                                            new_cron_reminder,
-                                        )),
-                                        TgResponse::SuccessEdit(
-                                            old_reminder
-                                                .into_active()
-                                                .to_unescaped_string(
-                                                    user_timezone,
-                                                ),
-                                            new_cron_reminder_str,
-                                        ),
-                                    )
-                                }
-                                Err(err) => {
-                                    log::error!("{}", err);
-                                    (None, TgResponse::FailedEdit)
-                                }
-                            },
-                            _ => (None, TgResponse::FailedEdit),
+                            Err(err) => {
+                                log::error!("{}", err);
+                                (None, TgResponse::FailedEdit)
+                            }
                         }
                     }
-                    Err(err) => {
-                        log::error!("{}", err);
-                        (None, TgResponse::FailedEdit)
+                    Some(ActiveReminder::CronReminder(new_cron_reminder)) => {
+                        match delete_reminder(rem_id).await {
+                            Ok(()) => {
+                                let new_cron_reminder_str = new_cron_reminder
+                                    .to_unescaped_string(user_tz);
+                                (
+                                    Some(ActiveReminder::CronReminder(
+                                        new_cron_reminder,
+                                    )),
+                                    TgResponse::SuccessEdit(
+                                        old_reminder
+                                            .into_active()
+                                            .to_unescaped_string(user_tz),
+                                        new_cron_reminder_str,
+                                    ),
+                                )
+                            }
+                            Err(err) => {
+                                log::error!("{}", err);
+                                (None, TgResponse::FailedEdit)
+                            }
+                        }
                     }
-                    _ => {
-                        log::error!("missing reminder with id: {}", rem_id);
-                        (None, TgResponse::FailedEdit)
-                    }
-                },
-                _ => (None, TgResponse::NoChosenTimezone),
-            };
+                    _ => (None, TgResponse::FailedEdit),
+                }
+            }
+            Err(err) => {
+                log::error!("{}", err);
+                (None, TgResponse::FailedEdit)
+            }
+            _ => {
+                log::error!("missing reminder with id: {}", rem_id);
+                (None, TgResponse::FailedEdit)
+            }
+        };
 
         self.reply(response).await.map(|msg| (reminder, msg))
     }
 
-    pub async fn replace_reminder(
+    async fn replace_reminder(
         &self,
         text: &str,
         rem_id: i64,
+        user_tz: Tz,
     ) -> Result<(Option<ActiveReminder>, Message), RequestError> {
         self._replace_reminder(
             text,
             rem_id,
+            user_tz,
             |id: i64| self.db.get_reminder(id),
             |id: i64| self.db.delete_reminder(id),
         )
         .await
     }
 
-    pub async fn replace_cron_reminder(
+    async fn replace_cron_reminder(
         &self,
         text: &str,
         cron_rem_id: i64,
+        user_tz: Tz,
     ) -> Result<(Option<ActiveReminder>, Message), RequestError> {
         self._replace_reminder(
             text,
             cron_rem_id,
+            user_tz,
             |id: i64| self.db.get_cron_reminder(id),
             |id: i64| self.db.delete_cron_reminder(id),
         )
         .await
     }
 
-    pub async fn set_or_edit_reminder(
+    pub async fn edit_reminder(
         &self,
-        text: &str,
-    ) -> Result<(Option<ActiveReminder>, Option<Message>), Error> {
-        let (reminder, old_reply_id, reply) = match (
-            self.get_edit_reminder().await?,
-            self.get_edit_cron_reminder().await?,
-        ) {
-            (Some(old_reminder), _) => match old_reminder.edit_mode {
-                EditMode::TimePattern => self
-                    .replace_reminder(
-                        &(text.to_owned() + " " + &old_reminder.desc),
-                        old_reminder.id,
-                    )
+        update: ReminderUpdate,
+        user_tz: Tz,
+    ) -> Result<(), Error> {
+        let (reminder, old_reply_id, reply) = match update {
+            ReminderUpdate::ReminderDescription(rem_id, desc) => {
+                let old_reminder = self
+                    .db
+                    .get_reminder(rem_id)
+                    .await?
+                    .ok_or(Error::ReminderNotFound(rem_id))?;
+                let mut new_reminder = old_reminder.clone();
+                desc.clone_into(&mut new_reminder.desc);
+
+                let (reminder, old_reply, response) =
+                    match self.db.update_reminder(new_reminder.clone()).await {
+                        Ok(()) => (
+                            Some(ActiveReminder::Reminder(
+                                new_reminder.clone().into_active_model(),
+                            )),
+                            old_reminder.reply_id,
+                            TgResponse::SuccessEdit(
+                                old_reminder
+                                    .clone()
+                                    .into_active_model()
+                                    .to_unescaped_string(user_tz),
+                                new_reminder
+                                    .into_active_model()
+                                    .to_unescaped_string(user_tz),
+                            ),
+                        ),
+                        Err(_) => (None, None, TgResponse::FailedEdit),
+                    };
+                self.reply(response)
                     .await
-                    .map(|(set_result, msg)| {
-                        (set_result, old_reminder.reply_id, Some(msg))
-                    }),
-                EditMode::Description => {
-                    let (set_result, response) =
-                        match tz::get_user_timezone(&self.db, self.user_id)
-                            .await
-                        {
-                            Ok(Some(user_timezone)) => {
-                                let mut new_reminder = old_reminder.clone();
-                                text.clone_into(&mut new_reminder.desc);
-                                dbg!(&new_reminder);
-                                match self
-                                    .db
-                                    .update_edited_reminder_description(
-                                        new_reminder.clone(),
-                                    )
-                                    .await
-                                {
-                                    Ok(()) => (
-                                        Some(ActiveReminder::Reminder(
-                                            new_reminder
-                                                .clone()
-                                                .into_active_model(),
-                                        )),
-                                        TgResponse::SuccessEdit(
-                                            old_reminder
-                                                .clone()
-                                                .into_active_model()
-                                                .to_unescaped_string(
-                                                    user_timezone,
-                                                ),
-                                            new_reminder
-                                                .into_active_model()
-                                                .to_unescaped_string(
-                                                    user_timezone,
-                                                ),
-                                        ),
-                                    ),
-                                    Err(_) => (None, TgResponse::FailedEdit),
-                                }
-                            }
-                            _ => (None, TgResponse::FailedEdit),
-                        };
-                    self.reply(response).await.map(|msg| {
-                        (set_result, old_reminder.reply_id, Some(msg))
-                    })
-                }
-                EditMode::None => self
-                    .reply(TgResponse::FailedEdit)
-                    .await
-                    .map(|msg| (None, None, Some(msg))),
-            },
-            (_, Some(old_cron_reminder)) => self
-                .replace_cron_reminder(text, old_cron_reminder.id)
+                    .map(|msg| (reminder, old_reply, Some(msg)))
+            }
+            ReminderUpdate::ReminderTimePattern(rem_id, time_pattern) => {
+                let old_reminder = self
+                    .db
+                    .get_reminder(rem_id)
+                    .await?
+                    .ok_or(Error::ReminderNotFound(rem_id))?;
+                self.replace_reminder(
+                    &(time_pattern + " " + &old_reminder.desc),
+                    old_reminder.id,
+                    user_tz,
+                )
                 .await
                 .map(|(set_result, msg)| {
-                    (set_result, old_cron_reminder.reply_id, Some(msg))
-                }),
-            _ => self
-                .set_reminder(text)
-                .await
-                .map(|(rem, msg)| (rem, None, msg)),
+                    (set_result, old_reminder.reply_id, Some(msg))
+                })
+            }
+            ReminderUpdate::CronReminder(cron_rem_id, text) => {
+                let old_cron_reminder = self
+                    .db
+                    .get_cron_reminder(cron_rem_id)
+                    .await?
+                    .ok_or(Error::CronReminderNotFound(cron_rem_id))?;
+                self.replace_cron_reminder(&text, old_cron_reminder.id, user_tz)
+                    .await
+                    .map(|(set_result, msg)| {
+                        (set_result, old_cron_reminder.reply_id, Some(msg))
+                    })
+            }
         }?;
 
         if let Some(ref reminder) = reminder {
@@ -809,7 +801,23 @@ impl TgMessageController<'_> {
             }
         }
 
-        Ok((reminder, reply))
+        Ok(())
+    }
+
+    pub async fn set_new_reminder(
+        &self,
+        text: &str,
+        user_tz: Tz,
+    ) -> Result<(), Error> {
+        let (reminder, reply) = self.set_reminder(text, user_tz).await?;
+
+        if let Some(ref reminder) = reminder {
+            if let Some(ref reply) = reply {
+                self.update_reply_link(reminder, reply, None).await?;
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn update_reply_link(
@@ -819,7 +827,7 @@ impl TgMessageController<'_> {
         old_reply_id: Option<MessageId>,
     ) -> Result<(), Error> {
         if let Some(old_reply_id) = old_reply_id {
-            tg::delete_message(self.bot, self.chat_id, old_reply_id).await?;
+            tg::delete_message(&self.bot, self.chat_id, old_reply_id).await?;
         }
         match reminder {
             ActiveReminder::Reminder(ref reminder) => {
@@ -834,18 +842,6 @@ impl TgMessageController<'_> {
                 .await
             }
         }
-    }
-
-    pub async fn get_edit_reminder(
-        &self,
-    ) -> Result<Option<reminder::Model>, db::Error> {
-        self.db.get_edit_reminder(self.chat_id.0).await
-    }
-
-    pub async fn get_edit_cron_reminder(
-        &self,
-    ) -> Result<Option<cron_reminder::Model>, db::Error> {
-        self.db.get_edit_cron_reminder(self.chat_id.0).await
     }
 
     pub async fn set_timezone(
@@ -920,6 +916,7 @@ impl TgMessageController<'_> {
     pub async fn edit_reminder_from_edited_message(
         &self,
         text: &str,
+        user_tz: Tz,
     ) -> Result<(), Error> {
         let (reminder, old_reply_id, reply) = match self
             .db
@@ -927,14 +924,14 @@ impl TgMessageController<'_> {
             .await?
         {
             Some(old_rem) => self
-                .replace_reminder(text, old_rem.id)
+                .replace_reminder(text, old_rem.id, user_tz)
                 .await
                 .map(|(rem, msg)| (rem, old_rem.reply_id, Some(msg))),
             None => {
                 match self.db.get_cron_reminder_by_msg_id(self.msg_id.0).await?
                 {
                     Some(old_cron_rem) => self
-                        .replace_cron_reminder(text, old_cron_rem.id)
+                        .replace_cron_reminder(text, old_cron_rem.id, user_tz)
                         .await
                         .map(|(rem, msg)| {
                             (rem, old_cron_rem.reply_id, Some(msg))
@@ -958,7 +955,20 @@ impl TgMessageController<'_> {
     }
 }
 
-impl TgCallbackController<'_> {
+impl TgCallbackController {
+    pub fn new(
+        db: Arc<Database>,
+        bot: Bot,
+        cb_query: CallbackQuery,
+    ) -> Option<TgCallbackController> {
+        Some(Self {
+            msg_ctl: TgMessageController::from_callback_query(
+                db, bot, &cb_query,
+            )?,
+            cb_id: cb_query.id,
+        })
+    }
+
     async fn answer_callback_query(
         &self,
         response: TgResponse,
@@ -967,10 +977,10 @@ impl TgCallbackController<'_> {
         self.acknowledge_callback().await
     }
 
-    async fn acknowledge_callback(&self) -> Result<(), RequestError> {
+    pub async fn acknowledge_callback(&self) -> Result<(), RequestError> {
         self.msg_ctl
             .bot
-            .answer_callback_query(self.cb_id)
+            .answer_callback_query(&self.cb_id)
             .send()
             .await
             .map(|_| ())
@@ -987,39 +997,31 @@ impl TgCallbackController<'_> {
     pub async fn delete_reminder(
         &self,
         rem_id: i64,
+        user_tz: Tz,
     ) -> Result<(), RequestError> {
-        let response =
-            match tz::get_user_timezone(&self.msg_ctl.db, self.msg_ctl.user_id)
-                .await
-            {
-                Ok(Some(user_timezone)) => {
-                    match self.msg_ctl.db.get_reminder(rem_id).await {
-                        Ok(Some(reminder)) => {
-                            match self.msg_ctl.db.delete_reminder(rem_id).await
-                            {
-                                Ok(()) => TgResponse::SuccessDelete(
-                                    reminder
-                                        .into_active_model()
-                                        .to_unescaped_string(user_timezone),
-                                ),
-                                Err(err) => {
-                                    log::error!("{}", err);
-                                    TgResponse::FailedDelete
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            log::error!("{}", err);
-                            TgResponse::FailedDelete
-                        }
-                        _ => {
-                            log::error!("missing reminder with id: {}", rem_id);
-                            TgResponse::FailedDelete
-                        }
+        let response = match self.msg_ctl.db.get_reminder(rem_id).await {
+            Ok(Some(reminder)) => {
+                match self.msg_ctl.db.delete_reminder(rem_id).await {
+                    Ok(()) => TgResponse::SuccessDelete(
+                        reminder
+                            .into_active_model()
+                            .to_unescaped_string(user_tz),
+                    ),
+                    Err(err) => {
+                        log::error!("{}", err);
+                        TgResponse::FailedDelete
                     }
                 }
-                _ => TgResponse::NoChosenTimezone,
-            };
+            }
+            Err(err) => {
+                log::error!("{}", err);
+                TgResponse::FailedDelete
+            }
+            _ => {
+                log::error!("missing reminder with id: {}", rem_id);
+                TgResponse::FailedDelete
+            }
+        };
         self.msg_ctl.delete_reminder_set_page(0).await?;
         self.answer_callback_query(response).await
     }
@@ -1075,59 +1077,34 @@ impl TgCallbackController<'_> {
         &self,
         rem_id: i64,
     ) -> Result<(), RequestError> {
-        match self
-            .msg_ctl
-            .db
-            .mark_reminder_as_edit(rem_id, self.msg_ctl.chat_id.0)
-            .await
-        {
-            Ok(()) => {
-                let markup = InlineKeyboardMarkup::default().append_row(vec![
-                    InlineKeyboardButton::new(
-                        "Time pattern",
-                        InlineKeyboardButtonKind::CallbackData(
-                            "edit_rem_mode::rem_time_pattern".to_owned(),
-                        ),
-                    ),
-                    InlineKeyboardButton::new(
-                        "Description",
-                        InlineKeyboardButtonKind::CallbackData(
-                            "edit_rem_mode::rem_description".to_owned(),
-                        ),
-                    ),
-                ]);
-                tg::send_markup(
-                    "What would you like to edit?",
-                    markup,
-                    self.msg_ctl.bot,
-                    self.msg_ctl.chat_id,
-                )
-                .await?;
-                self.acknowledge_callback().await
-            }
-            Err(err) => {
-                log::error!("{}", err);
-                self.answer_callback_query(TgResponse::FailedEdit).await
-            }
-        }
+        let markup = InlineKeyboardMarkup::default().append_row(vec![
+            InlineKeyboardButton::new(
+                "Time pattern",
+                InlineKeyboardButtonKind::CallbackData(format!(
+                    "edit_rem_mode::rem_time_pattern::{}",
+                    rem_id
+                )),
+            ),
+            InlineKeyboardButton::new(
+                "Description",
+                InlineKeyboardButtonKind::CallbackData(format!(
+                    "edit_rem_mode::rem_description::{}",
+                    rem_id
+                )),
+            ),
+        ]);
+        tg::send_markup(
+            "What would you like to edit?",
+            markup,
+            &self.msg_ctl.bot,
+            self.msg_ctl.chat_id,
+        )
+        .await?;
+        self.acknowledge_callback().await
     }
 
-    pub async fn edit_cron_reminder(
-        &self,
-        cron_rem_id: i64,
-    ) -> Result<(), RequestError> {
-        let response = match self
-            .msg_ctl
-            .db
-            .mark_cron_reminder_as_edit(cron_rem_id, self.msg_ctl.chat_id.0)
-            .await
-        {
-            Ok(()) => TgResponse::EnterNewReminder,
-            Err(err) => {
-                log::error!("{}", err);
-                TgResponse::FailedEdit
-            }
-        };
+    pub async fn edit_cron_reminder(&self) -> Result<(), RequestError> {
+        let response = TgResponse::EnterNewReminder;
         self.answer_callback_query(response).await
     }
 
@@ -1228,34 +1205,10 @@ impl TgCallbackController<'_> {
         &self,
         edit_mode: EditMode,
     ) -> Result<(), RequestError> {
-        let response = match self
-            .msg_ctl
-            .db
-            .set_edit_mode_reminder(self.msg_ctl.chat_id.0, edit_mode)
-            .await
-        {
-            Ok(()) => match edit_mode {
-                EditMode::TimePattern => TgResponse::EnterNewTimePattern,
-                EditMode::Description => TgResponse::EnterNewDescription,
-                EditMode::None => TgResponse::FailedEdit,
-            },
-            Err(_) => TgResponse::FailedEdit,
+        let response = match edit_mode {
+            EditMode::TimePattern => TgResponse::EnterNewTimePattern,
+            EditMode::Description => TgResponse::EnterNewDescription,
         };
         self.answer_callback_query(response).await
-    }
-
-    pub async fn set_edit_mode_cron_reminder(
-        &self,
-        edit_mode: EditMode,
-    ) -> Result<(), RequestError> {
-        match self
-            .msg_ctl
-            .db
-            .set_edit_mode_cron_reminder(self.msg_ctl.chat_id.0, edit_mode)
-            .await
-        {
-            Ok(()) => self.acknowledge_callback().await,
-            Err(_) => self.answer_callback_query(TgResponse::FailedEdit).await,
-        }
     }
 }

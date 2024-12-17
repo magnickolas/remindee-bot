@@ -1,4 +1,3 @@
-use crate::entity::common::EditMode;
 use crate::grammar;
 use crate::serializers::Pattern;
 
@@ -34,8 +33,6 @@ pub async fn parse_reminder(
         user_id: Set(Some(user_id as i64)),
         time: Set(time),
         desc: Set(description),
-        edit: Set(false),
-        edit_mode: Set(EditMode::None),
         paused: Set(false),
         pattern: Set(to_string(&pattern).ok()),
         msg_id: Set(Some(msg_id)),
@@ -67,8 +64,6 @@ pub async fn parse_cron_reminder(
                     .unwrap_or("")
                     .trim()
                     .to_owned()),
-                edit: Set(false),
-                edit_mode: Set(EditMode::None),
                 paused: Set(false),
                 msg_id: Set(Some(msg_id)),
                 reply_id: Set(None), // set after replying

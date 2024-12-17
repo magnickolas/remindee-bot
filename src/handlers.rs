@@ -1,10 +1,10 @@
-use std::sync::Arc;
-
+use chrono_tz::Tz;
+use dptree::case;
 use teloxide::{
     dispatching::{dialogue, UpdateHandler},
     prelude::*,
+    types::Location,
     utils::command::BotCommands,
-    Bot,
 };
 
 #[cfg(not(test))]
@@ -12,23 +12,25 @@ use teloxide::dispatching::dialogue::ErasedStorage;
 #[cfg(test)]
 use teloxide::dispatching::dialogue::InMemStorage;
 
-#[cfg(not(test))]
-use crate::db::Database;
-#[cfg(test)]
-use crate::db::MockDatabase as Database;
 use crate::{
-    controller::{TgCallbackController, TgMessageController},
-    entity::common::EditMode,
+    controller::{
+        EditMode, ReminderUpdate, TgCallbackController, TgMessageController,
+    },
     err::Error,
-    tz::get_timezone_name_of_location,
+    tz::{self, get_timezone_name_of_location},
 };
 
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub enum State {
     #[default]
     Default,
-    Edit(ChatId),
-    EditCron(ChatId),
+    Edit {
+        id: i64,
+        mode: EditMode,
+    },
+    EditCron {
+        id: i64,
+    },
 }
 
 #[cfg(not(test))]
@@ -69,184 +71,381 @@ pub fn get_handler(
         .branch(
             Update::filter_message()
                 .filter_command::<Command>()
-                .endpoint(command_handler),
+                .filter(|msg: Message| msg.chat.id.is_user())
+                .filter_map(TgMessageController::from_msg)
+                .branch(
+                    dptree::filter_map_async(get_user_timezone)
+                        .branch(case![Command::List].endpoint(list_handler))
+                        .branch(
+                            case![Command::Timezone].endpoint(timezone_handler),
+                        )
+                        .branch(case![Command::Delete].endpoint(delete_handler))
+                        .branch(case![Command::Edit].endpoint(edit_handler))
+                        .branch(case![Command::Cancel].endpoint(cancel_handler))
+                        .branch(case![Command::Pause].endpoint(pause_handler))
+                        .branch(
+                            case![Command::Set(text)].endpoint(set_handler),
+                        ),
+                )
+                .branch(case![Command::Help].endpoint(help_handler))
+                .branch(case![Command::Start].endpoint(start_handler))
+                .branch(
+                    case![Command::SetTimezone].endpoint(set_timezone_handler),
+                )
+                .endpoint(set_timezone_handler),
         )
-        .branch(Update::filter_message().endpoint(message_handler))
         .branch(
-            Update::filter_edited_message().endpoint(edited_message_handler),
+            Update::filter_message()
+                .filter(|msg: Message| msg.chat.id.is_user())
+                .filter_map(TgMessageController::from_msg)
+                .filter_map(|msg: Message| msg.location().copied())
+                .endpoint(location_handler),
         )
-        .branch(Update::filter_callback_query().endpoint(callback_handler))
+        .branch(
+            Update::filter_message()
+                .filter(|msg: Message| msg.chat.id.is_user())
+                .filter_map(TgMessageController::from_msg)
+                .branch(
+                    dptree::filter_map(|msg: Message| msg.location().copied())
+                        .endpoint(location_handler),
+                )
+                .branch(
+                    dptree::filter_map_async(get_user_timezone)
+                        .branch(
+                            dptree::filter_map(|msg: Message| {
+                                msg.text().map(|text| text.to_owned())
+                            })
+                            .branch(
+                                case![State::Edit { id, mode }]
+                                    .endpoint(edit_message_handler),
+                            )
+                            .branch(
+                                case![State::EditCron { id }]
+                                    .endpoint(edit_cron_message_handler),
+                            )
+                            .endpoint(message_handler),
+                        )
+                        .endpoint(incorrect_request_handler),
+                )
+                .endpoint(set_timezone_handler),
+        )
+        .branch(
+            Update::filter_edited_message()
+                .filter_map(TgMessageController::from_msg)
+                .branch(
+                    dptree::filter_map_async(get_user_timezone)
+                        .endpoint(edited_message_handler),
+                )
+                .endpoint(set_timezone_handler),
+        )
+        .branch(
+            Update::filter_callback_query()
+                .filter_map(TgCallbackController::new)
+                .map(|cb_ctl: TgCallbackController| cb_ctl.msg_ctl)
+                .filter_map(|cb_query: CallbackQuery| cb_query.data)
+                .branch(
+                    dptree::filter(|cb_data: String| {
+                        cb_data.starts_with("seltz::")
+                    })
+                    .endpoint(select_timezone_handler),
+                )
+                .branch(
+                    dptree::filter_map_async(get_user_timezone)
+                        .endpoint(callback_handler),
+                ),
+        )
 }
 
-pub async fn command_handler(
-    msg: Message,
-    bot: Bot,
-    cmd: Command,
-    db: Arc<Database>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let ctl = TgMessageController::from_msg(db, &bot, &msg).await?;
-    match cmd {
-        Command::Help => ctl
-            .reply(Command::descriptions())
-            .await
-            .map(|_| ())
-            .map_err(From::from),
-        Command::Start => ctl.start().await.map_err(From::from),
-        Command::List => ctl.list().await.map_err(From::from),
-        Command::SetTimezone => ctl.choose_timezone().await.map_err(From::from),
-        Command::Timezone => ctl.get_timezone().await.map_err(From::from),
-        Command::Delete => ctl.start_delete().await.map_err(From::from),
-        Command::Edit => ctl.start_edit().await.map_err(From::from),
-        Command::Cancel => ctl.cancel_edit().await.map_err(From::from),
-        Command::Pause => ctl.start_pause().await.map_err(From::from),
-        Command::Set(ref reminder_text) => {
-            Ok(ctl.set_or_edit_reminder(reminder_text).await.map(|_| ())?)
-        }
-    }
+async fn get_user_timezone(ctl: TgMessageController) -> Option<Tz> {
+    tz::get_user_timezone(&ctl.db, ctl.user_id)
+        .await
+        .ok()
+        .flatten()
 }
 
-pub async fn edited_message_handler(
-    msg: Message,
-    bot: Bot,
-    db: Arc<Database>,
+async fn help_handler(
+    ctl: TgMessageController,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let ctl = TgMessageController::from_msg(db, &bot, &msg).await?;
+    ctl.reply(Command::descriptions())
+        .await
+        .map(|_| ())
+        .map_err(From::from)
+}
+
+async fn start_handler(
+    ctl: TgMessageController,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.start().await.map_err(From::from)
+}
+
+async fn list_handler(
+    ctl: TgMessageController,
+    user_tz: Tz,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.list(user_tz).await.map_err(From::from)
+}
+
+async fn timezone_handler(
+    ctl: TgMessageController,
+    user_tz: Tz,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.get_timezone(user_tz).await.map_err(From::from)
+}
+
+async fn delete_handler(
+    ctl: TgMessageController,
+    user_tz: Tz,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.start_delete(user_tz).await.map_err(From::from)
+}
+
+async fn edit_handler(
+    ctl: TgMessageController,
+    user_tz: Tz,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.start_edit(user_tz).await.map_err(From::from)
+}
+
+async fn cancel_handler(
+    ctl: TgMessageController,
+    dialogue: MyDialogue,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.cancel_edit().await?;
+    dialogue.update(State::Default).await.map_err(From::from)
+}
+
+async fn pause_handler(
+    ctl: TgMessageController,
+    user_tz: Tz,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.start_pause(user_tz).await.map_err(From::from)
+}
+
+async fn set_handler(
+    ctl: TgMessageController,
+    reminder_text: String,
+    user_tz: Tz,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.set_new_reminder(&reminder_text, user_tz)
+        .await
+        .map(|_| ())
+        .map_err(From::from)
+}
+
+async fn edited_message_handler(
+    ctl: TgMessageController,
+    msg: Message,
+    user_tz: Tz,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if !ctl.chat_id.is_user() {
         Ok(())
     } else if let Some(text) = msg.text() {
-        Ok(ctl.edit_reminder_from_edited_message(text).await?)
+        Ok(ctl.edit_reminder_from_edited_message(text, user_tz).await?)
     } else {
         ctl.incorrect_request().await.map_err(From::from)
     }
 }
 
-pub async fn message_handler(
-    msg: Message,
-    bot: Bot,
-    db: Arc<Database>,
+async fn set_timezone_handler(
+    ctl: TgMessageController,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let ctl = TgMessageController::from_msg(db, &bot, &msg).await?;
-    if !ctl.chat_id.is_user() {
-        Ok(())
-    } else if let Some(location) = msg.location() {
-        ctl.set_timezone(get_timezone_name_of_location(
-            location.longitude,
-            location.latitude,
-        ))
+    ctl.choose_timezone().await.map_err(From::from)
+}
+
+async fn location_handler(
+    ctl: TgMessageController,
+    loc: Location,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.set_timezone(get_timezone_name_of_location(loc.longitude, loc.latitude))
         .await
         .map_err(From::from)
-    } else if let Some(text) = msg.text() {
-        ctl.set_or_edit_reminder(text)
+}
+
+async fn incorrect_request_handler(
+    ctl: TgMessageController,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.incorrect_request().await.map_err(From::from)
+}
+
+async fn edit_message_handler(
+    ctl: TgMessageController,
+    text: String,
+    rem_update: (i64, EditMode),
+    user_tz: Tz,
+    dialogue: MyDialogue,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    match rem_update.1 {
+        EditMode::TimePattern => {
+            ctl.edit_reminder(
+                ReminderUpdate::ReminderTimePattern(rem_update.0, text),
+                user_tz,
+            )
+            .await?
+        }
+        EditMode::Description => {
+            ctl.edit_reminder(
+                ReminderUpdate::ReminderDescription(rem_update.0, text),
+                user_tz,
+            )
+            .await?
+        }
+    }
+    dialogue.update(State::Default).await.map_err(From::from)
+}
+
+async fn edit_cron_message_handler(
+    ctl: TgMessageController,
+    text: String,
+    cron_rem_id: i64,
+    user_tz: Tz,
+    dialogue: MyDialogue,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.edit_reminder(ReminderUpdate::CronReminder(cron_rem_id, text), user_tz)
+        .await?;
+    dialogue.update(State::Default).await.map_err(From::from)
+}
+
+async fn message_handler(
+    ctl: TgMessageController,
+    text: String,
+    user_tz: Tz,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.set_new_reminder(&text, user_tz)
+        .await
+        .map(|_| ())
+        .map_err(From::from)
+}
+
+async fn select_timezone_handler(
+    ctl: TgCallbackController,
+    msg_ctl: TgMessageController,
+    cb_query: CallbackQuery,
+    cb_data: String,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if let Some(page_num) = cb_data
+        .strip_prefix("seltz::page::")
+        .and_then(|x| x.parse::<usize>().ok())
+    {
+        msg_ctl
+            .select_timezone_set_page(page_num)
             .await
-            .map(|_| ())
             .map_err(From::from)
+    } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
+        ctl.set_timezone(tz_name).await.map_err(From::from)
     } else {
-        ctl.incorrect_request().await.map_err(From::from)
+        Err(Error::UnmatchedQuery(cb_query))?
     }
 }
 
-pub async fn callback_handler(
+async fn callback_handler(
+    ctl: TgCallbackController,
+    msg_ctl: TgMessageController,
     cb_query: CallbackQuery,
-    bot: Bot,
+    cb_data: String,
+    user_tz: Tz,
     dialogue: MyDialogue,
-    db: Arc<Database>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if let Some(cb_data) = &cb_query.data {
-        let ctl = TgCallbackController::new(db, &bot, &cb_query).await?;
-        let msg_ctl = &ctl.msg_ctl;
-        if let Some(page_num) = cb_data
-            .strip_prefix("seltz::page::")
-            .and_then(|x| x.parse::<usize>().ok())
-        {
-            msg_ctl
-                .select_timezone_set_page(page_num)
-                .await
-                .map_err(From::from)
-        } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
-            ctl.set_timezone(tz_name).await.map_err(From::from)
-        } else if let Some(page_num) = cb_data
-            .strip_prefix("delrem::page::")
-            .and_then(|x| x.parse::<usize>().ok())
-        {
-            msg_ctl
-                .delete_reminder_set_page(page_num)
-                .await
-                .map_err(From::from)
-        } else if let Some(rem_id) = cb_data
-            .strip_prefix("delrem::rem_alt::")
-            .and_then(|x| x.parse::<i64>().ok())
-        {
-            ctl.delete_reminder(rem_id).await.map_err(From::from)
-        } else if let Some(cron_rem_id) = cb_data
-            .strip_prefix("delrem::cron_rem_alt::")
-            .and_then(|x| x.parse::<i64>().ok())
-        {
-            ctl.delete_cron_reminder(cron_rem_id)
-                .await
-                .map_err(From::from)
-        } else if let Some(page_num) = cb_data
-            .strip_prefix("editrem::page::")
-            .and_then(|x| x.parse::<usize>().ok())
-        {
-            msg_ctl
-                .edit_reminder_set_page(page_num)
-                .await
-                .map_err(From::from)
-        } else if let Some(rem_id) = cb_data
-            .strip_prefix("editrem::rem_alt::")
-            .and_then(|x| x.parse::<i64>().ok())
-        {
-            dialogue.update(State::Edit(ChatId(rem_id))).await?;
-            ctl.choose_edit_mode_reminder(rem_id)
-                .await
-                .map_err(From::from)
-        } else if let Some(cron_rem_id) = cb_data
-            .strip_prefix("editrem::cron_rem_alt::")
-            .and_then(|x| x.parse::<i64>().ok())
-        {
-            ctl.edit_cron_reminder(cron_rem_id)
-                .await
-                .map_err(From::from)
-        } else if let Some(page_num) = cb_data
-            .strip_prefix("pauserem::page::")
-            .and_then(|x| x.parse::<usize>().ok())
-        {
-            msg_ctl
-                .pause_reminder_set_page(page_num)
-                .await
-                .map_err(From::from)
-        } else if let Some(rem_id) = cb_data
-            .strip_prefix("pauserem::rem_alt::")
-            .and_then(|x| x.parse::<i64>().ok())
-        {
-            ctl.pause_reminder(rem_id).await.map_err(From::from)
-        } else if let Some(cron_rem_id) = cb_data
-            .strip_prefix("pauserem::cron_rem_alt::")
-            .and_then(|x| x.parse::<i64>().ok())
-        {
-            ctl.pause_cron_reminder(cron_rem_id)
-                .await
-                .map_err(From::from)
-        } else if cb_data == "edit_rem_mode::rem_time_pattern" {
-            ctl.set_edit_mode_reminder(EditMode::TimePattern)
-                .await
-                .map_err(From::from)
-        } else if cb_data == "edit_rem_mode::rem_description" {
-            ctl.set_edit_mode_reminder(EditMode::Description)
-                .await
-                .map_err(From::from)
-        } else if cb_data == "edit_rem_mode::cron_rem_time_pattern" {
-            ctl.set_edit_mode_cron_reminder(EditMode::TimePattern)
-                .await
-                .map_err(From::from)
-        } else if cb_data == "edit_rem_mode::cron_rem_description" {
-            ctl.set_edit_mode_cron_reminder(EditMode::Description)
-                .await
-                .map_err(From::from)
-        } else {
-            Err(Error::UnmatchedQuery(cb_query))?
-        }
+    if let Some(page_num) = cb_data
+        .strip_prefix("seltz::page::")
+        .and_then(|x| x.parse::<usize>().ok())
+    {
+        msg_ctl
+            .select_timezone_set_page(page_num)
+            .await
+            .map_err(From::from)
+    } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
+        ctl.set_timezone(tz_name).await.map_err(From::from)
+    } else if let Some(page_num) = cb_data
+        .strip_prefix("delrem::page::")
+        .and_then(|x| x.parse::<usize>().ok())
+    {
+        msg_ctl
+            .delete_reminder_set_page(page_num)
+            .await
+            .map_err(From::from)
+    } else if let Some(rem_id) = cb_data
+        .strip_prefix("delrem::rem_alt::")
+        .and_then(|x| x.parse::<i64>().ok())
+    {
+        ctl.delete_reminder(rem_id, user_tz)
+            .await
+            .map_err(From::from)
+    } else if let Some(cron_rem_id) = cb_data
+        .strip_prefix("delrem::cron_rem_alt::")
+        .and_then(|x| x.parse::<i64>().ok())
+    {
+        ctl.delete_cron_reminder(cron_rem_id)
+            .await
+            .map_err(From::from)
+    } else if let Some(page_num) = cb_data
+        .strip_prefix("editrem::page::")
+        .and_then(|x| x.parse::<usize>().ok())
+    {
+        msg_ctl
+            .edit_reminder_set_page(page_num)
+            .await
+            .map_err(From::from)
+    } else if let Some(rem_id) = cb_data
+        .strip_prefix("editrem::rem_alt::")
+        .and_then(|x| x.parse::<i64>().ok())
+    {
+        ctl.choose_edit_mode_reminder(rem_id)
+            .await
+            .map_err(From::from)
+    } else if let Some(cron_rem_id) = cb_data
+        .strip_prefix("editrem::cron_rem_alt::")
+        .and_then(|x| x.parse::<i64>().ok())
+    {
+        ctl.edit_cron_reminder().await?;
+        dialogue
+            .update(State::EditCron { id: cron_rem_id })
+            .await
+            .map_err(From::from)
+    } else if let Some(page_num) = cb_data
+        .strip_prefix("pauserem::page::")
+        .and_then(|x| x.parse::<usize>().ok())
+    {
+        msg_ctl
+            .pause_reminder_set_page(page_num)
+            .await
+            .map_err(From::from)
+    } else if let Some(rem_id) = cb_data
+        .strip_prefix("pauserem::rem_alt::")
+        .and_then(|x| x.parse::<i64>().ok())
+    {
+        ctl.pause_reminder(rem_id).await.map_err(From::from)
+    } else if let Some(cron_rem_id) = cb_data
+        .strip_prefix("pauserem::cron_rem_alt::")
+        .and_then(|x| x.parse::<i64>().ok())
+    {
+        ctl.pause_cron_reminder(cron_rem_id)
+            .await
+            .map_err(From::from)
+    } else if let Some(rem_id) = cb_data
+        .strip_prefix("edit_rem_mode::rem_time_pattern::")
+        .and_then(|x| x.parse::<i64>().ok())
+    {
+        ctl.set_edit_mode_reminder(EditMode::TimePattern).await?;
+        dialogue
+            .update(State::Edit {
+                id: rem_id,
+                mode: EditMode::TimePattern,
+            })
+            .await
+            .map_err(From::from)
+    } else if let Some(rem_id) = cb_data
+        .strip_prefix("edit_rem_mode::rem_description::")
+        .and_then(|x| x.parse::<i64>().ok())
+    {
+        ctl.set_edit_mode_reminder(EditMode::Description).await?;
+        dialogue
+            .update(State::Edit {
+                id: rem_id,
+                mode: EditMode::Description,
+            })
+            .await
+            .map_err(From::from)
     } else {
-        Err(Error::NoQueryData(cb_query))?
+        Err(Error::UnmatchedQuery(cb_query))?
     }
 }
