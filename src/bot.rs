@@ -220,31 +220,45 @@ pub(crate) mod test {
     use std::sync::Arc;
 
     use crate::{
-        db::MockDatabase, entity::reminder, generic_reminder::GenericReminder,
-        handlers::get_handler, tg::TgResponse,
+        bot::Command, db::MockDatabase, entity::reminder,
+        generic_reminder::GenericReminder, handlers::get_handler,
+        tg::TgResponse,
     };
     use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
     use chrono_tz::Tz;
     use dptree::deps;
-    use teloxide::{dispatching::dialogue::InMemStorage, prelude::*};
-    use teloxide_tests::{IntoUpdate, MockBot, MockMessageText};
+    use mockall::predicate::eq;
+    use sea_orm::IntoActiveModel;
+    use teloxide::{
+        dispatching::dialogue::InMemStorage,
+        prelude::*,
+        types::{
+            InlineKeyboardButton, InlineKeyboardButtonKind::CallbackData,
+            InlineKeyboardMarkup, MediaKind::Text, MediaText, MessageCommon,
+            MessageKind::Common,
+        },
+        utils::command::BotCommands,
+    };
+    use teloxide_tests::{
+        IntoUpdate, MockBot, MockCallbackQuery, MockMessageText,
+    };
 
     use super::State;
 
-    fn basic_mock_reminder() -> reminder::ActiveModel {
-        reminder::ActiveModel {
-            id: sea_orm::ActiveValue::Set(1),
-            chat_id: sea_orm::ActiveValue::Set(1),
-            time: sea_orm::ActiveValue::Set(NaiveDateTime::new(
+    fn basic_mock_reminder() -> reminder::Model {
+        reminder::Model {
+            id: 1,
+            chat_id: 1,
+            time: NaiveDateTime::new(
                 NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
                 NaiveTime::from_hms_opt(0, 1, 2).unwrap(),
-            )),
-            desc: sea_orm::ActiveValue::Set("".to_owned()),
-            user_id: sea_orm::ActiveValue::Set(None),
-            paused: sea_orm::ActiveValue::Set(false),
-            pattern: sea_orm::ActiveValue::Set(None),
-            msg_id: sea_orm::ActiveValue::Set(None),
-            reply_id: sea_orm::ActiveValue::Set(None),
+            ),
+            desc: "".to_owned(),
+            user_id: None,
+            paused: false,
+            pattern: None,
+            msg_id: None,
+            reply_id: None,
         }
     }
 
@@ -270,12 +284,192 @@ pub(crate) mod test {
     }
 
     #[tokio::test]
+    async fn test_help() {
+        let message = MockMessageText::new().text("/help");
+        let db = MockDatabase::new();
+        let bot = mock_bot(db, message);
+        bot.dispatch_and_check_last_text(&Command::descriptions().to_string())
+            .await;
+    }
+
+    #[tokio::test]
     async fn test_start() {
         let message = MockMessageText::new().text("/start");
         let db = MockDatabase::new();
         let bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(&TgResponse::Hello.to_string())
             .await;
+    }
+
+    #[tokio::test]
+    async fn test_timezone() {
+        let message = MockMessageText::new().text("/timezone");
+        let mut db = MockDatabase::new();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        let bot = mock_bot(db, message);
+        bot.dispatch_and_check_last_text(
+            &TgResponse::ChosenTimezone(mock_timezone_name()).to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_set_timezone() {
+        let message = MockMessageText::new().text("/settimezone");
+        let db = MockDatabase::new();
+        let bot = mock_bot(db, message);
+        bot.dispatch_and_check_last_text(
+            &TgResponse::SelectTimezone.to_string(),
+        )
+        .await;
+    }
+
+    macro_rules! resp {
+        ($bot:expr, $field:ident, $($subfields:tt)+) => {
+            $bot.get_responses().$field.iter().map(|m| (m.$($subfields)+).clone()).collect::<Vec<_>>()
+        };
+    }
+
+    #[tokio::test]
+    async fn test_delete() {
+        let message = MockMessageText::new().text("/delete");
+        let mut db = MockDatabase::new();
+        let rem = basic_mock_reminder();
+        let rem_clone = rem.clone();
+        db.expect_get_sorted_reminders().returning(move |_| {
+            Ok(vec![Box::new(rem_clone.clone().into_active_model())])
+        });
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        let rem_clone = rem.clone();
+        db.expect_get_reminder()
+            .with(eq(rem.id))
+            .returning(move |_| Ok(Some(rem_clone.clone())));
+        db.expect_delete_reminder()
+            .with(eq(rem.id))
+            .returning(move |_| Ok(()));
+        let bot = mock_bot(db, message);
+        bot.dispatch().await;
+        assert_eq!(
+            resp!(bot, sent_messages, kind),
+            vec![Common(MessageCommon {
+                author_signature: None,
+                forward_origin: None,
+                reply_to_message: None,
+                external_reply: None,
+                quote: None,
+                edit_date: None,
+                media_kind: Text(MediaText {
+                    text: "Choose a reminder to delete:".to_string(),
+                    entities: vec![],
+                    link_preview_options: None,
+                },),
+                reply_markup: Some(InlineKeyboardMarkup {
+                    inline_keyboard: vec![
+                        vec![InlineKeyboardButton {
+                            text: "01.01 01:01 <>".to_string(),
+                            kind: CallbackData(
+                                "delrem::rem_alt::1".to_string(),
+                            ),
+                        },],
+                        vec![InlineKeyboardButton {
+                            text: "➡️".to_string(),
+                            kind: CallbackData("delrem::page::1".to_string(),),
+                        },],
+                    ],
+                },),
+                is_automatic_forward: false,
+                has_protected_content: false,
+            },)]
+        );
+
+        bot.update(
+            MockCallbackQuery::new()
+                .data("delrem::page::1")
+                .message(bot.get_responses().sent_messages[0].clone()),
+        );
+        bot.dispatch().await;
+        assert_eq!(
+            resp!(bot, edited_messages_reply_markup, message.kind),
+            vec![Common(MessageCommon {
+                author_signature: None,
+                forward_origin: None,
+                reply_to_message: None,
+                external_reply: None,
+                quote: None,
+                edit_date: None,
+                media_kind: Text(MediaText {
+                    text: "Choose a reminder to delete:".to_string(),
+                    entities: vec![],
+                    link_preview_options: None,
+                },),
+                reply_markup: Some(InlineKeyboardMarkup {
+                    inline_keyboard: vec![vec![InlineKeyboardButton {
+                        text: "⬅️".to_string(),
+                        kind: CallbackData("delrem::page::0".to_string(),),
+                    },],],
+                },),
+                is_automatic_forward: false,
+                has_protected_content: false,
+            },)]
+        );
+
+        bot.update(
+            MockCallbackQuery::new().data("delrem::page::0").message(
+                bot.get_responses().edited_messages_reply_markup[0]
+                    .message
+                    .clone(),
+            ),
+        );
+        bot.dispatch().await;
+        assert_eq!(
+            resp!(bot, edited_messages_reply_markup, message.kind),
+            vec![Common(MessageCommon {
+                author_signature: None,
+                forward_origin: None,
+                reply_to_message: None,
+                external_reply: None,
+                quote: None,
+                edit_date: None,
+                media_kind: Text(MediaText {
+                    text: "Choose a reminder to delete:".to_string(),
+                    entities: vec![],
+                    link_preview_options: None,
+                },),
+                reply_markup: Some(InlineKeyboardMarkup {
+                    inline_keyboard: vec![
+                        vec![InlineKeyboardButton {
+                            text: "01.01 01:01 <>".to_string(),
+                            kind: CallbackData(
+                                "delrem::rem_alt::1".to_string(),
+                            ),
+                        },],
+                        vec![InlineKeyboardButton {
+                            text: "➡️".to_string(),
+                            kind: CallbackData("delrem::page::1".to_string(),),
+                        },],
+                    ],
+                },),
+                is_automatic_forward: false,
+                has_protected_content: false,
+            },)]
+        );
+
+        bot.update(
+            MockCallbackQuery::new().data("delrem::rem_alt::1").message(
+                bot.get_responses().edited_messages_reply_markup[0]
+                    .message
+                    .clone(),
+            ),
+        );
+        bot.dispatch_and_check_last_text(
+            &TgResponse::SuccessDelete(
+                rem.into_active_model().to_unescaped_string(mock_timezone()),
+            )
+            .to_string(),
+        )
+        .await;
     }
 
     #[tokio::test]
@@ -295,8 +489,7 @@ pub(crate) mod test {
         let mut db = MockDatabase::new();
         db.expect_get_user_timezone_name()
             .returning(|_| Ok(Some(mock_timezone_name())));
-        db.expect_get_sorted_all_reminders()
-            .returning(|_| Ok(vec![]));
+        db.expect_get_sorted_reminders().returning(|_| Ok(vec![]));
         let message = MockMessageText::new().text("/list");
         let bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
@@ -313,14 +506,15 @@ pub(crate) mod test {
             .returning(|_| Ok(Some(mock_timezone_name())));
         let rem = basic_mock_reminder();
         let rem_clone = rem.clone();
-        db.expect_get_sorted_all_reminders()
-            .returning(move |_| Ok(vec![Box::new(rem_clone.clone())]));
+        db.expect_get_sorted_reminders().returning(move |_| {
+            Ok(vec![Box::new(rem_clone.clone().into_active_model())])
+        });
         let message = MockMessageText::new().text("/list");
         let bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(&format!(
             "{}\n{}",
             TgResponse::RemindersListHeader,
-            rem.to_string(tz)
+            rem.into_active_model().to_string(tz)
         ))
         .await;
     }

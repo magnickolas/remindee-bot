@@ -147,8 +147,7 @@ impl TgMessageController {
     /// Send a list of all notifications
     pub(crate) async fn list(&self, user_tz: Tz) -> Result<(), RequestError> {
         // Format reminders
-        let text = match self.db.get_sorted_all_reminders(self.chat_id.0).await
-        {
+        let text = match self.db.get_sorted_reminders(self.chat_id.0).await {
             Ok(sorted_reminders) => {
                 std::iter::once(TgResponse::RemindersListHeader.to_string())
                     .chain(sorted_reminders.into_iter().map(|rem| {
@@ -505,19 +504,11 @@ impl TgMessageController {
         num: usize,
         cb_prefix: &str,
         user_timezone: Tz,
-        exclude_reminders: bool,
-        exclude_cron_reminders: bool,
     ) -> InlineKeyboardMarkup {
         let mut markup = InlineKeyboardMarkup::default();
         let mut last_rem_page: bool = false;
-        let sorted_reminders = self
-            .db
-            .get_sorted_reminders(
-                self.chat_id.0,
-                exclude_reminders,
-                exclude_cron_reminders,
-            )
-            .await;
+        let sorted_reminders =
+            self.db.get_sorted_reminders(self.chat_id.0).await;
         if let Some(reminders) = sorted_reminders
             .ok()
             .as_ref()
@@ -570,8 +561,6 @@ impl TgMessageController {
             num,
             "delrem",
             user_timezone,
-            false,
-            false,
         )
         .await
     }
@@ -585,8 +574,6 @@ impl TgMessageController {
             num,
             "editrem",
             user_timezone,
-            false,
-            false,
         )
         .await
     }
@@ -600,8 +587,6 @@ impl TgMessageController {
             num,
             "pauserem",
             user_timezone,
-            false,
-            false,
         )
         .await
     }

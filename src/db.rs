@@ -241,8 +241,6 @@ impl Database {
     pub(crate) async fn get_sorted_reminders(
         &self,
         chat_id: i64,
-        exclude_reminders: bool,
-        exclude_cron_reminders: bool,
     ) -> Result<Vec<Box<dyn generic_reminder::GenericReminder>>, Error> {
         let reminders = self
             .get_pending_chat_reminders(chat_id)
@@ -260,21 +258,10 @@ impl Database {
             });
 
         let mut all_reminders = vec![];
-        if !exclude_reminders {
-            all_reminders.extend(reminders)
-        }
-        if !exclude_cron_reminders {
-            all_reminders.extend(cron_reminders)
-        }
+        all_reminders.extend(reminders);
+        all_reminders.extend(cron_reminders);
         all_reminders.sort_unstable();
         Ok(all_reminders)
-    }
-
-    pub(crate) async fn get_sorted_all_reminders(
-        &self,
-        chat_id: i64,
-    ) -> Result<Vec<Box<dyn generic_reminder::GenericReminder>>, Error> {
-        self.get_sorted_reminders(chat_id, false, false).await
     }
 
     pub(crate) async fn get_reminder_by_msg_id(
