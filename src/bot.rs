@@ -240,10 +240,6 @@ pub(crate) mod test {
                 NaiveTime::from_hms_opt(0, 1, 2).unwrap(),
             )),
             desc: sea_orm::ActiveValue::Set("".to_owned()),
-            edit: sea_orm::ActiveValue::Set(false),
-            edit_mode: sea_orm::ActiveValue::Set(
-                crate::entity::common::EditMode::None,
-            ),
             user_id: sea_orm::ActiveValue::Set(None),
             paused: sea_orm::ActiveValue::Set(false),
             pattern: sea_orm::ActiveValue::Set(None),
@@ -289,7 +285,7 @@ pub(crate) mod test {
         let message = MockMessageText::new().text("/list");
         let bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
-            &TgResponse::NoChosenTimezone.to_string(),
+            &TgResponse::SelectTimezone.to_string(),
         )
         .await;
     }

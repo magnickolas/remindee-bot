@@ -73,6 +73,11 @@ pub(crate) fn get_handler(
                 .filter_command::<Command>()
                 .filter(|msg: Message| msg.chat.id.is_user())
                 .filter_map(TgMessageController::from_msg)
+                .branch(case![Command::Help].endpoint(help_handler))
+                .branch(case![Command::Start].endpoint(start_handler))
+                .branch(
+                    case![Command::SetTimezone].endpoint(set_timezone_handler),
+                )
                 .branch(
                     dptree::filter_map_async(get_user_timezone)
                         .branch(case![Command::List].endpoint(list_handler))
@@ -83,14 +88,8 @@ pub(crate) fn get_handler(
                         .branch(case![Command::Edit].endpoint(edit_handler))
                         .branch(case![Command::Cancel].endpoint(cancel_handler))
                         .branch(case![Command::Pause].endpoint(pause_handler))
-                        .branch(
-                            case![Command::Set(text)].endpoint(set_handler),
-                        ),
-                )
-                .branch(case![Command::Help].endpoint(help_handler))
-                .branch(case![Command::Start].endpoint(start_handler))
-                .branch(
-                    case![Command::SetTimezone].endpoint(set_timezone_handler),
+                        .branch(case![Command::Set(text)].endpoint(set_handler))
+                        .endpoint(incorrect_request_handler),
                 )
                 .endpoint(set_timezone_handler),
         )
@@ -360,7 +359,7 @@ async fn callback_handler(
         .and_then(|x| x.parse::<usize>().ok())
     {
         msg_ctl
-            .delete_reminder_set_page(page_num)
+            .delete_reminder_set_page(page_num, user_tz)
             .await
             .map_err(From::from)
     } else if let Some(rem_id) = cb_data
@@ -374,7 +373,7 @@ async fn callback_handler(
         .strip_prefix("delrem::cron_rem_alt::")
         .and_then(|x| x.parse::<i64>().ok())
     {
-        ctl.delete_cron_reminder(cron_rem_id)
+        ctl.delete_cron_reminder(cron_rem_id, user_tz)
             .await
             .map_err(From::from)
     } else if let Some(page_num) = cb_data
@@ -382,7 +381,7 @@ async fn callback_handler(
         .and_then(|x| x.parse::<usize>().ok())
     {
         msg_ctl
-            .edit_reminder_set_page(page_num)
+            .edit_reminder_set_page(page_num, user_tz)
             .await
             .map_err(From::from)
     } else if let Some(rem_id) = cb_data
@@ -406,19 +405,21 @@ async fn callback_handler(
         .and_then(|x| x.parse::<usize>().ok())
     {
         msg_ctl
-            .pause_reminder_set_page(page_num)
+            .pause_reminder_set_page(page_num, user_tz)
             .await
             .map_err(From::from)
     } else if let Some(rem_id) = cb_data
         .strip_prefix("pauserem::rem_alt::")
         .and_then(|x| x.parse::<i64>().ok())
     {
-        ctl.pause_reminder(rem_id).await.map_err(From::from)
+        ctl.pause_reminder(rem_id, user_tz)
+            .await
+            .map_err(From::from)
     } else if let Some(cron_rem_id) = cb_data
         .strip_prefix("pauserem::cron_rem_alt::")
         .and_then(|x| x.parse::<i64>().ok())
     {
-        ctl.pause_cron_reminder(cron_rem_id)
+        ctl.pause_cron_reminder(cron_rem_id, user_tz)
             .await
             .map_err(From::from)
     } else if let Some(rem_id) = cb_data
