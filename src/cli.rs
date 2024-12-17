@@ -4,12 +4,12 @@ use clap::Parser;
 use directories::BaseDirs;
 
 lazy_static::lazy_static! {
-    pub static ref CLI: Cli = parse_args();
+    pub(crate) static ref CLI: Cli = parse_args();
 }
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
-pub struct Cli {
+pub(crate) struct Cli {
     #[arg(
         short,
         long,
@@ -18,12 +18,12 @@ pub struct Cli {
         help = "Path to the SQLite database file (tries to create if not exists)",
         default_value = get_default_database_file()
     )]
-    pub database: PathBuf,
+    pub(crate) database: PathBuf,
     #[arg(short, long, value_name = "BOT TOKEN", env = "BOT_TOKEN")]
-    pub token: String,
+    pub(crate) token: String,
 }
 
-pub fn parse_args() -> Cli {
+pub(crate) fn parse_args() -> Cli {
     Cli::parse()
 }
 

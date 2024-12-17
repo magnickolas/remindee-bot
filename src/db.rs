@@ -12,7 +12,7 @@ use sea_orm::{
 };
 
 #[derive(Debug)]
-pub enum Error {
+pub(crate) enum Error {
     Database(DbErr),
     File(std::io::Error),
 }
@@ -49,21 +49,21 @@ async fn get_db_pool(db_path: &Path) -> Result<DatabaseConnection, Error> {
 }
 
 #[derive(Clone)]
-pub struct Database {
+pub(crate) struct Database {
     pool: DatabaseConnection,
 }
 
 #[cfg_attr(test, automock, allow(dead_code))]
 impl Database {
-    pub async fn new_with_path(db_path: &Path) -> Result<Self, Error> {
+    pub(crate) async fn new_with_path(db_path: &Path) -> Result<Self, Error> {
         get_db_pool(db_path).await.map(|pool| Self { pool })
     }
 
-    pub async fn apply_migrations(&self) -> Result<(), Error> {
+    pub(crate) async fn apply_migrations(&self) -> Result<(), Error> {
         Ok(Migrator::up(&self.pool, None).await?)
     }
 
-    pub async fn get_reminder(
+    pub(crate) async fn get_reminder(
         &self,
         id: i64,
     ) -> Result<Option<reminder::Model>, Error> {
@@ -73,14 +73,14 @@ impl Database {
             .await?)
     }
 
-    pub async fn insert_reminder(
+    pub(crate) async fn insert_reminder(
         &self,
         rem: reminder::ActiveModel,
     ) -> Result<reminder::ActiveModel, Error> {
         Ok(rem.save(&self.pool).await?)
     }
 
-    pub async fn delete_reminder(&self, id: i64) -> Result<(), Error> {
+    pub(crate) async fn delete_reminder(&self, id: i64) -> Result<(), Error> {
         reminder::ActiveModel {
             id: Set(id),
             ..Default::default()
@@ -90,7 +90,7 @@ impl Database {
         Ok(())
     }
 
-    pub async fn get_active_reminders(
+    pub(crate) async fn get_active_reminders(
         &self,
     ) -> Result<Vec<reminder::Model>, Error> {
         Ok(reminder::Entity::find()
@@ -100,7 +100,7 @@ impl Database {
             .await?)
     }
 
-    pub async fn get_pending_chat_reminders(
+    pub(crate) async fn get_pending_chat_reminders(
         &self,
         chat_id: i64,
     ) -> Result<Vec<reminder::Model>, Error> {
@@ -110,7 +110,7 @@ impl Database {
             .await?)
     }
 
-    pub async fn get_user_timezone_name(
+    pub(crate) async fn get_user_timezone_name(
         &self,
         user_id: i64,
     ) -> Result<Option<String>, Error> {
@@ -134,7 +134,7 @@ impl Database {
         Ok(())
     }
 
-    pub async fn insert_or_update_user_timezone(
+    pub(crate) async fn insert_or_update_user_timezone(
         &self,
         user_id: i64,
         timezone: &str,
@@ -152,7 +152,7 @@ impl Database {
         Ok(())
     }
 
-    pub async fn get_cron_reminder(
+    pub(crate) async fn get_cron_reminder(
         &self,
         id: i64,
     ) -> Result<Option<cron_reminder::Model>, Error> {
@@ -162,14 +162,17 @@ impl Database {
             .await?)
     }
 
-    pub async fn insert_cron_reminder(
+    pub(crate) async fn insert_cron_reminder(
         &self,
         rem: cron_reminder::ActiveModel,
     ) -> Result<cron_reminder::ActiveModel, Error> {
         Ok(rem.save(&self.pool).await?)
     }
 
-    pub async fn delete_cron_reminder(&self, id: i64) -> Result<(), Error> {
+    pub(crate) async fn delete_cron_reminder(
+        &self,
+        id: i64,
+    ) -> Result<(), Error> {
         cron_reminder::ActiveModel {
             id: Set(id),
             ..Default::default()
@@ -179,7 +182,10 @@ impl Database {
         Ok(())
     }
 
-    pub async fn toggle_reminder_paused(&self, id: i64) -> Result<bool, Error> {
+    pub(crate) async fn toggle_reminder_paused(
+        &self,
+        id: i64,
+    ) -> Result<bool, Error> {
         let rem: Option<reminder::Model> =
             reminder::Entity::find_by_id(id).one(&self.pool).await?;
         if let Some(rem) = rem {
@@ -193,7 +199,7 @@ impl Database {
         }
     }
 
-    pub async fn toggle_cron_reminder_paused(
+    pub(crate) async fn toggle_cron_reminder_paused(
         &self,
         id: i64,
     ) -> Result<bool, Error> {
@@ -212,7 +218,7 @@ impl Database {
         }
     }
 
-    pub async fn get_active_cron_reminders(
+    pub(crate) async fn get_active_cron_reminders(
         &self,
     ) -> Result<Vec<cron_reminder::Model>, Error> {
         Ok(cron_reminder::Entity::find()
@@ -222,7 +228,7 @@ impl Database {
             .await?)
     }
 
-    pub async fn get_pending_chat_cron_reminders(
+    pub(crate) async fn get_pending_chat_cron_reminders(
         &self,
         chat_id: i64,
     ) -> Result<Vec<cron_reminder::Model>, Error> {
@@ -232,7 +238,7 @@ impl Database {
             .await?)
     }
 
-    pub async fn get_sorted_reminders(
+    pub(crate) async fn get_sorted_reminders(
         &self,
         chat_id: i64,
         exclude_reminders: bool,
@@ -264,14 +270,14 @@ impl Database {
         Ok(all_reminders)
     }
 
-    pub async fn get_sorted_all_reminders(
+    pub(crate) async fn get_sorted_all_reminders(
         &self,
         chat_id: i64,
     ) -> Result<Vec<Box<dyn generic_reminder::GenericReminder>>, Error> {
         self.get_sorted_reminders(chat_id, false, false).await
     }
 
-    pub async fn get_reminder_by_msg_id(
+    pub(crate) async fn get_reminder_by_msg_id(
         &self,
         msg_id: i32,
     ) -> Result<Option<reminder::Model>, Error> {
@@ -281,7 +287,7 @@ impl Database {
             .await?)
     }
 
-    pub async fn get_cron_reminder_by_msg_id(
+    pub(crate) async fn get_cron_reminder_by_msg_id(
         &self,
         msg_id: i32,
     ) -> Result<Option<cron_reminder::Model>, Error> {
@@ -291,7 +297,7 @@ impl Database {
             .await?)
     }
 
-    pub async fn get_reminder_by_reply_id(
+    pub(crate) async fn get_reminder_by_reply_id(
         &self,
         reply_id: i32,
     ) -> Result<Option<reminder::Model>, Error> {
@@ -301,7 +307,7 @@ impl Database {
             .await?)
     }
 
-    pub async fn get_cron_reminder_by_reply_id(
+    pub(crate) async fn get_cron_reminder_by_reply_id(
         &self,
         reply_id: i32,
     ) -> Result<Option<cron_reminder::Model>, Error> {
@@ -311,7 +317,7 @@ impl Database {
             .await?)
     }
 
-    pub async fn set_reminder_reply_id(
+    pub(crate) async fn set_reminder_reply_id(
         &self,
         mut rem: reminder::ActiveModel,
         reply_id: i32,
@@ -321,7 +327,7 @@ impl Database {
         Ok(())
     }
 
-    pub async fn set_cron_reminder_reply_id(
+    pub(crate) async fn set_cron_reminder_reply_id(
         &self,
         mut cron_rem: cron_reminder::ActiveModel,
         reply_id: i32,
@@ -331,7 +337,7 @@ impl Database {
         Ok(())
     }
 
-    pub async fn update_reminder(
+    pub(crate) async fn update_reminder(
         &self,
         rem: reminder::Model,
     ) -> Result<(), Error> {

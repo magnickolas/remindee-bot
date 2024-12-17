@@ -3,7 +3,7 @@ use crate::generic_reminder::GenericReminder;
 use chrono_tz::Tz;
 use sea_orm::{ActiveModelTrait, IntoActiveModel};
 
-pub fn format_reminder<T: ActiveModelTrait + GenericReminder>(
+pub(crate) fn format_reminder<T: ActiveModelTrait + GenericReminder>(
     reminder: &T,
     user_timezone: Tz,
 ) -> String {
@@ -15,7 +15,7 @@ pub fn format_reminder<T: ActiveModelTrait + GenericReminder>(
     }
 }
 
-pub fn format_cron_reminder(
+pub(crate) fn format_cron_reminder(
     reminder: &cron_reminder::Model,
     next_reminder: Option<&cron_reminder::Model>,
     user_timezone: Tz,

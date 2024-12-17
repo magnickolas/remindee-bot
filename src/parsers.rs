@@ -10,11 +10,11 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use serde_json::to_string;
 
 #[cfg(not(test))]
-pub fn now_time() -> NaiveDateTime {
+pub(crate) fn now_time() -> NaiveDateTime {
     Utc::now().naive_utc()
 }
 
-pub async fn parse_reminder(
+pub(crate) async fn parse_reminder(
     s: &str,
     chat_id: i64,
     user_id: u64,
@@ -40,7 +40,7 @@ pub async fn parse_reminder(
     })
 }
 
-pub async fn parse_cron_reminder(
+pub(crate) async fn parse_cron_reminder(
     text: &str,
     chat_id: i64,
     user_id: u64,
@@ -73,7 +73,7 @@ pub async fn parse_cron_reminder(
 }
 
 #[cfg(test)]
-pub fn now_time() -> NaiveDateTime {
+pub(crate) fn now_time() -> NaiveDateTime {
     unsafe {
         DateTime::from_timestamp(test::TEST_TIMESTAMP, 0)
             .unwrap()
@@ -82,7 +82,7 @@ pub fn now_time() -> NaiveDateTime {
 }
 
 #[cfg(test)]
-pub mod test {
+pub(crate) mod test {
     use super::*;
     use test_case::test_case;
     extern crate strfmt;
@@ -90,12 +90,13 @@ pub mod test {
     use strfmt::strfmt;
 
     lazy_static! {
-        pub static ref TEST_TZ: Tz = "Europe/Moscow".parse::<Tz>().unwrap();
-        pub static ref TEST_TIME: DateTime<Tz> =
+        pub(crate) static ref TEST_TZ: Tz =
+            "Europe/Moscow".parse::<Tz>().unwrap();
+        pub(crate) static ref TEST_TIME: DateTime<Tz> =
             TEST_TZ.with_ymd_and_hms(2007, 2, 2, 12, 30, 30).unwrap();
     }
 
-    pub static mut TEST_TIMESTAMP: i64 = 0;
+    pub(crate) static mut TEST_TIMESTAMP: i64 = 0;
     const TEST_DESCRIPTION: &str = "reminder description";
 
     #[derive(Debug, PartialEq)]

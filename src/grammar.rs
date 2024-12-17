@@ -8,21 +8,21 @@ use pest::{iterators::Pair, Parser};
 struct ReminderParser;
 
 #[derive(Debug, Default)]
-pub struct HoleyDate {
-    pub year: Option<i32>,
-    pub month: Option<u32>,
-    pub day: Option<u32>,
+pub(crate) struct HoleyDate {
+    pub(crate) year: Option<i32>,
+    pub(crate) month: Option<u32>,
+    pub(crate) day: Option<u32>,
 }
 
 #[derive(Debug, Default)]
-pub struct Interval {
-    pub years: i32,
-    pub months: u32,
-    pub weeks: u32,
-    pub days: u32,
-    pub hours: u32,
-    pub minutes: u32,
-    pub seconds: u32,
+pub(crate) struct Interval {
+    pub(crate) years: i32,
+    pub(crate) months: u32,
+    pub(crate) weeks: u32,
+    pub(crate) days: u32,
+    pub(crate) hours: u32,
+    pub(crate) minutes: u32,
+    pub(crate) seconds: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -37,7 +37,7 @@ enum Weekday {
 }
 
 #[bitmask(u8)]
-pub enum Weekdays {
+pub(crate) enum Weekdays {
     Monday,
     Tuesday,
     Wednesday,
@@ -48,16 +48,16 @@ pub enum Weekdays {
 }
 
 #[derive(Debug)]
-pub enum DateDivisor {
+pub(crate) enum DateDivisor {
     Weekdays(Weekdays),
     Interval(DateInterval),
 }
 
 #[derive(Debug)]
-pub struct DateRange {
-    pub from: HoleyDate,
-    pub until: Option<HoleyDate>,
-    pub date_divisor: DateDivisor,
+pub(crate) struct DateRange {
+    pub(crate) from: HoleyDate,
+    pub(crate) until: Option<HoleyDate>,
+    pub(crate) date_divisor: DateDivisor,
 }
 
 impl Default for DateRange {
@@ -74,71 +74,71 @@ impl Default for DateRange {
 }
 
 #[derive(Debug)]
-pub enum DatePattern {
+pub(crate) enum DatePattern {
     Point(HoleyDate),
     Range(DateRange),
 }
 
 #[derive(Debug, Default)]
-pub struct Time {
-    pub hour: u32,
-    pub minute: u32,
-    pub second: u32,
+pub(crate) struct Time {
+    pub(crate) hour: u32,
+    pub(crate) minute: u32,
+    pub(crate) second: u32,
 }
 
 #[derive(Debug, Default)]
-pub struct TimeInterval {
-    pub hours: u32,
-    pub minutes: u32,
-    pub seconds: u32,
+pub(crate) struct TimeInterval {
+    pub(crate) hours: u32,
+    pub(crate) minutes: u32,
+    pub(crate) seconds: u32,
 }
 
 #[derive(Debug, Default)]
-pub struct DateInterval {
-    pub years: i32,
-    pub months: u32,
-    pub weeks: u32,
-    pub days: u32,
+pub(crate) struct DateInterval {
+    pub(crate) years: i32,
+    pub(crate) months: u32,
+    pub(crate) weeks: u32,
+    pub(crate) days: u32,
 }
 
 #[derive(Debug, Default)]
-pub struct TimeRange {
-    pub from: Option<Time>,
-    pub until: Option<Time>,
-    pub interval: TimeInterval,
+pub(crate) struct TimeRange {
+    pub(crate) from: Option<Time>,
+    pub(crate) until: Option<Time>,
+    pub(crate) interval: TimeInterval,
 }
 
 #[derive(Debug)]
-pub enum TimePattern {
+pub(crate) enum TimePattern {
     Point(Time),
     Range(TimeRange),
 }
 
 #[derive(Debug)]
-pub struct Recurrence {
-    pub dates_patterns: NonEmpty<DatePattern>,
-    pub time_patterns: Vec<TimePattern>,
+pub(crate) struct Recurrence {
+    pub(crate) dates_patterns: NonEmpty<DatePattern>,
+    pub(crate) time_patterns: Vec<TimePattern>,
 }
 
 #[derive(Debug, Default)]
-pub struct Countdown {
-    pub durations: Vec<Interval>,
+pub(crate) struct Countdown {
+    pub(crate) durations: Vec<Interval>,
 }
 
 #[derive(Debug)]
-pub enum ReminderPattern {
+pub(crate) enum ReminderPattern {
     Recurrence(Recurrence),
     Countdown(Countdown),
 }
 
 #[derive(Debug, Default)]
-pub struct Reminder {
-    pub description: Option<Description>,
-    pub pattern: Option<ReminderPattern>,
+pub(crate) struct Reminder {
+    pub(crate) description: Option<Description>,
+    pub(crate) pattern: Option<ReminderPattern>,
 }
 
 #[derive(Debug, Default)]
-pub struct Description(pub String);
+pub(crate) struct Description(pub(crate) String);
 
 trait Parse {
     fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()>
@@ -498,7 +498,7 @@ impl Parse for Reminder {
     }
 }
 
-pub fn parse_reminder(s: &str) -> Result<Reminder, ()> {
+pub(crate) fn parse_reminder(s: &str) -> Result<Reminder, ()> {
     Reminder::parse(
         ReminderParser::parse(Rule::reminder, s)
             .map_err(|err| {

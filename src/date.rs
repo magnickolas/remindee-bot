@@ -3,7 +3,7 @@ use chrono::{Datelike, NaiveDate, NaiveDateTime};
 use chronoutil::{is_leap_year, shift_months, shift_years};
 use nonempty::NonEmpty;
 
-pub fn normalise_day(year: i32, month: u32, day: u32) -> u32 {
+pub(crate) fn normalise_day(year: i32, month: u32, day: u32) -> u32 {
     if day <= 28 {
         day
     } else if month == 2 {
@@ -17,7 +17,10 @@ pub fn normalise_day(year: i32, month: u32, day: u32) -> u32 {
     }
 }
 
-pub fn add_interval(time: NaiveDateTime, interval: &Interval) -> NaiveDateTime {
+pub(crate) fn add_interval(
+    time: NaiveDateTime,
+    interval: &Interval,
+) -> NaiveDateTime {
     shift_months(shift_years(time, interval.years), interval.months as i32)
         + chrono::Duration::weeks(interval.weeks as i64)
         + chrono::Duration::days(interval.days as i64)
@@ -26,7 +29,7 @@ pub fn add_interval(time: NaiveDateTime, interval: &Interval) -> NaiveDateTime {
         + chrono::Duration::seconds(interval.seconds as i64)
 }
 
-pub fn add_date_interval(
+pub(crate) fn add_date_interval(
     date: NaiveDate,
     interval: &DateInterval,
 ) -> NaiveDate {
@@ -45,7 +48,7 @@ pub fn add_date_interval(
     .date()
 }
 
-pub fn find_nearest_weekday(
+pub(crate) fn find_nearest_weekday(
     mut date: NaiveDate,
     weekdays: NonEmpty<u32>,
 ) -> NaiveDate {

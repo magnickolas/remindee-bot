@@ -24,39 +24,39 @@ use teloxide::RequestError;
 use tg::TgResponse;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub enum EditMode {
+pub(crate) enum EditMode {
     TimePattern,
     Description,
 }
 
 #[derive(Clone)]
-pub struct TgMessageController {
-    pub db: Arc<Database>,
-    pub bot: Bot,
-    pub chat_id: ChatId,
-    pub user_id: UserId,
-    pub msg_id: MessageId,
-    pub reply_to_id: Option<MessageId>,
+pub(crate) struct TgMessageController {
+    pub(crate) db: Arc<Database>,
+    pub(crate) bot: Bot,
+    pub(crate) chat_id: ChatId,
+    pub(crate) user_id: UserId,
+    pub(crate) msg_id: MessageId,
+    pub(crate) reply_to_id: Option<MessageId>,
 }
 
 #[derive(Clone)]
-pub struct TgCallbackController {
-    pub msg_ctl: TgMessageController,
-    pub cb_id: String,
+pub(crate) struct TgCallbackController {
+    pub(crate) msg_ctl: TgMessageController,
+    pub(crate) cb_id: String,
 }
 
-pub enum ReminderUpdate {
+pub(crate) enum ReminderUpdate {
     ReminderDescription(i64, String),
     ReminderTimePattern(i64, String),
     CronReminder(i64, String),
 }
 
-pub enum Reminder {
+pub(crate) enum Reminder {
     Reminder(reminder::Model),
     CronReminder(cron_reminder::Model),
 }
 
-pub enum ActiveReminder {
+pub(crate) enum ActiveReminder {
     Reminder(reminder::ActiveModel),
     CronReminder(cron_reminder::ActiveModel),
 }
@@ -83,7 +83,7 @@ impl ReminderModel for cron_reminder::Model {
 }
 
 impl TgMessageController {
-    pub fn new(
+    pub(crate) fn new(
         db: Arc<Database>,
         bot: Bot,
         chat_id: ChatId,
@@ -101,7 +101,7 @@ impl TgMessageController {
         }
     }
 
-    pub fn from_msg(
+    pub(crate) fn from_msg(
         db: Arc<Database>,
         bot: Bot,
         msg: Message,
@@ -116,7 +116,7 @@ impl TgMessageController {
         ))
     }
 
-    pub fn from_callback_query(
+    pub(crate) fn from_callback_query(
         db: Arc<Database>,
         bot: Bot,
         cb_query: &CallbackQuery,
@@ -132,7 +132,7 @@ impl TgMessageController {
         ))
     }
 
-    pub async fn reply<R: ToString>(
+    pub(crate) async fn reply<R: ToString>(
         &self,
         response: R,
     ) -> Result<Message, RequestError> {
@@ -140,12 +140,12 @@ impl TgMessageController {
             .await
     }
 
-    pub async fn start(&self) -> Result<(), RequestError> {
+    pub(crate) async fn start(&self) -> Result<(), RequestError> {
         self.reply(TgResponse::Hello).await.map(|_| ())
     }
 
     /// Send a list of all notifications
-    pub async fn list(&self, user_tz: Tz) -> Result<(), RequestError> {
+    pub(crate) async fn list(&self, user_tz: Tz) -> Result<(), RequestError> {
         // Format reminders
         let text = match self.db.get_sorted_all_reminders(self.chat_id.0).await
         {
@@ -166,7 +166,7 @@ impl TgMessageController {
     }
 
     /// Send a markup with all timezones to select
-    pub async fn choose_timezone(&self) -> Result<(), RequestError> {
+    pub(crate) async fn choose_timezone(&self) -> Result<(), RequestError> {
         tg::send_markup(
             &TgResponse::SelectTimezone.to_string(),
             self.get_markup_for_tz_page_idx(0),
@@ -177,7 +177,10 @@ impl TgMessageController {
     }
 
     /// Send user's timezone
-    pub async fn get_timezone(&self, user_tz: Tz) -> Result<(), RequestError> {
+    pub(crate) async fn get_timezone(
+        &self,
+        user_tz: Tz,
+    ) -> Result<(), RequestError> {
         self.reply(TgResponse::ChosenTimezone(user_tz.to_string()))
             .await
             .map(|_| ())
@@ -194,7 +197,7 @@ impl TgMessageController {
     }
 
     /// Send a markup to select a reminder for deleting
-    pub async fn start_delete(&self, user_tz: Tz) -> Result<(), Error> {
+    pub(crate) async fn start_delete(&self, user_tz: Tz) -> Result<(), Error> {
         if let Some(reply_to_id) = self.reply_to_id {
             if let Ok(Some(generic_reminder)) =
                 self.get_reminder_by_msg_or_reply_id(reply_to_id).await
@@ -247,7 +250,10 @@ impl TgMessageController {
     }
 
     /// Send a markup to select a reminder for editing
-    pub async fn start_edit(&self, user_tz: Tz) -> Result<(), RequestError> {
+    pub(crate) async fn start_edit(
+        &self,
+        user_tz: Tz,
+    ) -> Result<(), RequestError> {
         let markup =
             self.get_markup_for_reminders_page_editing(0, user_tz).await;
         self.start_alter(TgResponse::ChooseEditReminder, markup)
@@ -255,12 +261,15 @@ impl TgMessageController {
     }
 
     /// Cancel ongoing reminder editing
-    pub async fn cancel_edit(&self) -> Result<(), RequestError> {
+    pub(crate) async fn cancel_edit(&self) -> Result<(), RequestError> {
         self.reply(TgResponse::CancelEdit).await.map(|_| ())
     }
 
     /// Send a markup to select a reminder for pausing
-    pub async fn start_pause(&self, user_tz: Tz) -> Result<(), RequestError> {
+    pub(crate) async fn start_pause(
+        &self,
+        user_tz: Tz,
+    ) -> Result<(), RequestError> {
         let markup =
             self.get_markup_for_reminders_page_pausing(0, user_tz).await;
         self.start_alter(TgResponse::ChoosePauseReminder, markup)
@@ -387,12 +396,12 @@ impl TgMessageController {
         self._set_reminder(text, user_tz).await.0
     }
 
-    pub async fn incorrect_request(&self) -> Result<(), RequestError> {
+    pub(crate) async fn incorrect_request(&self) -> Result<(), RequestError> {
         self.reply(TgResponse::IncorrectRequest).await.map(|_| ())
     }
 
     /// Switch the markup's page
-    pub async fn select_timezone_set_page(
+    pub(crate) async fn select_timezone_set_page(
         &self,
         page_num: usize,
     ) -> Result<(), RequestError> {
@@ -412,7 +421,7 @@ impl TgMessageController {
         tg::edit_markup(markup, &self.bot, self.msg_id, self.chat_id).await
     }
 
-    pub async fn delete_reminder_set_page(
+    pub(crate) async fn delete_reminder_set_page(
         &self,
         page_num: usize,
     ) -> Result<(), RequestError> {
@@ -428,7 +437,7 @@ impl TgMessageController {
         }
     }
 
-    pub async fn edit_reminder_set_page(
+    pub(crate) async fn edit_reminder_set_page(
         &self,
         page_num: usize,
     ) -> Result<(), RequestError> {
@@ -444,7 +453,7 @@ impl TgMessageController {
         }
     }
 
-    pub async fn pause_reminder_set_page(
+    pub(crate) async fn pause_reminder_set_page(
         &self,
         page_num: usize,
     ) -> Result<(), RequestError> {
@@ -460,7 +469,7 @@ impl TgMessageController {
         }
     }
 
-    pub fn get_markup_for_tz_page_idx(
+    pub(crate) fn get_markup_for_tz_page_idx(
         &self,
         num: usize,
     ) -> InlineKeyboardMarkup {
@@ -567,7 +576,7 @@ impl TgMessageController {
         markup.append_row(move_buttons)
     }
 
-    pub async fn get_markup_for_reminders_page_deletion(
+    pub(crate) async fn get_markup_for_reminders_page_deletion(
         &self,
         num: usize,
         user_timezone: Tz,
@@ -582,7 +591,7 @@ impl TgMessageController {
         .await
     }
 
-    pub async fn get_markup_for_reminders_page_editing(
+    pub(crate) async fn get_markup_for_reminders_page_editing(
         &self,
         num: usize,
         user_timezone: Tz,
@@ -597,7 +606,7 @@ impl TgMessageController {
         .await
     }
 
-    pub async fn get_markup_for_reminders_page_pausing(
+    pub(crate) async fn get_markup_for_reminders_page_pausing(
         &self,
         num: usize,
         user_timezone: Tz,
@@ -722,7 +731,7 @@ impl TgMessageController {
         .await
     }
 
-    pub async fn edit_reminder(
+    pub(crate) async fn edit_reminder(
         &self,
         update: ReminderUpdate,
         user_tz: Tz,
@@ -804,7 +813,7 @@ impl TgMessageController {
         Ok(())
     }
 
-    pub async fn set_new_reminder(
+    pub(crate) async fn set_new_reminder(
         &self,
         text: &str,
         user_tz: Tz,
@@ -820,7 +829,7 @@ impl TgMessageController {
         Ok(())
     }
 
-    pub async fn update_reply_link(
+    pub(crate) async fn update_reply_link(
         &self,
         reminder: &ActiveReminder,
         reply: &Message,
@@ -844,7 +853,7 @@ impl TgMessageController {
         }
     }
 
-    pub async fn set_timezone(
+    pub(crate) async fn set_timezone(
         &self,
         tz_name: &str,
     ) -> Result<(), RequestError> {
@@ -913,7 +922,7 @@ impl TgMessageController {
         }
     }
 
-    pub async fn edit_reminder_from_edited_message(
+    pub(crate) async fn edit_reminder_from_edited_message(
         &self,
         text: &str,
         user_tz: Tz,
@@ -956,7 +965,7 @@ impl TgMessageController {
 }
 
 impl TgCallbackController {
-    pub fn new(
+    pub(crate) fn new(
         db: Arc<Database>,
         bot: Bot,
         cb_query: CallbackQuery,
@@ -977,7 +986,9 @@ impl TgCallbackController {
         self.acknowledge_callback().await
     }
 
-    pub async fn acknowledge_callback(&self) -> Result<(), RequestError> {
+    pub(crate) async fn acknowledge_callback(
+        &self,
+    ) -> Result<(), RequestError> {
         self.msg_ctl
             .bot
             .answer_callback_query(&self.cb_id)
@@ -986,7 +997,7 @@ impl TgCallbackController {
             .map(|_| ())
     }
 
-    pub async fn set_timezone(
+    pub(crate) async fn set_timezone(
         &self,
         tz_name: &str,
     ) -> Result<(), RequestError> {
@@ -994,7 +1005,7 @@ impl TgCallbackController {
         self.acknowledge_callback().await
     }
 
-    pub async fn delete_reminder(
+    pub(crate) async fn delete_reminder(
         &self,
         rem_id: i64,
         user_tz: Tz,
@@ -1026,7 +1037,7 @@ impl TgCallbackController {
         self.answer_callback_query(response).await
     }
 
-    pub async fn delete_cron_reminder(
+    pub(crate) async fn delete_cron_reminder(
         &self,
         cron_rem_id: i64,
     ) -> Result<(), RequestError> {
@@ -1073,7 +1084,7 @@ impl TgCallbackController {
         self.answer_callback_query(response).await
     }
 
-    pub async fn choose_edit_mode_reminder(
+    pub(crate) async fn choose_edit_mode_reminder(
         &self,
         rem_id: i64,
     ) -> Result<(), RequestError> {
@@ -1103,12 +1114,12 @@ impl TgCallbackController {
         self.acknowledge_callback().await
     }
 
-    pub async fn edit_cron_reminder(&self) -> Result<(), RequestError> {
+    pub(crate) async fn edit_cron_reminder(&self) -> Result<(), RequestError> {
         let response = TgResponse::EnterNewReminder;
         self.answer_callback_query(response).await
     }
 
-    pub async fn pause_reminder(
+    pub(crate) async fn pause_reminder(
         &self,
         rem_id: i64,
     ) -> Result<(), RequestError> {
@@ -1153,7 +1164,7 @@ impl TgCallbackController {
         self.answer_callback_query(response).await
     }
 
-    pub async fn pause_cron_reminder(
+    pub(crate) async fn pause_cron_reminder(
         &self,
         cron_rem_id: i64,
     ) -> Result<(), RequestError> {
@@ -1201,7 +1212,7 @@ impl TgCallbackController {
         self.answer_callback_query(response).await
     }
 
-    pub async fn set_edit_mode_reminder(
+    pub(crate) async fn set_edit_mode_reminder(
         &self,
         edit_mode: EditMode,
     ) -> Result<(), RequestError> {

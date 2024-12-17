@@ -9,7 +9,7 @@ use teloxide::types::{
 use teloxide::utils::markdown::escape;
 use teloxide::RequestError;
 
-pub enum TgResponse {
+pub(crate) enum TgResponse {
     SuccessInsert(String),
     SuccessPeriodicInsert(String),
     FailedInsert,
@@ -38,7 +38,7 @@ pub enum TgResponse {
 }
 
 impl TgResponse {
-    pub fn to_unescaped_string(&self) -> String {
+    pub(crate) fn to_unescaped_string(&self) -> String {
         match self {
             Self::SuccessInsert(reminder_str) => format!("Added a reminder:\n{}", reminder_str),
             Self::SuccessPeriodicInsert(reminder_str) => format!("Added a periodic reminder:\n{}", reminder_str),
@@ -90,7 +90,7 @@ impl Display for TgResponse {
     }
 }
 
-pub async fn _send_message(
+pub(crate) async fn _send_message(
     text: &str,
     bot: &Bot,
     chat_id: ChatId,
@@ -110,7 +110,7 @@ pub async fn _send_message(
         .await
 }
 
-pub async fn send_message(
+pub(crate) async fn send_message(
     text: &str,
     bot: &Bot,
     chat_id: ChatId,
@@ -118,7 +118,7 @@ pub async fn send_message(
     _send_message(text, bot, chat_id, false).await
 }
 
-pub async fn send_silent_message(
+pub(crate) async fn send_silent_message(
     text: &str,
     bot: &Bot,
     chat_id: ChatId,
@@ -126,7 +126,7 @@ pub async fn send_silent_message(
     _send_message(text, bot, chat_id, true).await
 }
 
-pub async fn delete_message(
+pub(crate) async fn delete_message(
     bot: &Bot,
     chat_id: ChatId,
     msg_id: MessageId,
@@ -134,7 +134,7 @@ pub async fn delete_message(
     bot.delete_message(chat_id, msg_id).await.map(|_| ())
 }
 
-pub async fn send_markup(
+pub(crate) async fn send_markup(
     text: &str,
     markup: InlineKeyboardMarkup,
     bot: &Bot,
@@ -156,7 +156,7 @@ pub async fn send_markup(
         .map(|_| ())
 }
 
-pub async fn edit_markup(
+pub(crate) async fn edit_markup(
     markup: InlineKeyboardMarkup,
     bot: &Bot,
     msg_id: MessageId,

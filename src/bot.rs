@@ -183,7 +183,7 @@ async fn init_dialogue_storage() -> Arc<ErasedStorage<State>> {
         .erase()
 }
 
-pub async fn run() {
+pub(crate) async fn run() {
     pretty_env_logger::init();
     log::info!("Starting remindee-bot!");
 
@@ -216,7 +216,7 @@ pub async fn run() {
 }
 
 #[cfg(test)]
-pub mod test {
+pub(crate) mod test {
     use std::sync::Arc;
 
     use crate::{

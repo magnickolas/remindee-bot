@@ -21,7 +21,7 @@ use crate::{
 };
 
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
-pub enum State {
+pub(crate) enum State {
     #[default]
     Default,
     Edit {
@@ -42,7 +42,7 @@ type MyDialogue = Dialogue<State, MyStorage>;
 
 #[derive(BotCommands, Clone)]
 #[command(description = "Commands:", rename_rule = "lowercase")]
-pub enum Command {
+pub(crate) enum Command {
     #[command(description = "list the set reminders")]
     List,
     #[command(description = "choose reminders to delete")]
@@ -65,7 +65,7 @@ pub enum Command {
     Start,
 }
 
-pub fn get_handler(
+pub(crate) fn get_handler(
 ) -> UpdateHandler<Box<dyn std::error::Error + Send + Sync + 'static>> {
     dialogue::enter::<Update, MyStorage, State, _>()
         .branch(

@@ -14,29 +14,29 @@ use crate::grammar;
 use crate::parsers::now_time;
 
 #[derive(Debug)]
-pub struct Tz(chrono_tz::Tz);
+pub(crate) struct Tz(chrono_tz::Tz);
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Interval {
+pub(crate) struct Interval {
     #[serde(rename = "y")]
-    pub years: i32,
+    pub(crate) years: i32,
     #[serde(rename = "mo")]
-    pub months: u32,
+    pub(crate) months: u32,
     #[serde(rename = "w")]
-    pub weeks: u32,
+    pub(crate) weeks: u32,
     #[serde(rename = "d")]
-    pub days: u32,
+    pub(crate) days: u32,
     #[serde(rename = "h")]
-    pub hours: u32,
+    pub(crate) hours: u32,
     #[serde(rename = "m")]
-    pub minutes: u32,
+    pub(crate) minutes: u32,
     #[serde(rename = "s")]
-    pub seconds: u32,
+    pub(crate) seconds: u32,
 }
 
 #[bitmask(u8)]
 #[derive(Serialize, Deserialize)]
-pub enum Weekdays {
+pub(crate) enum Weekdays {
     Monday,
     Tuesday,
     Wednesday,
@@ -47,21 +47,21 @@ pub enum Weekdays {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum DateDivisor {
+pub(crate) enum DateDivisor {
     Weekdays(Weekdays),
     Interval(DateInterval),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct DateRange {
-    pub from: NaiveDate,
-    pub until: Option<NaiveDate>,
+pub(crate) struct DateRange {
+    pub(crate) from: NaiveDate,
+    pub(crate) until: Option<NaiveDate>,
     #[serde(rename = "div")]
-    pub date_divisor: DateDivisor,
+    pub(crate) date_divisor: DateDivisor,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum DatePattern {
+pub(crate) enum DatePattern {
     Point(NaiveDate),
     Range(DateRange),
 }
@@ -69,63 +69,63 @@ pub enum DatePattern {
 struct Time;
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
-pub struct TimeInterval {
+pub(crate) struct TimeInterval {
     #[serde(rename = "h")]
-    pub hours: u32,
+    pub(crate) hours: u32,
     #[serde(rename = "m")]
-    pub minutes: u32,
+    pub(crate) minutes: u32,
     #[serde(rename = "s")]
-    pub seconds: u32,
+    pub(crate) seconds: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
-pub struct DateInterval {
+pub(crate) struct DateInterval {
     #[serde(rename = "y")]
-    pub years: i32,
+    pub(crate) years: i32,
     #[serde(rename = "mo")]
-    pub months: u32,
+    pub(crate) months: u32,
     #[serde(rename = "w")]
-    pub weeks: u32,
+    pub(crate) weeks: u32,
     #[serde(rename = "d")]
-    pub days: u32,
+    pub(crate) days: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
-pub struct TimeRange {
-    pub from: Option<NaiveTime>,
-    pub until: Option<NaiveTime>,
+pub(crate) struct TimeRange {
+    pub(crate) from: Option<NaiveTime>,
+    pub(crate) until: Option<NaiveTime>,
     #[serde(rename = "int")]
-    pub interval: TimeInterval,
+    pub(crate) interval: TimeInterval,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum TimePattern {
+pub(crate) enum TimePattern {
     Point(NaiveTime),
     Range(TimeRange),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Recurrence {
+pub(crate) struct Recurrence {
     #[serde(rename = "dates")]
-    pub dates_patterns: Vec<DatePattern>,
+    pub(crate) dates_patterns: Vec<DatePattern>,
     #[serde(rename = "times")]
-    pub time_patterns: Vec<TimePattern>,
+    pub(crate) time_patterns: Vec<TimePattern>,
     #[serde(rename = "tz")]
-    pub timezone: Tz,
+    pub(crate) timezone: Tz,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Countdown {
+pub(crate) struct Countdown {
     #[serde(rename = "from")]
-    pub time_from: NaiveDateTime,
+    pub(crate) time_from: NaiveDateTime,
     #[serde(rename = "dur")]
-    pub durations: Vec<Interval>,
+    pub(crate) durations: Vec<Interval>,
     #[serde(rename = "tz")]
-    pub timezone: Tz,
+    pub(crate) timezone: Tz,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum Pattern {
+pub(crate) enum Pattern {
     Recurrence(Recurrence),
     Countdown(Countdown),
 }
@@ -138,7 +138,7 @@ trait DateDisplay {
     ) -> Result<bool, std::fmt::Error>;
 }
 
-pub fn fill_date_holes(
+pub(crate) fn fill_date_holes(
     holey_date: &grammar::HoleyDate,
     lower_bound: NaiveDate,
 ) -> Option<NaiveDate> {
@@ -254,7 +254,10 @@ impl From<grammar::DateDivisor> for DateDivisor {
 }
 
 impl DateRange {
-    pub fn get_nearest_date(&self, date: NaiveDate) -> Option<NaiveDate> {
+    pub(crate) fn get_nearest_date(
+        &self,
+        date: NaiveDate,
+    ) -> Option<NaiveDate> {
         match self.date_divisor {
             DateDivisor::Weekdays(weekdays) => {
                 let weekdays = (0..7)
@@ -355,7 +358,7 @@ impl TimePattern {
 }
 
 impl Recurrence {
-    pub fn from_with_tz(
+    pub(crate) fn from_with_tz(
         recurrence: grammar::Recurrence,
         tz: chrono_tz::Tz,
     ) -> Result<Self, ()> {
@@ -450,7 +453,7 @@ impl Recurrence {
         })
     }
 
-    pub fn next(&self, cur: NaiveDateTime) -> Option<NaiveDateTime> {
+    pub(crate) fn next(&self, cur: NaiveDateTime) -> Option<NaiveDateTime> {
         let cur = self.timezone.0.from_utc_datetime(&cur).naive_local();
         let cur_date = cur.date();
         let cur_time = cur.time();
@@ -563,7 +566,7 @@ impl Recurrence {
 }
 
 impl Countdown {
-    pub fn next(&mut self) -> Option<NaiveDateTime> {
+    pub(crate) fn next(&mut self) -> Option<NaiveDateTime> {
         let start = self
             .timezone
             .0
@@ -595,7 +598,7 @@ impl Countdown {
 }
 
 impl Pattern {
-    pub fn from_with_tz(
+    pub(crate) fn from_with_tz(
         reminder_pattern: grammar::ReminderPattern,
         tz: chrono_tz::Tz,
     ) -> Result<Self, ()> {
@@ -609,7 +612,7 @@ impl Pattern {
         }
     }
 
-    pub fn next(&mut self, cur: NaiveDateTime) -> Option<NaiveDateTime> {
+    pub(crate) fn next(&mut self, cur: NaiveDateTime) -> Option<NaiveDateTime> {
         match self {
             Self::Recurrence(recurrence) => recurrence.next(cur),
             Self::Countdown(countdown) => countdown.next(),

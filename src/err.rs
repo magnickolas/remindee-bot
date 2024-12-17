@@ -2,7 +2,7 @@ use crate::db;
 use std::fmt;
 
 #[derive(Debug)]
-pub enum Error {
+pub(crate) enum Error {
     Database(db::Error),
     Parse(chrono_tz::ParseError),
     CronParse(cron_parser::ParseError),
