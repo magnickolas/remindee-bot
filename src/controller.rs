@@ -144,6 +144,10 @@ impl TgMessageController {
         self.reply(TgResponse::Hello).await.map(|_| ())
     }
 
+    pub(crate) async fn start_group(&self) -> Result<(), RequestError> {
+        self.reply(TgResponse::HelloGroup).await.map(|_| ())
+    }
+
     /// Send a list of all notifications
     pub(crate) async fn list(&self, user_tz: Tz) -> Result<(), RequestError> {
         // Format reminders

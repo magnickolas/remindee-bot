@@ -67,3 +67,4 @@ features = ["vendored"]
 [dev-dependencies]
 test-case = "3.0"
 strfmt = "0.2"
+serial_test = "3.2"

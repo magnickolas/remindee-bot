@@ -222,13 +222,14 @@ mod test {
     use crate::{
         bot::Command, db::MockDatabase, entity::reminder,
         generic_reminder::GenericReminder, handlers::get_handler,
-        tg::TgResponse,
+        parsers::test::TEST_TIMESTAMP, tg::TgResponse,
     };
-    use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+    use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
     use chrono_tz::Tz;
     use dptree::deps;
     use mockall::predicate::eq;
     use sea_orm::IntoActiveModel;
+    use serial_test::serial;
     use teloxide::{
         dispatching::dialogue::InMemStorage,
         prelude::*,
@@ -302,6 +303,16 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_start_group() {
+        let mut message = MockMessageText::new().text("/start");
+        message.chat.id.0 = -1;
+        let db = MockDatabase::new();
+        let bot = mock_bot(db, message);
+        bot.dispatch_and_check_last_text(&TgResponse::HelloGroup.to_string())
+            .await;
+    }
+
+    #[tokio::test]
     async fn test_timezone() {
         let message = MockMessageText::new().text("/timezone");
         let mut db = MockDatabase::new();
@@ -336,8 +347,8 @@ mod test {
         markup: InlineKeyboardMarkup,
     }
 
-    impl Into<MessageKind> for MockMarkup {
-        fn into(self) -> MessageKind {
+    impl From<MockMarkup> for MessageKind {
+        fn from(val: MockMarkup) -> Self {
             MessageKind::Common(MessageCommon {
                 author_signature: None,
                 forward_origin: None,
@@ -346,11 +357,11 @@ mod test {
                 quote: None,
                 edit_date: None,
                 media_kind: Text(MediaText {
-                    text: self.media_text,
+                    text: val.media_text,
                     entities: vec![],
                     link_preview_options: None,
                 }),
-                reply_markup: Some(self.markup),
+                reply_markup: Some(val.markup),
                 is_automatic_forward: false,
                 has_protected_content: false,
             })
@@ -501,7 +512,7 @@ mod test {
         let mut page0_buttons = (1..=REMINDERS_COUNT)
             .map(|i| {
                 vec![InlineKeyboardButton {
-                    text: format!("01.01 01:01 <>").to_string(),
+                    text: "01.01 01:01 <>".to_string().to_string(),
                     kind: CallbackData(
                         format!("delrem::rem_alt::{}", i).to_string(),
                     ),
@@ -832,6 +843,33 @@ mod test {
         );
         bot.dispatch_and_check_last_text(
             &TgResponse::SuccessResume(
+                rem.into_active_model().to_unescaped_string(tz),
+            )
+            .to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_new_reminder() {
+        *TEST_TIMESTAMP.write().unwrap() = mock_timezone()
+            .with_ymd_and_hms(2024, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
+        let message = MockMessageText::new().text("10:00 test");
+        let mut db = MockDatabase::new();
+        let tz = mock_timezone();
+        let rem = basic_mock_reminder();
+        let rem_clone = rem.clone();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_insert_reminder()
+            .returning(move |_| Ok(rem_clone.clone().into()));
+        db.expect_set_reminder_reply_id().returning(|_, _| Ok(()));
+        let bot = mock_bot(db, message);
+        bot.dispatch_and_check_last_text(
+            &TgResponse::SuccessInsert(
                 rem.into_active_model().to_unescaped_string(tz),
             )
             .to_string(),

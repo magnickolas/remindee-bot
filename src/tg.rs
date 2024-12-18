@@ -32,6 +32,7 @@ pub(crate) enum TgResponse {
     SuccessResume(String),
     FailedPause,
     Hello,
+    HelloGroup,
     EnterNewTimePattern,
     EnterNewDescription,
 }
@@ -73,7 +74,17 @@ impl TgResponse {
                 "01.01 00:00 Happy New Year => notify at 1st of January at 12 AM\n",
                 "55 10 * * 1-5 meeting call => notify at 10:55 AM every weekday ",
                 "(CRON expression format)\n\n",
-                "Before we start, please either send me your location or manually select the timezone using the /settimezone command first."
+                "Before we start, please either send me your location 📍 or manually select the timezone using the /settimezone command first."
+            )
+            .to_owned(),
+            Self::HelloGroup => concat!(
+                "Hello! I'm remindee bot. My purpose is to remind you of whatever you ask and ",
+                "whenever you ask.\n\n",
+                "Examples:\n17:30 go to restaurant => notify today at 5:30 PM\n",
+                "01.01 00:00 Happy New Year => notify at 1st of January at 12 AM\n",
+                "55 10 * * 1-5 meeting call => notify at 10:55 AM every weekday ",
+                "(CRON expression format)\n\n",
+                "Before we start, please select the timezone using the /settimezone command first."
             )
             .to_owned(),
             Self::EnterNewTimePattern => "Enter a new time pattern for the reminder".to_owned(),

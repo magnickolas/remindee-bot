@@ -74,19 +74,18 @@ pub(crate) async fn parse_cron_reminder(
 
 #[cfg(test)]
 pub(crate) fn now_time() -> NaiveDateTime {
-    unsafe {
-        DateTime::from_timestamp(test::TEST_TIMESTAMP, 0)
-            .unwrap()
-            .naive_utc()
-    }
+    DateTime::from_timestamp(*test::TEST_TIMESTAMP.read().unwrap(), 0)
+        .unwrap()
+        .naive_utc()
 }
 
 #[cfg(test)]
 pub(crate) mod test {
     use super::*;
+    use serial_test::serial;
     use test_case::test_case;
     extern crate strfmt;
-    use std::collections::HashMap;
+    use std::{collections::HashMap, sync::RwLock};
     use strfmt::strfmt;
 
     lazy_static! {
@@ -96,7 +95,7 @@ pub(crate) mod test {
             TEST_TZ.with_ymd_and_hms(2007, 2, 2, 12, 30, 30).unwrap();
     }
 
-    pub(crate) static mut TEST_TIMESTAMP: i64 = 0;
+    pub(crate) static TEST_TIMESTAMP: RwLock<i64> = RwLock::new(0);
     const TEST_DESCRIPTION: &str = "reminder description";
 
     #[derive(Debug, PartialEq)]
@@ -115,6 +114,7 @@ pub(crate) mod test {
     #[test_case("02.01 13:00 {desc}", Time(2007, 1, 2, 13, 0, 0) => Some(Time(2008, 1, 2, 13, 0, 0)) ; "month before" )]
     #[test_case("{hour}:{minute}{desc}", Time(2007, 2, 2, 12, 30, 0) => None ; "non-parsable" )]
     #[tokio::test]
+    #[serial]
     async fn test_parse_reminder(fmt_str: &str, time: Time) -> Option<Time> {
         let (year, month, day, hour, minute, second) =
             (time.0, time.1, time.2, time.3, time.4, time.5);
@@ -127,9 +127,7 @@ pub(crate) mod test {
             ("second".to_owned(), second.to_string()),
             ("desc".to_owned(), TEST_DESCRIPTION.to_owned()),
         ]);
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
         let result =
             parse_reminder(&strfmt(fmt_str, &vars).unwrap(), 0, 0, 0, *TEST_TZ)
                 .await

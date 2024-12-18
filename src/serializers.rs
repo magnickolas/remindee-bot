@@ -862,6 +862,8 @@ impl std::fmt::Display for Interval {
 
 #[cfg(test)]
 mod test {
+    use serial_test::serial;
+
     use super::*;
     use crate::{
         grammar::parse_reminder,
@@ -892,10 +894,9 @@ mod test {
     }
 
     #[test]
+    #[serial]
     fn test_countdown() {
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
         let s = "1w1h2m3s countdown";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -911,10 +912,9 @@ mod test {
     }
 
     #[test]
+    #[serial]
     fn test_multiple_countdown() {
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
         let s = "1w1h2m3s,2w1h20m7s countdown";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -930,10 +930,9 @@ mod test {
     }
 
     #[test]
+    #[serial]
     fn test_periodic() {
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
         let s = "- 11-18/1h periodic";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -965,10 +964,9 @@ mod test {
     }
 
     #[test]
+    #[serial]
     fn test_date_range() {
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
         let s = "3-6/2d 13:37 date range";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -984,10 +982,9 @@ mod test {
     }
 
     #[test]
+    #[serial]
     fn test_date_format1() {
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
         let s = "07.06.2025 13:37";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(parsed_rem.description.map(|x| x.0), None);
@@ -1000,10 +997,9 @@ mod test {
     }
 
     #[test]
+    #[serial]
     fn test_date_format2() {
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
         let s = "2025/06/07 13:37 date format2";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -1019,10 +1015,9 @@ mod test {
     }
 
     #[test]
+    #[serial]
     fn test_end_of_month_increment() {
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
         let s = "12/31/1MONTH 13:37 end of month";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -1055,10 +1050,9 @@ mod test {
     }
 
     #[test]
+    #[serial]
     fn test_weekdays() {
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
         let s = "/fri,mon 11:00 weekdays";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -1079,10 +1073,9 @@ mod test {
     }
 
     #[test]
+    #[serial]
     fn test_weekdays_ranges() {
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
         let s = "/fri-mon,wed 15:00:20 weekdays ranges";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -1109,10 +1102,9 @@ mod test {
     }
 
     #[test]
+    #[serial]
     fn test_description_trim() {
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
         let s = "15:16     test    description   ";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -1128,10 +1120,9 @@ mod test {
     }
 
     #[test]
+    #[serial]
     fn test_date_range_weekends() {
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
         let s = "10-20/mon,fri-sun 11-12/1h date range weekends";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(
@@ -1162,10 +1153,9 @@ mod test {
     }
 
     #[test]
+    #[serial]
     fn test_date_range_over_year() {
-        unsafe {
-            TEST_TIMESTAMP = TEST_TIME.timestamp();
-        }
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
         let s = "12/16-3/16/1m 18:15 date range over year";
         let parsed_rem = parse_reminder(s).unwrap();
         assert_eq!(

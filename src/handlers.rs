@@ -71,10 +71,18 @@ pub(crate) fn get_handler(
         .branch(
             Update::filter_message()
                 .filter_command::<Command>()
-                .filter(|msg: Message| msg.chat.id.is_user())
                 .filter_map(TgMessageController::from_msg)
                 .branch(case![Command::Help].endpoint(help_handler))
-                .branch(case![Command::Start].endpoint(start_handler))
+                .branch(
+                    case![Command::Start]
+                        .branch(
+                            dptree::filter(|msg: Message| {
+                                msg.chat.id.is_user()
+                            })
+                            .endpoint(start_handler),
+                        )
+                        .endpoint(start_group_handler),
+                )
                 .branch(
                     case![Command::SetTimezone].endpoint(set_timezone_handler),
                 )
@@ -92,13 +100,6 @@ pub(crate) fn get_handler(
                         .endpoint(incorrect_request_handler),
                 )
                 .endpoint(set_timezone_handler),
-        )
-        .branch(
-            Update::filter_message()
-                .filter(|msg: Message| msg.chat.id.is_user())
-                .filter_map(TgMessageController::from_msg)
-                .filter_map(|msg: Message| msg.location().copied())
-                .endpoint(location_handler),
         )
         .branch(
             Update::filter_message()
@@ -130,6 +131,21 @@ pub(crate) fn get_handler(
         )
         .branch(
             Update::filter_edited_message()
+                .filter_command::<Command>()
+                .filter_map(TgMessageController::from_msg)
+                .branch(
+                    dptree::filter_map_async(get_user_timezone)
+                        .branch(
+                            case![Command::Set(text)]
+                                .endpoint(set_edited_handler),
+                        )
+                        .endpoint(incorrect_request_handler),
+                )
+                .endpoint(set_timezone_handler),
+        )
+        .branch(
+            Update::filter_edited_message()
+                .filter(|msg: Message| msg.chat.id.is_user())
                 .filter_map(TgMessageController::from_msg)
                 .branch(
                     dptree::filter_map_async(get_user_timezone)
@@ -175,6 +191,12 @@ async fn start_handler(
     ctl: TgMessageController,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     ctl.start().await.map_err(From::from)
+}
+
+async fn start_group_handler(
+    ctl: TgMessageController,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.start_group().await.map_err(From::from)
 }
 
 async fn list_handler(
@@ -231,14 +253,22 @@ async fn set_handler(
         .map_err(From::from)
 }
 
+async fn set_edited_handler(
+    ctl: TgMessageController,
+    reminder_text: String,
+    user_tz: Tz,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    Ok(ctl
+        .edit_reminder_from_edited_message(&reminder_text, user_tz)
+        .await?)
+}
+
 async fn edited_message_handler(
     ctl: TgMessageController,
     msg: Message,
     user_tz: Tz,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if !ctl.chat_id.is_user() {
-        Ok(())
-    } else if let Some(text) = msg.text() {
+    if let Some(text) = msg.text() {
         Ok(ctl.edit_reminder_from_edited_message(text, user_tz).await?)
     } else {
         ctl.incorrect_request().await.map_err(From::from)
