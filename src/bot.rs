@@ -216,7 +216,7 @@ pub(crate) async fn run() {
 }
 
 #[cfg(test)]
-pub(crate) mod test {
+mod test {
     use std::sync::Arc;
 
     use crate::{
@@ -380,7 +380,7 @@ pub(crate) mod test {
         assert_eq!(
             resp!(bot, sent_messages, kind),
             vec![MockMarkup {
-                media_text: "Choose a reminder to delete:".to_string(),
+                media_text: TgResponse::ChooseDeleteReminder.to_string(),
                 markup: InlineKeyboardMarkup {
                     inline_keyboard: vec![
                         vec![InlineKeyboardButton {
@@ -408,7 +408,7 @@ pub(crate) mod test {
         assert_eq!(
             resp!(bot, edited_messages_reply_markup, message.kind),
             vec![MockMarkup {
-                media_text: "Choose a reminder to delete:".to_string(),
+                media_text: TgResponse::ChooseDeleteReminder.to_string(),
                 markup: InlineKeyboardMarkup {
                     inline_keyboard: vec![vec![InlineKeyboardButton {
                         text: "⬅️".to_string(),
@@ -430,7 +430,7 @@ pub(crate) mod test {
         assert_eq!(
             resp!(bot, edited_messages_reply_markup, message.kind),
             vec![MockMarkup {
-                media_text: "Choose a reminder to delete:".to_string(),
+                media_text: TgResponse::ChooseDeleteReminder.to_string(),
                 markup: InlineKeyboardMarkup {
                     inline_keyboard: vec![
                         vec![InlineKeyboardButton {
@@ -515,7 +515,7 @@ pub(crate) mod test {
         assert_eq!(
             resp!(bot, sent_messages, kind),
             vec![MockMarkup {
-                media_text: "Choose a reminder to delete:".to_string(),
+                media_text: TgResponse::ChooseDeleteReminder.to_string(),
                 markup: InlineKeyboardMarkup {
                     inline_keyboard: page0_buttons.clone(),
                 },
@@ -532,7 +532,7 @@ pub(crate) mod test {
         assert_eq!(
             resp!(bot, edited_messages_reply_markup, message.kind),
             vec![MockMarkup {
-                media_text: "Choose a reminder to delete:".to_string(),
+                media_text: TgResponse::ChooseDeleteReminder.to_string(),
                 markup: InlineKeyboardMarkup {
                     inline_keyboard: vec![vec![InlineKeyboardButton {
                         text: "⬅️".to_string(),
@@ -554,7 +554,7 @@ pub(crate) mod test {
         assert_eq!(
             resp!(bot, edited_messages_reply_markup, message.kind),
             vec![MockMarkup {
-                media_text: "Choose a reminder to delete:".to_string(),
+                media_text: TgResponse::ChooseDeleteReminder.to_string(),
                 markup: InlineKeyboardMarkup {
                     inline_keyboard: page0_buttons
                 },
@@ -651,7 +651,7 @@ pub(crate) mod test {
         assert_eq!(
             resp!(bot, sent_messages, kind),
             vec![MockMarkup {
-                media_text: "Choose a reminder to delete:".to_string(),
+                media_text: TgResponse::ChooseDeleteReminder.to_string(),
                 markup: InlineKeyboardMarkup {
                     inline_keyboard: page0_buttons.clone(),
                 },
@@ -668,7 +668,7 @@ pub(crate) mod test {
         assert_eq!(
             resp!(bot, edited_messages_reply_markup, message.kind),
             vec![MockMarkup {
-                media_text: "Choose a reminder to delete:".to_string(),
+                media_text: TgResponse::ChooseDeleteReminder.to_string(),
                 markup: InlineKeyboardMarkup {
                     inline_keyboard: page1_buttons,
                 },
@@ -687,7 +687,7 @@ pub(crate) mod test {
         assert_eq!(
             resp!(bot, edited_messages_reply_markup, message.kind),
             vec![MockMarkup {
-                media_text: "Choose a reminder to delete:".to_string(),
+                media_text: TgResponse::ChooseDeleteReminder.to_string(),
                 markup: InlineKeyboardMarkup {
                     inline_keyboard: page0_buttons
                 },
@@ -756,6 +756,86 @@ pub(crate) mod test {
             TgResponse::RemindersListHeader,
             rem.into_active_model().to_string(tz)
         ))
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_pause() {
+        let mut db = MockDatabase::new();
+        let tz = mock_timezone();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        let rem = basic_mock_reminder();
+        let rem_clone = rem.clone();
+        db.expect_get_reminder()
+            .with(eq(rem.id))
+            .returning(move |_| Ok(Some(rem_clone.clone())));
+        db.expect_toggle_reminder_paused()
+            .with(eq(rem.id))
+            .times(1)
+            .returning(move |_| Ok(true));
+        db.expect_toggle_reminder_paused()
+            .with(eq(rem.id))
+            .times(1)
+            .returning(move |_| Ok(false));
+        let rem_clone = rem.clone();
+        db.expect_get_sorted_reminders().returning(move |_| {
+            Ok(vec![Box::new(rem_clone.clone().into_active_model())])
+        });
+        let message = MockMessageText::new().text("/pause");
+        let bot = mock_bot(db, message);
+
+        bot.dispatch().await;
+        assert_eq!(
+            resp!(bot, sent_messages, kind),
+            vec![
+                MockMarkup {
+                    media_text: TgResponse::ChoosePauseReminder.to_string(),
+                    markup: InlineKeyboardMarkup {
+                        inline_keyboard: vec![
+                            vec![InlineKeyboardButton {
+                                text: "01.01 01:01 <>".to_string(),
+                                kind: CallbackData(
+                                    "pauserem::rem_alt::1".to_string(),
+                                ),
+                            },],
+                            vec![InlineKeyboardButton {
+                                text: "➡️".to_string(),
+                                kind: CallbackData(
+                                    "pauserem::page::1".to_string(),
+                                ),
+                            },],
+                        ],
+                    },
+                }
+                .into()
+            ]
+        );
+
+        bot.update(
+            MockCallbackQuery::new()
+                .data("pauserem::rem_alt::1")
+                .message(bot.get_responses().sent_messages[0].clone()),
+        );
+        bot.dispatch_and_check_last_text(
+            &TgResponse::SuccessPause(
+                rem.clone().into_active_model().to_unescaped_string(tz),
+            )
+            .to_string(),
+        )
+        .await;
+
+        bot.update(
+            MockCallbackQuery::new()
+                .data("pauserem::rem_alt::1")
+                .message(bot.get_responses().sent_messages[0].clone()),
+        );
+        bot.dispatch_and_check_last_text(
+            &TgResponse::SuccessResume(
+                rem.into_active_model().to_unescaped_string(tz),
+            )
+            .to_string(),
+        )
         .await;
     }
 }
