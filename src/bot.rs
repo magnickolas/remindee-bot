@@ -235,7 +235,7 @@ pub(crate) mod test {
         types::{
             InlineKeyboardButton, InlineKeyboardButtonKind::CallbackData,
             InlineKeyboardMarkup, MediaKind::Text, MediaText, MessageCommon,
-            MessageKind::Common,
+            MessageKind,
         },
         utils::command::BotCommands,
     };
@@ -331,6 +331,32 @@ pub(crate) mod test {
         };
     }
 
+    struct MockMarkup {
+        media_text: String,
+        markup: InlineKeyboardMarkup,
+    }
+
+    impl Into<MessageKind> for MockMarkup {
+        fn into(self) -> MessageKind {
+            MessageKind::Common(MessageCommon {
+                author_signature: None,
+                forward_origin: None,
+                reply_to_message: None,
+                external_reply: None,
+                quote: None,
+                edit_date: None,
+                media_kind: Text(MediaText {
+                    text: self.media_text,
+                    entities: vec![],
+                    link_preview_options: None,
+                }),
+                reply_markup: Some(self.markup),
+                is_automatic_forward: false,
+                has_protected_content: false,
+            })
+        }
+    }
+
     #[tokio::test]
     async fn test_delete() {
         let message = MockMessageText::new().text("/delete");
@@ -353,19 +379,9 @@ pub(crate) mod test {
         bot.dispatch().await;
         assert_eq!(
             resp!(bot, sent_messages, kind),
-            vec![Common(MessageCommon {
-                author_signature: None,
-                forward_origin: None,
-                reply_to_message: None,
-                external_reply: None,
-                quote: None,
-                edit_date: None,
-                media_kind: Text(MediaText {
-                    text: "Choose a reminder to delete:".to_string(),
-                    entities: vec![],
-                    link_preview_options: None,
-                },),
-                reply_markup: Some(InlineKeyboardMarkup {
+            vec![MockMarkup {
+                media_text: "Choose a reminder to delete:".to_string(),
+                markup: InlineKeyboardMarkup {
                     inline_keyboard: vec![
                         vec![InlineKeyboardButton {
                             text: "01.01 01:01 <>".to_string(),
@@ -378,10 +394,9 @@ pub(crate) mod test {
                             kind: CallbackData("delrem::page::1".to_string(),),
                         },],
                     ],
-                },),
-                is_automatic_forward: false,
-                has_protected_content: false,
-            },)]
+                },
+            }
+            .into()]
         );
 
         bot.update(
@@ -392,27 +407,16 @@ pub(crate) mod test {
         bot.dispatch().await;
         assert_eq!(
             resp!(bot, edited_messages_reply_markup, message.kind),
-            vec![Common(MessageCommon {
-                author_signature: None,
-                forward_origin: None,
-                reply_to_message: None,
-                external_reply: None,
-                quote: None,
-                edit_date: None,
-                media_kind: Text(MediaText {
-                    text: "Choose a reminder to delete:".to_string(),
-                    entities: vec![],
-                    link_preview_options: None,
-                },),
-                reply_markup: Some(InlineKeyboardMarkup {
+            vec![MockMarkup {
+                media_text: "Choose a reminder to delete:".to_string(),
+                markup: InlineKeyboardMarkup {
                     inline_keyboard: vec![vec![InlineKeyboardButton {
                         text: "⬅️".to_string(),
                         kind: CallbackData("delrem::page::0".to_string(),),
                     },],],
-                },),
-                is_automatic_forward: false,
-                has_protected_content: false,
-            },)]
+                },
+            }
+            .into()]
         );
 
         bot.update(
@@ -425,19 +429,9 @@ pub(crate) mod test {
         bot.dispatch().await;
         assert_eq!(
             resp!(bot, edited_messages_reply_markup, message.kind),
-            vec![Common(MessageCommon {
-                author_signature: None,
-                forward_origin: None,
-                reply_to_message: None,
-                external_reply: None,
-                quote: None,
-                edit_date: None,
-                media_kind: Text(MediaText {
-                    text: "Choose a reminder to delete:".to_string(),
-                    entities: vec![],
-                    link_preview_options: None,
-                },),
-                reply_markup: Some(InlineKeyboardMarkup {
+            vec![MockMarkup {
+                media_text: "Choose a reminder to delete:".to_string(),
+                markup: InlineKeyboardMarkup {
                     inline_keyboard: vec![
                         vec![InlineKeyboardButton {
                             text: "01.01 01:01 <>".to_string(),
@@ -450,12 +444,258 @@ pub(crate) mod test {
                             kind: CallbackData("delrem::page::1".to_string(),),
                         },],
                     ],
-                },),
-                is_automatic_forward: false,
-                has_protected_content: false,
-            },)]
+                },
+            }
+            .into()]
         );
 
+        bot.update(
+            MockCallbackQuery::new().data("delrem::rem_alt::1").message(
+                bot.get_responses().edited_messages_reply_markup[0]
+                    .message
+                    .clone(),
+            ),
+        );
+        bot.dispatch_and_check_last_text(
+            &TgResponse::SuccessDelete(
+                rem.into_active_model().to_unescaped_string(mock_timezone()),
+            )
+            .to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_delete_still_one_page() {
+        const REMINDERS_COUNT: i64 = 45;
+        let message = MockMessageText::new().text("/delete");
+        let mut db = MockDatabase::new();
+        let mut rems = vec![];
+        for i in 1..=REMINDERS_COUNT {
+            let mut rem = basic_mock_reminder();
+            rem.id = i;
+            rems.push(rem);
+        }
+        let rems_clone = rems.clone();
+        db.expect_get_sorted_reminders().returning(move |_| {
+            Ok(rems_clone
+                .iter()
+                .map(|rem| -> Box<dyn GenericReminder> {
+                    Box::new(rem.clone().into_active_model())
+                })
+                .collect())
+        });
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        for rem in rems.iter() {
+            let rem_clone = rem.clone();
+            db.expect_get_reminder()
+                .with(eq(rem.id))
+                .returning(move |_| Ok(Some(rem_clone.clone())));
+            db.expect_delete_reminder()
+                .with(eq(rem.id))
+                .returning(move |_| Ok(()));
+        }
+        let bot = mock_bot(db, message);
+        bot.dispatch().await;
+        let mut page0_buttons = (1..=REMINDERS_COUNT)
+            .map(|i| {
+                vec![InlineKeyboardButton {
+                    text: format!("01.01 01:01 <>").to_string(),
+                    kind: CallbackData(
+                        format!("delrem::rem_alt::{}", i).to_string(),
+                    ),
+                }]
+            })
+            .collect::<Vec<_>>();
+        page0_buttons.push(vec![InlineKeyboardButton {
+            text: "➡️".to_string(),
+            kind: CallbackData("delrem::page::1".to_string()),
+        }]);
+        assert_eq!(
+            resp!(bot, sent_messages, kind),
+            vec![MockMarkup {
+                media_text: "Choose a reminder to delete:".to_string(),
+                markup: InlineKeyboardMarkup {
+                    inline_keyboard: page0_buttons.clone(),
+                },
+            }
+            .into()]
+        );
+
+        bot.update(
+            MockCallbackQuery::new()
+                .data("delrem::page::1")
+                .message(bot.get_responses().sent_messages[0].clone()),
+        );
+        bot.dispatch().await;
+        assert_eq!(
+            resp!(bot, edited_messages_reply_markup, message.kind),
+            vec![MockMarkup {
+                media_text: "Choose a reminder to delete:".to_string(),
+                markup: InlineKeyboardMarkup {
+                    inline_keyboard: vec![vec![InlineKeyboardButton {
+                        text: "⬅️".to_string(),
+                        kind: CallbackData("delrem::page::0".to_string(),),
+                    },],],
+                },
+            }
+            .into()]
+        );
+
+        bot.update(
+            MockCallbackQuery::new().data("delrem::page::0").message(
+                bot.get_responses().edited_messages_reply_markup[0]
+                    .message
+                    .clone(),
+            ),
+        );
+        bot.dispatch().await;
+        assert_eq!(
+            resp!(bot, edited_messages_reply_markup, message.kind),
+            vec![MockMarkup {
+                media_text: "Choose a reminder to delete:".to_string(),
+                markup: InlineKeyboardMarkup {
+                    inline_keyboard: page0_buttons
+                },
+            }
+            .into()]
+        );
+
+        let rem = rems[0].clone();
+        bot.update(
+            MockCallbackQuery::new().data("delrem::rem_alt::1").message(
+                bot.get_responses().edited_messages_reply_markup[0]
+                    .message
+                    .clone(),
+            ),
+        );
+        bot.dispatch_and_check_last_text(
+            &TgResponse::SuccessDelete(
+                rem.into_active_model().to_unescaped_string(mock_timezone()),
+            )
+            .to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_delete_two_pages() {
+        const REMINDERS_COUNT: i64 = 46;
+        const PAGE_REMINDERS_COUNT: i64 = 45;
+        let message = MockMessageText::new().text("/delete");
+        let mut db = MockDatabase::new();
+        let mut rems = vec![];
+        for i in 1..=REMINDERS_COUNT {
+            let mut rem = basic_mock_reminder();
+            rem.id = i;
+            rem.desc = i.to_string();
+            rems.push(rem);
+        }
+        let rems_clone = rems.clone();
+        db.expect_get_sorted_reminders().returning(move |_| {
+            Ok(rems_clone
+                .iter()
+                .map(|rem| -> Box<dyn GenericReminder> {
+                    Box::new(rem.clone().into_active_model())
+                })
+                .collect())
+        });
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        for rem in rems.iter() {
+            let rem_clone = rem.clone();
+            db.expect_get_reminder()
+                .with(eq(rem.id))
+                .returning(move |_| Ok(Some(rem_clone.clone())));
+            db.expect_delete_reminder()
+                .with(eq(rem.id))
+                .returning(move |_| Ok(()));
+        }
+        let bot = mock_bot(db, message);
+        bot.dispatch().await;
+        let mut page0_buttons = (1..=PAGE_REMINDERS_COUNT)
+            .map(|i| {
+                vec![InlineKeyboardButton {
+                    text: format!("01.01 01:01 <{}>", i).to_string(),
+                    kind: CallbackData(
+                        format!("delrem::rem_alt::{}", i).to_string(),
+                    ),
+                }]
+            })
+            .collect::<Vec<_>>();
+        page0_buttons.push(vec![InlineKeyboardButton {
+            text: "➡️".to_string(),
+            kind: CallbackData("delrem::page::1".to_string()),
+        }]);
+        let mut page1_buttons = (PAGE_REMINDERS_COUNT + 1..=REMINDERS_COUNT)
+            .map(|i| {
+                vec![InlineKeyboardButton {
+                    text: format!("01.01 01:01 <{}>", i).to_string(),
+                    kind: CallbackData(
+                        format!("delrem::rem_alt::{}", i).to_string(),
+                    ),
+                }]
+            })
+            .collect::<Vec<_>>();
+        page1_buttons.push(vec![
+            InlineKeyboardButton {
+                text: "⬅️".to_string(),
+                kind: CallbackData("delrem::page::0".to_string()),
+            },
+            InlineKeyboardButton {
+                text: "➡️".to_string(),
+                kind: CallbackData("delrem::page::2".to_string()),
+            },
+        ]);
+        assert_eq!(
+            resp!(bot, sent_messages, kind),
+            vec![MockMarkup {
+                media_text: "Choose a reminder to delete:".to_string(),
+                markup: InlineKeyboardMarkup {
+                    inline_keyboard: page0_buttons.clone(),
+                },
+            }
+            .into()]
+        );
+
+        bot.update(
+            MockCallbackQuery::new()
+                .data("delrem::page::1")
+                .message(bot.get_responses().sent_messages[0].clone()),
+        );
+        bot.dispatch().await;
+        assert_eq!(
+            resp!(bot, edited_messages_reply_markup, message.kind),
+            vec![MockMarkup {
+                media_text: "Choose a reminder to delete:".to_string(),
+                markup: InlineKeyboardMarkup {
+                    inline_keyboard: page1_buttons,
+                },
+            }
+            .into()]
+        );
+
+        bot.update(
+            MockCallbackQuery::new().data("delrem::page::0").message(
+                bot.get_responses().edited_messages_reply_markup[0]
+                    .message
+                    .clone(),
+            ),
+        );
+        bot.dispatch().await;
+        assert_eq!(
+            resp!(bot, edited_messages_reply_markup, message.kind),
+            vec![MockMarkup {
+                media_text: "Choose a reminder to delete:".to_string(),
+                markup: InlineKeyboardMarkup {
+                    inline_keyboard: page0_buttons
+                },
+            }
+            .into()]
+        );
+
+        let rem = rems[0].clone();
         bot.update(
             MockCallbackQuery::new().data("delrem::rem_alt::1").message(
                 bot.get_responses().edited_messages_reply_markup[0]
