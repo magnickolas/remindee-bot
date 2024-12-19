@@ -160,9 +160,8 @@ async fn deadline_from_datetime(dt: NaiveDateTime) -> Instant {
     Instant::now() + duration
 }
 
-/// Periodically (every second) check for new reminders.
-/// Send and delete one-time reminders if time has come.
-/// Send cron reminders if time has come and update next reminder time.
+/// Wait for the next reminder to send or some change in the database.
+/// Send and update/delete reminders.
 async fn poll_reminders(db: Arc<Database>, bot: Bot) {
     const DEFAULT_CHECK_INTERVAL: TimeDelta = TimeDelta::seconds(60);
 

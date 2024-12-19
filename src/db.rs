@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::cli::CLI;
 use crate::entity::{cron_reminder, reminder, user_timezone};
 use crate::generic_reminder;
 use crate::migration::{DbErr, Migrator, MigratorTrait};
@@ -45,7 +46,7 @@ impl From<std::io::Error> for Error {
 async fn get_db_pool(db_path: &Path) -> Result<DatabaseConnection, Error> {
     let db_str = format!("sqlite:{}?mode=rwc", db_path.display());
     let mut opts = ConnectOptions::new(&db_str);
-    opts.max_connections(100);
+    opts.max_connections(CLI.sqlite_max_connections);
     let pool = SeaOrmDatabase::connect(opts).await?;
     Ok(pool)
 }

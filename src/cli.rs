@@ -21,6 +21,15 @@ pub(crate) struct Cli {
     pub(crate) database: PathBuf,
     #[arg(short, long, value_name = "BOT TOKEN", env = "BOT_TOKEN")]
     pub(crate) token: String,
+    #[arg(
+        short,
+        long,
+        env = "SQLITE_MAX_CONNECTIONS",
+        value_name = "NUMBER",
+        help = "Maximum number of connections to the SQLite database",
+        default_value = "1"
+    )]
+    pub(crate) sqlite_max_connections: u32,
 }
 
 pub(crate) fn parse_args() -> Cli {
