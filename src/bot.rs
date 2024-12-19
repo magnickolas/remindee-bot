@@ -11,7 +11,6 @@ use crate::parsers::now_time;
 use crate::serializers::Pattern;
 use crate::tg::send_message;
 use crate::tz::get_user_timezone;
-use async_std::task;
 use chrono::Utc;
 use chrono_tz::Tz;
 use cron_parser::parse as parse_cron;
@@ -162,7 +161,7 @@ async fn poll_reminders(db: Arc<Database>, bot: Bot) {
                 }
             }
         }
-        task::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
 }
 
