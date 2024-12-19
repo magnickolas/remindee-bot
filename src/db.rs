@@ -3,13 +3,15 @@ use std::path::Path;
 use crate::entity::{cron_reminder, reminder, user_timezone};
 use crate::generic_reminder;
 use crate::migration::{DbErr, Migrator, MigratorTrait};
-use chrono::Utc;
+use chrono::{NaiveDateTime, Utc};
 #[cfg(test)]
 use mockall::automock;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectOptions, Database as SeaOrmDatabase,
-    DatabaseConnection, EntityTrait, QueryFilter, Set,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
 };
+use tokio::sync::futures::Notified;
+use tokio::sync::Notify;
 
 #[derive(Debug)]
 pub(crate) enum Error {
@@ -48,15 +50,37 @@ async fn get_db_pool(db_path: &Path) -> Result<DatabaseConnection, Error> {
     Ok(pool)
 }
 
-#[derive(Clone)]
+struct ScopeCall<F: FnMut()> {
+    c: F,
+}
+impl<F: FnMut()> Drop for ScopeCall<F> {
+    fn drop(&mut self) {
+        (self.c)();
+    }
+}
+
+macro_rules! defer {
+    ($e:expr) => {
+        let _scope_call = ScopeCall {
+            c: || -> () {
+                $e;
+            },
+        };
+    };
+}
+
 pub(crate) struct Database {
     pool: DatabaseConnection,
+    notify: Notify,
 }
 
 #[cfg_attr(test, automock, allow(dead_code))]
 impl Database {
     pub(crate) async fn new_with_path(db_path: &Path) -> Result<Self, Error> {
-        get_db_pool(db_path).await.map(|pool| Self { pool })
+        get_db_pool(db_path).await.map(|pool| Self {
+            pool,
+            notify: Notify::new(),
+        })
     }
 
     pub(crate) async fn apply_migrations(&self) -> Result<(), Error> {
@@ -77,6 +101,7 @@ impl Database {
         &self,
         rem: reminder::ActiveModel,
     ) -> Result<reminder::ActiveModel, Error> {
+        defer!(self.notify.notify_one());
         Ok(rem.save(&self.pool).await?)
     }
 
@@ -88,6 +113,39 @@ impl Database {
         .delete(&self.pool)
         .await?;
         Ok(())
+    }
+
+    async fn next_reminder_time(&self) -> Result<Option<NaiveDateTime>, Error> {
+        Ok(reminder::Entity::find()
+            .filter(reminder::Column::Paused.eq(false))
+            .order_by_asc(reminder::Column::Time)
+            .one(&self.pool)
+            .await?
+            .map(|r| r.time))
+    }
+
+    async fn next_cron_reminder_time(
+        &self,
+    ) -> Result<Option<NaiveDateTime>, Error> {
+        Ok(cron_reminder::Entity::find()
+            .filter(cron_reminder::Column::Paused.eq(false))
+            .order_by_asc(cron_reminder::Column::Time)
+            .one(&self.pool)
+            .await?
+            .map(|r| r.time))
+    }
+
+    pub(crate) async fn get_next_reminder_time(
+        &self,
+    ) -> Result<Option<NaiveDateTime>, Error> {
+        let next_reminder_time = self.next_reminder_time().await?;
+        let next_cron_reminder_time = self.next_cron_reminder_time().await?;
+        match (next_reminder_time, next_cron_reminder_time) {
+            (Some(rem), Some(cron_rem)) => Ok(Some(rem.min(cron_rem))),
+            (Some(rem), None) => Ok(Some(rem)),
+            (None, Some(cron_rem)) => Ok(Some(cron_rem)),
+            (None, None) => Ok(None),
+        }
     }
 
     pub(crate) async fn get_active_reminders(
@@ -125,6 +183,7 @@ impl Database {
         user_id: i64,
         timezone: &str,
     ) -> Result<(), Error> {
+        defer!(self.notify.notify_one());
         user_timezone::Entity::insert(user_timezone::ActiveModel {
             user_id: Set(user_id),
             timezone: Set(timezone.to_string()),
@@ -166,6 +225,7 @@ impl Database {
         &self,
         rem: cron_reminder::ActiveModel,
     ) -> Result<cron_reminder::ActiveModel, Error> {
+        defer!(self.notify.notify_one());
         Ok(rem.save(&self.pool).await?)
     }
 
@@ -186,6 +246,7 @@ impl Database {
         &self,
         id: i64,
     ) -> Result<bool, Error> {
+        defer!(self.notify.notify_one());
         let rem: Option<reminder::Model> =
             reminder::Entity::find_by_id(id).one(&self.pool).await?;
         if let Some(rem) = rem {
@@ -203,6 +264,7 @@ impl Database {
         &self,
         id: i64,
     ) -> Result<bool, Error> {
+        defer!(self.notify.notify_one());
         let cron_rem: Option<cron_reminder::Model> =
             cron_reminder::Entity::find_by_id(id)
                 .one(&self.pool)
@@ -328,10 +390,15 @@ impl Database {
         &self,
         rem: reminder::Model,
     ) -> Result<(), Error> {
+        defer!(self.notify.notify_one());
         let desc = rem.desc.clone();
         let mut rem_act = Into::<reminder::ActiveModel>::into(rem);
         rem_act.desc = Set(desc);
         rem_act.update(&self.pool).await?;
         Ok(())
+    }
+
+    pub(crate) fn listen(&self) -> Notified<'_> {
+        self.notify.notified()
     }
 }

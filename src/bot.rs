@@ -11,17 +11,17 @@ use crate::parsers::now_time;
 use crate::serializers::Pattern;
 use crate::tg::send_message;
 use crate::tz::get_user_timezone;
-use chrono::Utc;
+use chrono::{NaiveDateTime, TimeDelta, Utc};
 use chrono_tz::Tz;
 use cron_parser::parse as parse_cron;
 use sea_orm::{ActiveValue::NotSet, IntoActiveModel};
 use serde_json::{from_str, to_string};
 use std::cmp::max;
 use std::sync::Arc;
-use std::time::Duration;
 use teloxide::dispatching::dialogue::serializer::Json;
 use teloxide::dispatching::dialogue::{ErasedStorage, SqliteStorage, Storage};
 use teloxide::{prelude::*, utils::command::BotCommands};
+use tokio::time::Instant;
 
 async fn send_reminder(
     reminder: &reminder::Model,
@@ -52,47 +52,91 @@ async fn send_cron_reminder(
         .map_err(From::from)
 }
 
-/// Periodically (every second) check for new reminders.
-/// Send and delete one-time reminders if time has come.
-/// Send cron reminders if time has come and update next reminder time.
-async fn poll_reminders(db: Arc<Database>, bot: Bot) {
-    loop {
-        let reminders = db
-            .get_active_reminders()
-            .await
-            .expect("Failed to get reminders from database");
-        for reminder in reminders {
-            if let Some(user_id) = reminder.user_id.map(|x| UserId(x as u64)) {
-                if let Ok(Some(user_timezone)) =
-                    get_user_timezone(&db, user_id).await
-                {
-                    let mut next_reminder = None;
-                    if let Some(ref serialized) = reminder.pattern {
-                        let mut pattern: Pattern =
-                            from_str(serialized).unwrap();
-                        let lower_bound = max(reminder.time, now_time());
-                        if let Some(next_time) = pattern.next(lower_bound) {
-                            next_reminder = Some(reminder::Model {
-                                time: next_time,
-                                pattern: to_string(&pattern).ok(),
-                                ..reminder.clone()
-                            });
-                        }
+async fn process_due_reminders(db: &Database, bot: &Bot) {
+    let reminders = db
+        .get_active_reminders()
+        .await
+        .expect("Failed to get reminders from database");
+    for reminder in reminders {
+        if let Some(user_id) = reminder.user_id.map(|x| UserId(x as u64)) {
+            if let Ok(Some(user_timezone)) =
+                get_user_timezone(db, user_id).await
+            {
+                let mut next_reminder = None;
+                if let Some(ref serialized) = reminder.pattern {
+                    let mut pattern: Pattern = from_str(serialized).unwrap();
+                    let lower_bound = max(reminder.time, now_time());
+                    if let Some(next_time) = pattern.next(lower_bound) {
+                        next_reminder = Some(reminder::Model {
+                            time: next_time,
+                            pattern: to_string(&pattern).ok(),
+                            ..reminder.clone()
+                        });
                     }
-                    if send_reminder(&reminder, user_timezone, &bot)
-                        .await
-                        .is_ok()
-                    {
-                        db.delete_reminder(reminder.id).await.unwrap_or_else(
-                            |err| {
+                }
+                if send_reminder(&reminder, user_timezone, bot).await.is_ok() {
+                    db.delete_reminder(reminder.id).await.unwrap_or_else(
+                        |err| {
+                            log::error!("{}", err);
+                        },
+                    );
+                    if let Some(next_reminder) = next_reminder {
+                        let mut next_reminder: reminder::ActiveModel =
+                            next_reminder.into();
+                        next_reminder.id = NotSet;
+                        db.insert_reminder(next_reminder)
+                            .await
+                            .map(|_| ())
+                            .unwrap_or_else(|err| {
                                 log::error!("{}", err);
-                            },
-                        );
-                        if let Some(next_reminder) = next_reminder {
-                            let mut next_reminder: reminder::ActiveModel =
-                                next_reminder.into();
-                            next_reminder.id = NotSet;
-                            db.insert_reminder(next_reminder)
+                            });
+                    }
+                }
+            }
+        }
+    }
+    let cron_reminders = db
+        .get_active_cron_reminders()
+        .await
+        .expect("Failed to get cron reminders from database");
+    for cron_reminder in cron_reminders {
+        if let Some(user_id) = cron_reminder.user_id.map(|x| UserId(x as u64)) {
+            if let Ok(Some(user_timezone)) =
+                get_user_timezone(db, user_id).await
+            {
+                let new_time = parse_cron(
+                    &cron_reminder.cron_expr,
+                    &Utc::now().with_timezone(&user_timezone),
+                )
+                .map(|user_time| user_time.with_timezone(&Utc));
+                let new_cron_reminder = match new_time {
+                    Ok(new_time) => Some(cron_reminder::Model {
+                        time: new_time.naive_utc(),
+                        ..cron_reminder.clone()
+                    }),
+                    Err(err) => {
+                        log::error!("{}", err);
+                        None
+                    }
+                };
+                match send_cron_reminder(
+                    &cron_reminder,
+                    new_cron_reminder.as_ref(),
+                    user_timezone,
+                    bot,
+                )
+                .await
+                {
+                    Ok(()) => {
+                        db.delete_cron_reminder(cron_reminder.id)
+                            .await
+                            .unwrap_or_else(|err| {
+                                log::error!("{}", err);
+                            });
+                        if let Some(new_cron_reminder) = new_cron_reminder {
+                            let mut new_cron_reminder: cron_reminder::ActiveModel = new_cron_reminder.into();
+                            new_cron_reminder.id = NotSet;
+                            db.insert_cron_reminder(new_cron_reminder)
                                 .await
                                 .map(|_| ())
                                 .unwrap_or_else(|err| {
@@ -100,68 +144,52 @@ async fn poll_reminders(db: Arc<Database>, bot: Bot) {
                                 });
                         }
                     }
-                }
-            }
-        }
-        let cron_reminders = db
-            .get_active_cron_reminders()
-            .await
-            .expect("Failed to get cron reminders from database");
-        for cron_reminder in cron_reminders {
-            if let Some(user_id) =
-                cron_reminder.user_id.map(|x| UserId(x as u64))
-            {
-                if let Ok(Some(user_timezone)) =
-                    get_user_timezone(&db, user_id).await
-                {
-                    let new_time = parse_cron(
-                        &cron_reminder.cron_expr,
-                        &Utc::now().with_timezone(&user_timezone),
-                    )
-                    .map(|user_time| user_time.with_timezone(&Utc));
-                    let new_cron_reminder = match new_time {
-                        Ok(new_time) => Some(cron_reminder::Model {
-                            time: new_time.naive_utc(),
-                            ..cron_reminder.clone()
-                        }),
-                        Err(err) => {
-                            log::error!("{}", err);
-                            None
-                        }
-                    };
-                    match send_cron_reminder(
-                        &cron_reminder,
-                        new_cron_reminder.as_ref(),
-                        user_timezone,
-                        &bot,
-                    )
-                    .await
-                    {
-                        Ok(()) => {
-                            db.delete_cron_reminder(cron_reminder.id)
-                                .await
-                                .unwrap_or_else(|err| {
-                                    log::error!("{}", err);
-                                });
-                            if let Some(new_cron_reminder) = new_cron_reminder {
-                                let mut new_cron_reminder: cron_reminder::ActiveModel = new_cron_reminder.into();
-                                new_cron_reminder.id = NotSet;
-                                db.insert_cron_reminder(new_cron_reminder)
-                                    .await
-                                    .map(|_| ())
-                                    .unwrap_or_else(|err| {
-                                        log::error!("{}", err);
-                                    });
-                            }
-                        }
-                        Err(err) => {
-                            log::error!("{}", err);
-                        }
+                    Err(err) => {
+                        log::error!("{}", err);
                     }
                 }
             }
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+async fn deadline_from_datetime(dt: NaiveDateTime) -> Instant {
+    let now = now_time();
+
+    let duration = (dt - now).max(TimeDelta::zero()).to_std().unwrap();
+    Instant::now() + duration
+}
+
+/// Periodically (every second) check for new reminders.
+/// Send and delete one-time reminders if time has come.
+/// Send cron reminders if time has come and update next reminder time.
+async fn poll_reminders(db: Arc<Database>, bot: Bot) {
+    const DEFAULT_CHECK_INTERVAL: TimeDelta = TimeDelta::seconds(60);
+
+    let next_deadline = tokio::time::sleep_until(Instant::now());
+    tokio::pin!(next_deadline);
+
+    let get_next_reminder_time = || async {
+        deadline_from_datetime(
+            db.get_next_reminder_time()
+                .await
+                .unwrap_or(None)
+                .unwrap_or(now_time() + DEFAULT_CHECK_INTERVAL),
+        )
+        .await
+    };
+
+    loop {
+        tokio::select! {
+            _ = db.listen() => {
+                next_deadline.as_mut().reset(get_next_reminder_time().await);
+            }
+            () = &mut next_deadline => {
+                process_due_reminders(&db, &bot).await;
+
+                next_deadline.as_mut().reset(get_next_reminder_time().await);
+            }
+        }
     }
 }
 
