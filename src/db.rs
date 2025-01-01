@@ -4,7 +4,8 @@ use crate::cli::CLI;
 use crate::entity::{cron_reminder, reminder, user_timezone};
 use crate::generic_reminder;
 use crate::migration::{DbErr, Migrator, MigratorTrait};
-use chrono::{NaiveDateTime, Utc};
+use crate::parsers::now_time;
+use chrono::NaiveDateTime;
 #[cfg(test)]
 use mockall::automock;
 use sea_orm::{
@@ -154,7 +155,7 @@ impl Database {
     ) -> Result<Vec<reminder::Model>, Error> {
         Ok(reminder::Entity::find()
             .filter(reminder::Column::Paused.eq(false))
-            .filter(reminder::Column::Time.lt(Utc::now().naive_utc()))
+            .filter(reminder::Column::Time.lt(now_time()))
             .all(&self.pool)
             .await?)
     }
@@ -286,7 +287,7 @@ impl Database {
     ) -> Result<Vec<cron_reminder::Model>, Error> {
         Ok(cron_reminder::Entity::find()
             .filter(cron_reminder::Column::Paused.eq(false))
-            .filter(cron_reminder::Column::Time.lt(Utc::now().naive_utc()))
+            .filter(cron_reminder::Column::Time.lt(now_time()))
             .all(&self.pool)
             .await?)
     }

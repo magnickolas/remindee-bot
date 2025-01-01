@@ -52,7 +52,7 @@ pub(crate) async fn parse_cron_reminder(
         None
     } else {
         let cron_expr = cron_fields.join(" ");
-        parse_cron(&cron_expr, &Utc::now().with_timezone(&user_timezone))
+        parse_cron(&cron_expr, &user_timezone.from_utc_datetime(&now_time()))
             .map(|time| cron_reminder::ActiveModel {
                 id: NotSet,
                 chat_id: Set(chat_id),

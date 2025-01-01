@@ -1,7 +1,7 @@
 use crate::entity::{cron_reminder, reminder};
+use crate::parsers::now_time;
 use crate::serializers::Pattern;
 use chrono::prelude::*;
-use chrono::Utc;
 use chrono_tz::Tz;
 use serde_json::from_str;
 use std::cmp::Ord;
@@ -31,7 +31,7 @@ pub(crate) trait GenericReminder {
     fn to_unescaped_string(&self, user_timezone: Tz) -> String;
     fn serialize_time_unescaped(&self, user_timezone: Tz) -> String {
         let time = user_timezone.from_utc_datetime(&self.get_time());
-        let now = Utc::now().with_timezone(&user_timezone);
+        let now = user_timezone.from_utc_datetime(&now_time());
         let mut s = String::new();
         if time.date_naive() != now.date_naive() {
             s += &format!("{:02}.{:02}", time.day(), time.month());

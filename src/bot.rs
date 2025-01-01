@@ -11,6 +11,7 @@ use crate::parsers::now_time;
 use crate::serializers::Pattern;
 use crate::tg::send_message;
 use crate::tz::get_user_timezone;
+use chrono::prelude::*;
 use chrono::{NaiveDateTime, TimeDelta, Utc};
 use chrono_tz::Tz;
 use cron_parser::parse as parse_cron;
@@ -106,7 +107,7 @@ async fn process_due_reminders(db: &Database, bot: &Bot) {
             {
                 let new_time = parse_cron(
                     &cron_reminder.cron_expr,
-                    &Utc::now().with_timezone(&user_timezone),
+                    &user_timezone.from_utc_datetime(&now_time()),
                 )
                 .map(|user_time| user_time.with_timezone(&Utc));
                 let new_cron_reminder = match new_time {
@@ -277,8 +278,8 @@ mod test {
             id: 1,
             chat_id: 1,
             time: NaiveDateTime::new(
-                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
-                NaiveTime::from_hms_opt(0, 1, 2).unwrap(),
+                NaiveDate::from_ymd_opt(2024, 2, 2).unwrap(),
+                NaiveTime::from_hms_opt(1, 2, 3).unwrap(),
             ),
             desc: "".to_owned(),
             user_id: None,
@@ -395,7 +396,12 @@ mod test {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_delete() {
+        *TEST_TIMESTAMP.write().unwrap() = mock_timezone()
+            .with_ymd_and_hms(2024, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
         let message = MockMessageText::new().text("/delete");
         let mut db = MockDatabase::new();
         let rem = basic_mock_reminder();
@@ -421,7 +427,7 @@ mod test {
                 markup: InlineKeyboardMarkup {
                     inline_keyboard: vec![
                         vec![InlineKeyboardButton {
-                            text: "01.01 01:01 <>".to_string(),
+                            text: "02.02 02:02 <>".to_string(),
                             kind: CallbackData(
                                 "delrem::rem_alt::1".to_string(),
                             ),
@@ -471,7 +477,7 @@ mod test {
                 markup: InlineKeyboardMarkup {
                     inline_keyboard: vec![
                         vec![InlineKeyboardButton {
-                            text: "01.01 01:01 <>".to_string(),
+                            text: "02.02 02:02 <>".to_string(),
                             kind: CallbackData(
                                 "delrem::rem_alt::1".to_string(),
                             ),
@@ -503,7 +509,12 @@ mod test {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_delete_still_one_page() {
+        *TEST_TIMESTAMP.write().unwrap() = mock_timezone()
+            .with_ymd_and_hms(2024, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
         const REMINDERS_COUNT: i64 = 45;
         let message = MockMessageText::new().text("/delete");
         let mut db = MockDatabase::new();
@@ -538,7 +549,7 @@ mod test {
         let mut page0_buttons = (1..=REMINDERS_COUNT)
             .map(|i| {
                 vec![InlineKeyboardButton {
-                    text: "01.01 01:01 <>".to_string().to_string(),
+                    text: "02.02 02:02 <>".to_string().to_string(),
                     kind: CallbackData(
                         format!("delrem::rem_alt::{}", i).to_string(),
                     ),
@@ -617,7 +628,12 @@ mod test {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_delete_two_pages() {
+        *TEST_TIMESTAMP.write().unwrap() = mock_timezone()
+            .with_ymd_and_hms(2024, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
         const REMINDERS_COUNT: i64 = 46;
         const PAGE_REMINDERS_COUNT: i64 = 45;
         let message = MockMessageText::new().text("/delete");
@@ -654,7 +670,7 @@ mod test {
         let mut page0_buttons = (1..=PAGE_REMINDERS_COUNT)
             .map(|i| {
                 vec![InlineKeyboardButton {
-                    text: format!("01.01 01:01 <{}>", i).to_string(),
+                    text: format!("02.02 02:02 <{}>", i).to_string(),
                     kind: CallbackData(
                         format!("delrem::rem_alt::{}", i).to_string(),
                     ),
@@ -668,7 +684,7 @@ mod test {
         let mut page1_buttons = (PAGE_REMINDERS_COUNT + 1..=REMINDERS_COUNT)
             .map(|i| {
                 vec![InlineKeyboardButton {
-                    text: format!("01.01 01:01 <{}>", i).to_string(),
+                    text: format!("02.02 02:02 <{}>", i).to_string(),
                     kind: CallbackData(
                         format!("delrem::rem_alt::{}", i).to_string(),
                     ),
@@ -797,7 +813,12 @@ mod test {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_pause() {
+        *TEST_TIMESTAMP.write().unwrap() = mock_timezone()
+            .with_ymd_and_hms(2024, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
         let mut db = MockDatabase::new();
         let tz = mock_timezone();
         db.expect_get_user_timezone_name()
@@ -831,7 +852,7 @@ mod test {
                     markup: InlineKeyboardMarkup {
                         inline_keyboard: vec![
                             vec![InlineKeyboardButton {
-                                text: "01.01 01:01 <>".to_string(),
+                                text: "02.02 02:02 <>".to_string(),
                                 kind: CallbackData(
                                     "pauserem::rem_alt::1".to_string(),
                                 ),
