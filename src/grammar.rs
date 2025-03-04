@@ -3,6 +3,8 @@ use nonempty::{nonempty, NonEmpty};
 
 use pest::{iterators::Pair, Parser};
 
+extern crate alloc;
+
 #[derive(Parser)]
 #[grammar = "grammars/reminder.pest"]
 struct ReminderParser;
