@@ -35,10 +35,23 @@ pub(crate) enum TgResponse {
     HelloGroup,
     EnterNewTimePattern,
     EnterNewDescription,
+    SelectLanguage,
+    ChosenLanguage(String),
+    FailedSetLanguage(String),
 }
 
 impl TgResponse {
-    pub(crate) fn to_unescaped_string(&self) -> String {
+    pub(crate) fn to_unescaped_string_lang(
+        &self,
+        lang: crate::lang::Language,
+    ) -> String {
+        match lang {
+            crate::lang::Language::English => self.to_unescaped_string_en(),
+            crate::lang::Language::Dutch => self.to_unescaped_string_nl(),
+        }
+    }
+
+    fn to_unescaped_string_en(&self) -> String {
         match self {
             Self::SuccessInsert(reminder_str) => format!("Added a reminder:\n{}", reminder_str),
             Self::SuccessPeriodicInsert(reminder_str) => format!("Added a periodic reminder:\n{}", reminder_str),
@@ -89,13 +102,64 @@ impl TgResponse {
             .to_owned(),
             Self::EnterNewTimePattern => "Enter a new time pattern for the reminder".to_owned(),
             Self::EnterNewDescription => "Enter a new description for the reminder".to_owned(),
+            Self::SelectLanguage => "Select your language:".to_owned(),
+            Self::ChosenLanguage(lang) => format!("Selected language {}.", lang),
+            Self::FailedSetLanguage(lang) => format!("Failed to set language {}", lang),
+        }
+    }
+
+    fn to_unescaped_string_nl(&self) -> String {
+        match self {
+            Self::SuccessInsert(reminder_str) => format!("Nieuwe herinnering toegevoegd:\n{}", reminder_str),
+            Self::SuccessPeriodicInsert(reminder_str) => format!("Periodieke herinnering toegevoegd:\n{}", reminder_str),
+            Self::FailedInsert => "Kon geen herinnering maken...".to_owned(),
+            Self::IncorrectRequest => "Ongeldige aanvraag!".to_owned(),
+            Self::QueryingError => "Fout bij het opvragen van herinneringen...".to_owned(),
+            Self::RemindersListHeader => "Lijst van herinneringen:".to_owned(),
+            Self::SelectTimezone => "Selecteer je tijdzone:".to_owned(),
+            Self::ChosenTimezone(tz_name) => format!(
+                "Gekozen tijdzone {}. Nu kun je herinneringen instellen.\n\nJe kunt de commando's die ik begrijp opvragen met /help.",
+                tz_name
+            ),
+            Self::FailedSetTimezone(tz_name) => format!("Kon tijdzone {} niet instellen", tz_name),
+            Self::ChooseDeleteReminder => "Kies een herinnering om te verwijderen:".to_owned(),
+            Self::SuccessDelete(reminder_str) => format!("🗑 Herinnering verwijderd: {}", reminder_str),
+            Self::FailedDelete => "Verwijderen mislukt...".to_owned(),
+            Self::ChooseEditReminder => "Kies een herinnering om te bewerken:".to_owned(),
+            Self::EnterNewReminder => "Voer de nieuwe herinnering in:".to_owned(),
+            Self::SuccessEdit(old_reminder_str, reminder_str) => format!("📝 Herinnering vervangen: {}\nmet ➡️ {}", old_reminder_str, reminder_str),
+            Self::FailedEdit => "Bewerken mislukt... Je kunt het opnieuw proberen of annuleren met /cancel".to_owned(),
+            Self::CancelEdit => "Bewerken geannuleerd".to_owned(),
+            Self::ChoosePauseReminder => "Kies een herinnering om te pauzeren/hervatten:".to_owned(),
+            Self::SuccessPause(reminder_str) => format!("⏸ Herinnering gepauzeerd: {}", reminder_str),
+            Self::SuccessResume(reminder_str) => format!("▶️ Herinnering hervat: {}", reminder_str),
+            Self::FailedPause => "Pauzeren mislukt...".to_owned(),
+            Self::Hello => concat!(
+                "Hallo! Ik ben remindee bot. Mijn doel is je te herinneren aan wat je maar wilt en wanneer je maar wilt.\n\n",
+                "Voorbeelden:\n17:30 ga naar restaurant => vandaag om 17:30\n",
+                "01.01 00:00 Gelukkig nieuwjaar => 1 januari om 00:00\n",
+                "55 10 * * 1-5 meeting call => om 10:55 elke werkdag (CRON-formaat)\n\n",
+                "Voordat we beginnen, stuur me je locatie 📍 of selecteer handmatig de tijdzone via het commando /settimezone."
+            ).to_owned(),
+            Self::HelloGroup => concat!(
+                "Hallo! Ik ben remindee bot. Mijn doel is jullie te herinneren aan wat je maar wilt en wanneer je maar wilt.\n\n",
+                "Voorbeelden:\n17:30 ga naar restaurant => vandaag om 17:30\n",
+                "01.01 00:00 Gelukkig nieuwjaar => 1 januari om 00:00\n",
+                "55 10 * * 1-5 meeting call => om 10:55 elke werkdag (CRON-formaat)\n\n",
+                "Voordat we beginnen, selecteer de tijdzone met het commando /settimezone."
+            ).to_owned(),
+            Self::EnterNewTimePattern => "Voer een nieuw tijdpatroon in voor de herinnering".to_owned(),
+            Self::EnterNewDescription => "Voer een nieuwe omschrijving in voor de herinnering".to_owned(),
+            Self::SelectLanguage => "Selecteer je taal:".to_owned(),
+            Self::ChosenLanguage(lang) => format!("Gekozen taal {}.", lang),
+            Self::FailedSetLanguage(lang) => format!("Kon taal {} niet instellen", lang),
         }
     }
 }
 
 impl Display for TgResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", escape(&self.to_unescaped_string()))
+        write!(f, "{}", escape(&self.to_unescaped_string_en()))
     }
 }
 

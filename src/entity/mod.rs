@@ -4,4 +4,5 @@ pub mod prelude;
 
 pub mod cron_reminder;
 pub mod reminder;
+pub mod user_language;
 pub mod user_timezone;

@@ -59,6 +59,8 @@ pub(crate) enum Command {
     SetTimezone,
     #[command(description = "show your timezone")]
     Timezone,
+    #[command(description = "bot settings")]
+    Settings,
     #[command(description = "show this text")]
     Help,
     #[command(description = "start")]
@@ -86,6 +88,7 @@ pub(crate) fn get_handler(
                 .branch(
                     case![Command::SetTimezone].endpoint(set_timezone_handler),
                 )
+                .branch(case![Command::Settings].endpoint(settings_handler))
                 .branch(
                     dptree::filter_map_async(get_user_timezone)
                         .branch(case![Command::List].endpoint(list_handler))
@@ -165,6 +168,12 @@ pub(crate) fn get_handler(
                     .endpoint(select_timezone_handler),
                 )
                 .branch(
+                    dptree::filter(|cb_data: String| {
+                        cb_data.starts_with("setlang::")
+                    })
+                    .endpoint(select_language_handler),
+                )
+                .branch(
                     dptree::filter_map_async(get_user_timezone)
                         .endpoint(callback_handler),
                 ),
@@ -181,7 +190,7 @@ async fn get_user_timezone(ctl: TgMessageController) -> Option<Tz> {
 async fn help_handler(
     ctl: TgMessageController,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    ctl.reply(Command::descriptions())
+    ctl.reply_text(&Command::descriptions().to_string())
         .await
         .map(|_| ())
         .map_err(From::from)
@@ -281,6 +290,12 @@ async fn set_timezone_handler(
     ctl.choose_timezone().await.map_err(From::from)
 }
 
+async fn settings_handler(
+    ctl: TgMessageController,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.choose_language().await.map_err(From::from)
+}
+
 async fn location_handler(
     ctl: TgMessageController,
     loc: Location,
@@ -366,6 +381,18 @@ async fn select_timezone_handler(
     }
 }
 
+async fn select_language_handler(
+    ctl: TgCallbackController,
+    cb_query: CallbackQuery,
+    cb_data: String,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if let Some(lang_name) = cb_data.strip_prefix("setlang::lang::") {
+        ctl.set_language(lang_name).await.map_err(From::from)
+    } else {
+        Err(Error::UnmatchedQuery(cb_query))?
+    }
+}
+
 async fn callback_handler(
     ctl: TgCallbackController,
     msg_ctl: TgMessageController,
@@ -384,6 +411,8 @@ async fn callback_handler(
             .map_err(From::from)
     } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
         ctl.set_timezone(tz_name).await.map_err(From::from)
+    } else if let Some(lang_name) = cb_data.strip_prefix("setlang::lang::") {
+        ctl.set_language(lang_name).await.map_err(From::from)
     } else if let Some(page_num) = cb_data
         .strip_prefix("delrem::page::")
         .and_then(|x| x.parse::<usize>().ok())

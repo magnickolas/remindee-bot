@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::cli::CLI;
-use crate::entity::{cron_reminder, reminder, user_timezone};
+use crate::entity::{cron_reminder, reminder, user_language, user_timezone};
 use crate::generic_reminder;
 use crate::migration::{DbErr, Migrator, MigratorTrait};
 use crate::parsers::now_time;
@@ -209,6 +209,49 @@ impl Database {
             tz_act.update(&self.pool).await?;
         } else {
             self.insert_user_timezone_name(user_id, timezone).await?;
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn get_user_language_name(
+        &self,
+        user_id: i64,
+    ) -> Result<Option<String>, Error> {
+        Ok(user_language::Entity::find_by_id(user_id)
+            .one(&self.pool)
+            .await?
+            .map(|x| x.language))
+    }
+
+    async fn insert_user_language_name(
+        &self,
+        user_id: i64,
+        language: &str,
+    ) -> Result<(), Error> {
+        defer!(self.notify.notify_one());
+        user_language::Entity::insert(user_language::ActiveModel {
+            user_id: Set(user_id),
+            language: Set(language.to_string()),
+        })
+        .exec(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn insert_or_update_user_language(
+        &self,
+        user_id: i64,
+        language: &str,
+    ) -> Result<(), Error> {
+        if let Some(mut lang_act) = user_language::Entity::find_by_id(user_id)
+            .one(&self.pool)
+            .await?
+            .map(Into::<user_language::ActiveModel>::into)
+        {
+            lang_act.language = Set(language.to_string());
+            lang_act.update(&self.pool).await?;
+        } else {
+            self.insert_user_language_name(user_id, language).await?;
         }
         Ok(())
     }

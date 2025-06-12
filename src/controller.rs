@@ -132,12 +132,30 @@ impl TgMessageController {
         ))
     }
 
-    pub(crate) async fn reply<R: ToString>(
+    pub(crate) async fn reply(
         &self,
-        response: R,
+        response: TgResponse,
     ) -> Result<Message, RequestError> {
-        tg::send_silent_message(&response.to_string(), &self.bot, self.chat_id)
+        use crate::lang::{get_user_language, Language};
+        let lang = get_user_language(&self.db, self.user_id)
             .await
+            .ok()
+            .flatten()
+            .unwrap_or(Language::English);
+        use teloxide::utils::markdown::escape;
+        tg::send_silent_message(
+            &escape(&response.to_unescaped_string_lang(lang)),
+            &self.bot,
+            self.chat_id,
+        )
+        .await
+    }
+
+    pub(crate) async fn reply_text(
+        &self,
+        text: &str,
+    ) -> Result<Message, RequestError> {
+        tg::send_silent_message(text, &self.bot, self.chat_id).await
     }
 
     pub(crate) async fn start(&self) -> Result<(), RequestError> {
@@ -165,14 +183,38 @@ impl TgMessageController {
                 TgResponse::QueryingError.to_string()
             }
         };
-        self.reply(&text).await.map(|_| ())
+        self.reply_text(&text).await.map(|_| ())
     }
 
     /// Send a markup with all timezones to select
     pub(crate) async fn choose_timezone(&self) -> Result<(), RequestError> {
+        use crate::lang::{get_user_language, Language};
+        let lang = get_user_language(&self.db, self.user_id)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(Language::English);
+        use teloxide::utils::markdown::escape;
         tg::send_markup(
-            &TgResponse::SelectTimezone.to_string(),
+            &escape(&TgResponse::SelectTimezone.to_unescaped_string_lang(lang)),
             self.get_markup_for_tz_page_idx(0),
+            &self.bot,
+            self.chat_id,
+        )
+        .await
+    }
+
+    pub(crate) async fn choose_language(&self) -> Result<(), RequestError> {
+        use crate::lang::{get_user_language, Language};
+        let lang = get_user_language(&self.db, self.user_id)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(Language::English);
+        use teloxide::utils::markdown::escape;
+        tg::send_markup(
+            &escape(&TgResponse::SelectLanguage.to_unescaped_string_lang(lang)),
+            self.get_markup_for_languages(),
             &self.bot,
             self.chat_id,
         )
@@ -195,8 +237,20 @@ impl TgMessageController {
         response: TgResponse,
         markup: InlineKeyboardMarkup,
     ) -> Result<(), RequestError> {
-        tg::send_markup(&response.to_string(), markup, &self.bot, self.chat_id)
+        use crate::lang::{get_user_language, Language};
+        let lang = get_user_language(&self.db, self.user_id)
             .await
+            .ok()
+            .flatten()
+            .unwrap_or(Language::English);
+        use teloxide::utils::markdown::escape;
+        tg::send_markup(
+            &escape(&response.to_unescaped_string_lang(lang)),
+            markup,
+            &self.bot,
+            self.chat_id,
+        )
+        .await
     }
 
     /// Send a markup to select a reminder for deleting
@@ -501,6 +555,23 @@ impl TgMessageController {
             ))
         }
         markup.append_row(move_buttons)
+    }
+
+    pub(crate) fn get_markup_for_languages(&self) -> InlineKeyboardMarkup {
+        let mut markup = InlineKeyboardMarkup::default();
+        let row: Vec<InlineKeyboardButton> = crate::lang::LANGUAGES
+            .iter()
+            .map(|(name, _)| {
+                InlineKeyboardButton::new(
+                    *name,
+                    InlineKeyboardButtonKind::CallbackData(format!(
+                        "setlang::lang::{}",
+                        name
+                    )),
+                )
+            })
+            .collect();
+        markup.append_row(row)
     }
 
     async fn get_markup_for_reminders_page_alteration(
@@ -845,6 +916,24 @@ impl TgMessageController {
         self.reply(response).await.map(|_| ())
     }
 
+    pub(crate) async fn set_language(
+        &self,
+        lang_name: &str,
+    ) -> Result<(), RequestError> {
+        let response = match self
+            .db
+            .insert_or_update_user_language(self.user_id.0 as i64, lang_name)
+            .await
+        {
+            Ok(()) => TgResponse::ChosenLanguage(lang_name.to_owned()),
+            Err(err) => {
+                log::error!("{}", err);
+                TgResponse::FailedSetLanguage(lang_name.to_owned())
+            }
+        };
+        self.reply(response).await.map(|_| ())
+    }
+
     async fn get_reminder_by_msg_id(
         &self,
         msg_id: MessageId,
@@ -976,6 +1065,14 @@ impl TgCallbackController {
         tz_name: &str,
     ) -> Result<(), RequestError> {
         self.msg_ctl.set_timezone(tz_name).await?;
+        self.acknowledge_callback().await
+    }
+
+    pub(crate) async fn set_language(
+        &self,
+        lang_name: &str,
+    ) -> Result<(), RequestError> {
+        self.msg_ctl.set_language(lang_name).await?;
         self.acknowledge_callback().await
     }
 
