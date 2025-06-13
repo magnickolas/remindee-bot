@@ -306,26 +306,20 @@ impl Database {
         &self,
         chat_id: i64,
     ) -> Result<Vec<Box<dyn generic_reminder::GenericReminder>>, Error> {
-        let reminders = self
-            .get_pending_chat_reminders(chat_id)
-            .await?
-            .into_iter()
-            .map(|x| -> Box<dyn generic_reminder::GenericReminder> {
-                Box::<reminder::ActiveModel>::new(x.into())
-            });
-        let cron_reminders = self
-            .get_pending_chat_cron_reminders(chat_id)
-            .await?
-            .into_iter()
-            .map(|x| -> Box<dyn generic_reminder::GenericReminder> {
-                Box::<cron_reminder::ActiveModel>::new(x.into())
-            });
+        let (reminders, cron_reminders) = tokio::try_join!(
+            self.get_pending_chat_reminders(chat_id),
+            self.get_pending_chat_cron_reminders(chat_id)
+        )?;
 
-        let mut all_reminders = vec![];
-        all_reminders.extend(reminders);
-        all_reminders.extend(cron_reminders);
-        all_reminders.sort_unstable();
-        Ok(all_reminders)
+        Ok(reminders
+            .into_iter()
+            .map(|m| Box::new(reminder::ActiveModel::from(m)) as _)
+            .chain(
+                cron_reminders.into_iter().map(|m| {
+                    Box::new(cron_reminder::ActiveModel::from(m)) as _
+                }),
+            )
+            .collect())
     }
 
     pub(crate) async fn get_reminder_by_msg_id(
