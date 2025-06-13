@@ -270,6 +270,7 @@ mod test {
     use teloxide_tests::{
         IntoUpdate, MockBot, MockCallbackQuery, MockMessageText,
     };
+    use teloxide_tests::mock_bot::DistributionKey;
 
     use super::State;
 
@@ -302,11 +303,14 @@ mod test {
         InMemStorage::<State>::new()
     }
 
-    fn mock_bot<T>(db: MockDatabase, update: T) -> MockBot
+    fn mock_bot<T>(
+        db: MockDatabase,
+        update: T,
+    ) -> MockBot<Box<dyn std::error::Error + Send + Sync>, DistributionKey>
     where
         T: IntoUpdate,
     {
-        let bot = MockBot::new(update, get_handler());
+        let mut bot = MockBot::new(update, get_handler());
         bot.dependencies(deps![mock_storage(), Arc::new(db)]);
         bot
     }
@@ -315,7 +319,7 @@ mod test {
     async fn test_help() {
         let message = MockMessageText::new().text("/help");
         let db = MockDatabase::new();
-        let bot = mock_bot(db, message);
+        let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(&Command::descriptions().to_string())
             .await;
     }
@@ -324,7 +328,7 @@ mod test {
     async fn test_start() {
         let message = MockMessageText::new().text("/start");
         let db = MockDatabase::new();
-        let bot = mock_bot(db, message);
+        let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(&TgResponse::Hello.to_string())
             .await;
     }
@@ -334,7 +338,7 @@ mod test {
         let mut message = MockMessageText::new().text("/start");
         message.chat.id.0 = -1;
         let db = MockDatabase::new();
-        let bot = mock_bot(db, message);
+        let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(&TgResponse::HelloGroup.to_string())
             .await;
     }
@@ -345,7 +349,7 @@ mod test {
         let mut db = MockDatabase::new();
         db.expect_get_user_timezone_name()
             .returning(|_| Ok(Some(mock_timezone_name())));
-        let bot = mock_bot(db, message);
+        let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
             &TgResponse::ChosenTimezone(mock_timezone_name()).to_string(),
         )
@@ -356,7 +360,7 @@ mod test {
     async fn test_set_timezone() {
         let message = MockMessageText::new().text("/settimezone");
         let db = MockDatabase::new();
-        let bot = mock_bot(db, message);
+        let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
             &TgResponse::SelectTimezone.to_string(),
         )
@@ -374,26 +378,31 @@ mod test {
         markup: InlineKeyboardMarkup,
     }
 
-    impl From<MockMarkup> for MessageKind {
-        fn from(val: MockMarkup) -> Self {
-            MessageKind::Common(MessageCommon {
-                author_signature: None,
-                forward_origin: None,
-                reply_to_message: None,
-                external_reply: None,
-                quote: None,
-                edit_date: None,
-                media_kind: Text(MediaText {
-                    text: val.media_text,
-                    entities: vec![],
-                    link_preview_options: None,
-                }),
-                reply_markup: Some(val.markup),
-                is_automatic_forward: false,
-                has_protected_content: false,
-            })
+        impl From<MockMarkup> for MessageKind {
+            fn from(val: MockMarkup) -> Self {
+                MessageKind::Common(MessageCommon {
+                    author_signature: None,
+                    effect_id: None,
+                    forward_origin: None,
+                    reply_to_message: None,
+                    external_reply: None,
+                    quote: None,
+                    reply_to_story: None,
+                    sender_boost_count: None,
+                    edit_date: None,
+                    media_kind: Text(MediaText {
+                        text: val.media_text,
+                        entities: vec![],
+                        link_preview_options: None,
+                    }),
+                    reply_markup: Some(val.markup),
+                    is_automatic_forward: false,
+                    has_protected_content: false,
+                    is_from_offline: false,
+                    business_connection_id: None,
+                })
+            }
         }
-    }
 
     #[tokio::test]
     #[serial]
@@ -418,7 +427,7 @@ mod test {
         db.expect_delete_reminder()
             .with(eq(rem.id))
             .returning(move |_| Ok(()));
-        let bot = mock_bot(db, message);
+        let mut bot = mock_bot(db, message);
         bot.dispatch().await;
         assert_eq!(
             resp!(bot, sent_messages, kind),
@@ -544,7 +553,7 @@ mod test {
                 .with(eq(rem.id))
                 .returning(move |_| Ok(()));
         }
-        let bot = mock_bot(db, message);
+        let mut bot = mock_bot(db, message);
         bot.dispatch().await;
         let mut page0_buttons = (1..=REMINDERS_COUNT)
             .map(|i| {
@@ -665,7 +674,7 @@ mod test {
                 .with(eq(rem.id))
                 .returning(move |_| Ok(()));
         }
-        let bot = mock_bot(db, message);
+        let mut bot = mock_bot(db, message);
         bot.dispatch().await;
         let mut page0_buttons = (1..=PAGE_REMINDERS_COUNT)
             .map(|i| {
@@ -770,7 +779,7 @@ mod test {
         let mut db = MockDatabase::new();
         db.expect_get_user_timezone_name().returning(|_| Ok(None));
         let message = MockMessageText::new().text("/list");
-        let bot = mock_bot(db, message);
+        let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
             &TgResponse::SelectTimezone.to_string(),
         )
@@ -784,7 +793,7 @@ mod test {
             .returning(|_| Ok(Some(mock_timezone_name())));
         db.expect_get_sorted_reminders().returning(|_| Ok(vec![]));
         let message = MockMessageText::new().text("/list");
-        let bot = mock_bot(db, message);
+        let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
             &TgResponse::RemindersListHeader.to_string(),
         )
@@ -803,7 +812,7 @@ mod test {
             Ok(vec![Box::new(rem_clone.clone().into_active_model())])
         });
         let message = MockMessageText::new().text("/list");
-        let bot = mock_bot(db, message);
+        let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(&format!(
             "{}\n{}",
             TgResponse::RemindersListHeader,
@@ -841,7 +850,7 @@ mod test {
             Ok(vec![Box::new(rem_clone.clone().into_active_model())])
         });
         let message = MockMessageText::new().text("/pause");
-        let bot = mock_bot(db, message);
+        let mut bot = mock_bot(db, message);
 
         bot.dispatch().await;
         assert_eq!(
@@ -914,7 +923,7 @@ mod test {
         db.expect_insert_reminder()
             .returning(move |_| Ok(rem_clone.clone().into()));
         db.expect_set_reminder_reply_id().returning(|_, _| Ok(()));
-        let bot = mock_bot(db, message);
+        let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
             &TgResponse::SuccessInsert(
                 rem.into_active_model().to_unescaped_string(tz),
