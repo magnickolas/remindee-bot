@@ -95,18 +95,6 @@ jobs:
           mv ${{ env.BINARY_PATH }} ${{ env.STAGING }}/
           zip -r ${{ env.STAGING }}.zip ${{ env.STAGING }}/
 
-      - name: Store notarize credentials
-        if: ${{ matrix.is_macos }}
-        env:
-          AC_USERNAME: ${{ secrets.AC_USERNAME }}
-          AC_PASSWORD: ${{ secrets.AC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: xcrun notarytool store-credentials "notarytool-profile" --apple-id "$AC_USERNAME" --team-id "$APPLE_TEAM_ID" --password "$AC_PASSWORD"
-
-      - name: Notarize the workflow
-        if: ${{ matrix.is_macos }}
-        run: xcrun notarytool submit ${{ env.STAGING }}.zip --keychain-profile "notarytool-profile" --wait
-
       - name: Upload tar.gz archive
         if: ${{ ! matrix.zip_archive }}
         uses: actions/upload-artifact@v4
