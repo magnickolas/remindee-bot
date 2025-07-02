@@ -109,14 +109,14 @@ jobs:
 
       - name: Upload tar.gz archive
         if: ${{ ! matrix.zip_archive }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.STAGING }}
           path: ${{ env.STAGING }}.tar.gz
 
       - name: Upload zip archive
         if: ${{ matrix.zip_archive }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.STAGING }}
           path: ${{ env.STAGING }}.zip
@@ -132,19 +132,19 @@ jobs:
     env:
       PREFIX: remindee-bot-${{ needs.init-release.outputs.release-version }}
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: ${{ env.PREFIX }}-${{ matrix.targets[0] }}
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: ${{ env.PREFIX }}-${{ matrix.targets[1] }}
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: ${{ env.PREFIX }}-${{ matrix.targets[2] }}
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: ${{ env.PREFIX }}-${{ matrix.targets[3] }}
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: ${{ env.PREFIX }}-${{ matrix.targets[4] }}
 
