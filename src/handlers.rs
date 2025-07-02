@@ -43,7 +43,7 @@ type MyDialogue = Dialogue<State, MyStorage>;
 #[derive(BotCommands, Clone)]
 #[command(description = "Commands:", rename_rule = "lowercase")]
 pub(crate) enum Command {
-    #[command(description = "list the set reminders")]
+    #[command(description = "show the set reminders")]
     List,
     #[command(description = "choose reminders to delete")]
     Delete,
@@ -59,9 +59,11 @@ pub(crate) enum Command {
     SetTimezone,
     #[command(description = "show your timezone")]
     Timezone,
+    #[command(description = "bot settings")]
+    Settings,
     #[command(description = "show this text")]
     Help,
-    #[command(description = "start")]
+    #[command(description = "show the greeting message")]
     Start,
 }
 
@@ -86,6 +88,7 @@ pub(crate) fn get_handler(
                 .branch(
                     case![Command::SetTimezone].endpoint(set_timezone_handler),
                 )
+                .branch(case![Command::Settings].endpoint(settings_handler))
                 .branch(
                     dptree::filter_map_async(get_user_timezone)
                         .branch(case![Command::List].endpoint(list_handler))
@@ -165,6 +168,18 @@ pub(crate) fn get_handler(
                     .endpoint(select_timezone_handler),
                 )
                 .branch(
+                    dptree::filter(|cb_data: String| {
+                        cb_data.starts_with("setlang::")
+                    })
+                    .endpoint(select_language_handler),
+                )
+                .branch(
+                    dptree::filter(|cb_data: String| {
+                        cb_data.starts_with("settings::")
+                    })
+                    .endpoint(settings_menu_handler),
+                )
+                .branch(
                     dptree::filter_map_async(get_user_timezone)
                         .endpoint(callback_handler),
                 ),
@@ -181,10 +196,7 @@ async fn get_user_timezone(ctl: TgMessageController) -> Option<Tz> {
 async fn help_handler(
     ctl: TgMessageController,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    ctl.reply(Command::descriptions())
-        .await
-        .map(|_| ())
-        .map_err(From::from)
+    ctl.help().await.map_err(From::from)
 }
 
 async fn start_handler(
@@ -232,6 +244,7 @@ async fn cancel_handler(
     dialogue: MyDialogue,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     ctl.cancel_edit().await?;
+    #[allow(clippy::useless_conversion)]
     dialogue.update(State::Default).await.map_err(From::from)
 }
 
@@ -281,6 +294,12 @@ async fn set_timezone_handler(
     ctl.choose_timezone().await.map_err(From::from)
 }
 
+async fn settings_handler(
+    ctl: TgMessageController,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ctl.choose_settings().await.map_err(From::from)
+}
+
 async fn location_handler(
     ctl: TgMessageController,
     loc: Location,
@@ -319,6 +338,7 @@ async fn edit_message_handler(
             .await?
         }
     }
+    #[allow(clippy::useless_conversion)]
     dialogue.update(State::Default).await.map_err(From::from)
 }
 
@@ -331,6 +351,7 @@ async fn edit_cron_message_handler(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     ctl.edit_reminder(ReminderUpdate::CronReminder(cron_rem_id, text), user_tz)
         .await?;
+    #[allow(clippy::useless_conversion)]
     dialogue.update(State::Default).await.map_err(From::from)
 }
 
@@ -362,7 +383,32 @@ async fn select_timezone_handler(
     } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
         ctl.set_timezone(tz_name).await.map_err(From::from)
     } else {
-        Err(Error::UnmatchedQuery(cb_query))?
+        Err(Error::UnmatchedQuery(Box::new(cb_query)))?
+    }
+}
+
+async fn select_language_handler(
+    ctl: TgCallbackController,
+    cb_query: CallbackQuery,
+    cb_data: String,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if let Some(lang_code) = cb_data.strip_prefix("setlang::lang::") {
+        ctl.set_language(lang_code).await.map_err(From::from)
+    } else {
+        Err(Error::UnmatchedQuery(Box::new(cb_query)))?
+    }
+}
+
+async fn settings_menu_handler(
+    ctl: TgCallbackController,
+    cb_query: CallbackQuery,
+    cb_data: String,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if cb_data == "settings::change_lang" {
+        ctl.msg_ctl.choose_language().await?;
+        ctl.acknowledge_callback().await.map_err(From::from)
+    } else {
+        Err(Error::UnmatchedQuery(Box::new(cb_query)))?
     }
 }
 
@@ -384,6 +430,11 @@ async fn callback_handler(
             .map_err(From::from)
     } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
         ctl.set_timezone(tz_name).await.map_err(From::from)
+    } else if cb_data == "settings::change_lang" {
+        ctl.msg_ctl.choose_language().await?;
+        ctl.acknowledge_callback().await.map_err(From::from)
+    } else if let Some(lang_code) = cb_data.strip_prefix("setlang::lang::") {
+        ctl.set_language(lang_code).await.map_err(From::from)
     } else if let Some(page_num) = cb_data
         .strip_prefix("delrem::page::")
         .and_then(|x| x.parse::<usize>().ok())
@@ -426,6 +477,7 @@ async fn callback_handler(
         .and_then(|x| x.parse::<i64>().ok())
     {
         ctl.edit_cron_reminder().await?;
+        #[allow(clippy::useless_conversion)]
         dialogue
             .update(State::EditCron { id: cron_rem_id })
             .await
@@ -457,6 +509,7 @@ async fn callback_handler(
         .and_then(|x| x.parse::<i64>().ok())
     {
         ctl.set_edit_mode_reminder(EditMode::TimePattern).await?;
+        #[allow(clippy::useless_conversion)]
         dialogue
             .update(State::Edit {
                 id: rem_id,
@@ -469,6 +522,7 @@ async fn callback_handler(
         .and_then(|x| x.parse::<i64>().ok())
     {
         ctl.set_edit_mode_reminder(EditMode::Description).await?;
+        #[allow(clippy::useless_conversion)]
         dialogue
             .update(State::Edit {
                 id: rem_id,
@@ -477,6 +531,6 @@ async fn callback_handler(
             .await
             .map_err(From::from)
     } else {
-        Err(Error::UnmatchedQuery(cb_query))?
+        Err(Error::UnmatchedQuery(Box::new(cb_query)))?
     }
 }

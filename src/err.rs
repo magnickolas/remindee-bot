@@ -7,7 +7,7 @@ pub(crate) enum Error {
     Parse(chrono_tz::ParseError),
     CronParse(cron_parser::ParseError),
     TeloxideRequest(teloxide::RequestError),
-    UnmatchedQuery(teloxide::types::CallbackQuery),
+    UnmatchedQuery(Box<teloxide::types::CallbackQuery>),
     ReminderNotFound(i64),
     CronReminderNotFound(i64),
 }
@@ -15,20 +15,20 @@ pub(crate) enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Self::Database(ref err) => write!(f, "Database error: {}", err),
-            Self::Parse(ref err) => write!(f, "Parse error: {}", err),
-            Self::CronParse(ref err) => write!(f, "Cron parse error: {}", err),
+            Self::Database(ref err) => write!(f, "Database error: {err}"),
+            Self::Parse(ref err) => write!(f, "Parse error: {err}"),
+            Self::CronParse(ref err) => write!(f, "Cron parse error: {err}"),
             Self::TeloxideRequest(ref err) => {
-                write!(f, "Telegram request error: {}", err)
+                write!(f, "Telegram request error: {err}")
             }
             Self::UnmatchedQuery(ref cb_query) => {
-                write!(f, "Could not match callback query: {:?}", cb_query)
+                write!(f, "Could not match callback query: {cb_query:?}")
             }
             Self::ReminderNotFound(rem_id) => {
-                write!(f, "Reminder with id {} not found", rem_id)
+                write!(f, "Reminder with id {rem_id} not found")
             }
             Self::CronReminderNotFound(cron_rem_id) => {
-                write!(f, "Cron reminder with id {} not found", cron_rem_id)
+                write!(f, "Cron reminder with id {cron_rem_id} not found")
             }
         }
     }

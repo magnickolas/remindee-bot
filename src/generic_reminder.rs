@@ -78,13 +78,13 @@ impl GenericReminder for reminder::ActiveModel {
                 let pattern: Pattern = from_str(s).unwrap();
                 match pattern.to_string().as_str() {
                     "" => main_part,
-                    s => format!(r"{} [{}]", main_part, s),
+                    s => format!(r"{main_part} [{s}]"),
                 }
             }
             None => main_part,
         };
         if self.paused.clone().unwrap() {
-            format!("⏸ {}", s)
+            format!("⏸ {s}")
         } else {
             s
         }
@@ -107,7 +107,7 @@ impl GenericReminder for reminder::ActiveModel {
             None => main_part,
         };
         if self.paused.clone().unwrap() {
-            format!("⏸ {}", s)
+            format!("⏸ {s}")
         } else {
             s
         }
@@ -147,7 +147,7 @@ impl GenericReminder for cron_reminder::ActiveModel {
             self.cron_expr.clone().unwrap()
         );
         if self.paused.clone().unwrap() {
-            format!("⏸ {}", s)
+            format!("⏸ {s}")
         } else {
             s
         }
@@ -161,7 +161,7 @@ impl GenericReminder for cron_reminder::ActiveModel {
             escape(&self.cron_expr.clone().unwrap())
         );
         if self.paused.clone().unwrap() {
-            format!("⏸ {}", s)
+            format!("⏸ {s}")
         } else {
             s
         }

@@ -16,6 +16,7 @@ mod m20241113_200129_add_msg_id_indexes;
 mod m20241114_105214_create_reply_id_columns;
 mod m20241114_105217_add_reply_id_indexes;
 mod m20241217_154950_remove_edit_columns;
+mod m20250618_171311_create_user_language_table;
 
 pub struct Migrator;
 
@@ -43,6 +44,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20241114_105214_create_reply_id_columns::Migration),
             Box::new(m20241114_105217_add_reply_id_indexes::Migration),
             Box::new(m20241217_154950_remove_edit_columns::Migration),
+            Box::new(m20250618_171311_create_user_language_table::Migration),
         ]
     }
 }

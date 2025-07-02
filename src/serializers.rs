@@ -623,8 +623,8 @@ impl Pattern {
 impl std::fmt::Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Recurrence(recurrence) => write!(f, "{}", recurrence),
-            Self::Countdown(countdown) => write!(f, "{}", countdown),
+            Self::Recurrence(recurrence) => write!(f, "{recurrence}"),
+            Self::Countdown(countdown) => write!(f, "{countdown}"),
         }
     }
 }
@@ -653,7 +653,7 @@ impl std::fmt::Display for Recurrence {
             if i != 0 {
                 write!(f, ",")?;
             }
-            write!(f, "{}", time_pattern)?;
+            write!(f, "{time_pattern}")?;
         }
         Ok(())
     }
@@ -665,7 +665,7 @@ impl std::fmt::Display for Countdown {
             if i != 0 {
                 write!(f, ",")?;
             }
-            write!(f, "{}", interval)?;
+            write!(f, "{interval}")?;
         }
         Ok(())
     }
@@ -794,7 +794,7 @@ impl std::fmt::Display for Weekdays {
             if i != 0 {
                 write!(f, ",")?;
             }
-            write!(f, "{}", weekday)?;
+            write!(f, "{weekday}")?;
         }
         Ok(())
     }

@@ -1,0 +1,68 @@
+_version: 1
+SuccessInsert: "Herinnering toegevoegd:\n%{reminder}"
+SuccessPeriodicInsert: "Periodieke herinnering toegevoegd:\n%{reminder}"
+FailedInsert: "⚠️ Kon herinnering niet aanmaken."
+IncorrectRequest: "Ongeldig verzoek!"
+QueryingError: "⚠️ Fout bij het ophalen van herinneringen."
+RemindersList: |
+  Herinneringen:
+  %{reminders}
+SelectTimezone: "Selecteer je tijdzone:"
+ChosenTimezone: |
+  Tijdzone %{tz} is ingesteld. Je kunt nu herinneringen instellen.
+
+  Met /help kun je zien welke commando's ik begrijp.
+FailedSetTimezone: "⚠️ Kon tijdzone %{tz} niet instellen."
+ChooseDeleteReminder: "Kies een herinnering om te verwijderen:"
+SuccessDelete: "🗑 Herinnering verwijderd: %{reminder}"
+FailedDelete: "⚠️ Verwijderen is mislukt."
+ChooseEditReminder: "Kies een herinnering om te bewerken:"
+EnterNewReminder: "Voer de nieuwe herinnering in:"
+SuccessEdit: |
+  📝 Herinnering gewijzigd van: %{old}
+  naar ➡️ %{new}
+FailedEdit: "⚠️ Bewerken mislukt. Je kunt het opnieuw proberen of annuleren met /cancel"
+CancelEdit: "Bewerken geannuleerd"
+ChoosePauseReminder: "Kies een herinnering om te pauzeren of hervatten:"
+SuccessPause: "⏸ Herinnering gepauzeerd: %{reminder}"
+SuccessResume: "▶️ Herinnering hervat: %{reminder}"
+FailedPause: "⚠️ Pauzeren mislukt."
+Hello: |
+  Hallo! Ik ben remindee bot. Mijn doel is om je te herinneren aan wat je maar wilt, wanneer je maar wilt.
+
+  Voorbeelden:
+  17:30 ga naar restaurant => vandaag om 17:30
+  01.01 00:00 Gelukkig nieuwjaar => 1 januari om 00:00
+  55 10 * * 1-5 vergadering => om 10:55 elke werkdag (CRON-formaat)
+
+  Stuur me eerst je locatie 📍 of stel je tijdzone handmatig in met /settimezone.
+HelloGroup: |
+  Hallo! Ik ben remindee bot. Mijn doel is jullie te herinneren aan wat jullie maar willen, wanneer jullie maar willen.
+
+  Voorbeelden:
+  17:30 ga naar restaurant => vandaag om 17:30
+  01.01 00:00 Gelukkig nieuwjaar => 1 januari om 00:00
+  55 10 * * 1-5 vergadering => om 10:55 elke werkdag (CRON-formaat)
+
+  Stel eerst de tijdpatroon in met /settimezone.
+EnterNewTimePattern: "Voer een nieuw tijdschema voor de herinnering in:"
+EnterNewDescription: "Voer een nieuwe omschrijving voor de herinnering in:"
+SettingsMenu: "Instellingen:"
+SelectLanguage: "Selecteer je taal:"
+ChosenLanguage: "Nederlands geselecteerd."
+FailedSetLanguage: "⚠️ Kon taal %{lang} niet instellen."
+Help: |
+  Commando's:
+
+  /list — toon alle ingestelde herinneringen
+  /delete — verwijder geselecteerde herinneringen
+  /edit — bewerk geselecteerde herinneringen
+  /cancel — annuleer het bewerken
+  /pause — pauzeer geselecteerde herinneringen
+  /set — stel een nieuwe herinnering in
+  /settimezone — stel je tijdzone in
+  /timezone — toon je huidige tijdzone
+  /start — welkomstbericht tonen
+TimePattern: "Tijdschema"
+Description: "Omschrijving"
+ChangeLanguage: "Taal wijzigen"

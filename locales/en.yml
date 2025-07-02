@@ -1,0 +1,68 @@
+_version: 1
+SuccessInsert: "Added a reminder:\n%{reminder}"
+SuccessPeriodicInsert: "Added a periodic reminder:\n%{reminder}"
+FailedInsert: "⚠️ Failed to create a reminder."
+IncorrectRequest: "Incorrect request!"
+QueryingError: "⚠️ Failed to query reminders."
+RemindersList: |
+  Reminders:
+  %{reminders}
+SelectTimezone: "Select your timezone:"
+ChosenTimezone: |
+  The timezone %{tz} is set. Now you can create reminders.
+
+  You can see which commands I understand with /help.
+FailedSetTimezone: "⚠️ Failed to set timezone %{tz}."
+ChooseDeleteReminder: "Choose a reminder to delete:"
+SuccessDelete: "🗑 Deleted a reminder: %{reminder}"
+FailedDelete: "⚠️ Failed to delete."
+ChooseEditReminder: "Choose a reminder to edit:"
+EnterNewReminder: "Enter reminder to replace with:"
+SuccessEdit: |
+  📝 Replaced a reminder: %{old}
+  with ➡️ %{new}
+FailedEdit: "⚠️ Failed to edit. You can try again or cancel editing with /cancel"
+CancelEdit: "Canceled editing"
+ChoosePauseReminder: "Choose a reminder to pause or resume:"
+SuccessPause: "⏸ Paused a reminder: %{reminder}"
+SuccessResume: "▶️ Resumed a reminder: %{reminder}"
+FailedPause: "⚠️ Failed to pause."
+Hello: |
+  Hello! I'm remindee bot. My purpose is to remind you of whatever you ask and whenever you ask.
+
+  Examples:
+  17:30 go to restaurant => notify today at 5:30 PM
+  01.01 00:00 Happy New Year => notify at 1st of January at 12 AM
+  55 10 * * 1-5 meeting call => notify at 10:55 AM every weekday (CRON expression format)
+
+  Before we start, please either send me your location 📍 or manually select the timezone using the /settimezone command first.
+HelloGroup: |
+  Hello! I'm remindee bot. My purpose is to remind you of whatever you ask and whenever you ask.
+
+  Examples:
+  17:30 go to restaurant => notify today at 5:30 PM
+  01.01 00:00 Happy New Year => notify at 1st of January at 12 AM
+  55 10 * * 1-5 meeting call => notify at 10:55 AM every weekday (CRON expression format)
+
+  Before we start, please select the timezone using the /settimezone command first.
+EnterNewTimePattern: "Enter a new time pattern for the reminder:"
+EnterNewDescription: "Enter a new description for the reminder:"
+SettingsMenu: "Settings:"
+SelectLanguage: "Select your language:"
+ChosenLanguage: "English language selected."
+FailedSetLanguage: "⚠️ Failed to set language %{lang}."
+Help: |
+  Commands:
+
+  /list — show the set reminders
+  /delete — choose reminders to delete
+  /edit — choose reminders to edit
+  /cancel — cancel editing
+  /pause — choose reminders to pause
+  /set — set a new reminder
+  /settimezone — select a timezone
+  /timezone — show your timezone
+  /start — show the greeting message
+TimePattern: "Time pattern"
+Description: "Description"
+ChangeLanguage: "Change language"

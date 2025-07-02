@@ -4,6 +4,10 @@ extern crate pest;
 extern crate pretty_env_logger;
 #[macro_use]
 extern crate pest_derive;
+#[macro_use]
+extern crate rust_i18n;
+
+i18n!("locales", fallback = "en");
 
 mod bot;
 mod cli;
@@ -16,6 +20,7 @@ mod format;
 mod generic_reminder;
 mod grammar;
 mod handlers;
+mod lang;
 mod migration;
 mod parsers;
 mod serializers;

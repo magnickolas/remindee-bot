@@ -7,6 +7,8 @@ use crate::db::Database;
 #[cfg(test)]
 use crate::db::MockDatabase as Database;
 use crate::err::Error;
+use crate::lang::get_user_language;
+use crate::lang::Language;
 use crate::parsers;
 use crate::tg;
 use crate::tz;
@@ -132,12 +134,21 @@ impl TgMessageController {
         ))
     }
 
-    pub(crate) async fn reply<R: ToString>(
+    async fn user_lang(&self) -> crate::lang::Language {
+        get_user_language(&self.db, self.user_id).await
+    }
+
+    pub(crate) async fn reply(
         &self,
-        response: R,
+        response: TgResponse,
     ) -> Result<Message, RequestError> {
-        tg::send_silent_message(&response.to_string(), &self.bot, self.chat_id)
-            .await
+        let lang = self.user_lang().await;
+        tg::send_silent_message(
+            &response.to_string_lang(lang.code()),
+            &self.bot,
+            self.chat_id,
+        )
+        .await
     }
 
     pub(crate) async fn start(&self) -> Result<(), RequestError> {
@@ -148,31 +159,62 @@ impl TgMessageController {
         self.reply(TgResponse::HelloGroup).await.map(|_| ())
     }
 
+    pub(crate) async fn help(&self) -> Result<(), RequestError> {
+        self.reply(TgResponse::Help).await.map(|_| ())
+    }
+
     /// Send a list of all notifications
     pub(crate) async fn list(&self, user_tz: Tz) -> Result<(), RequestError> {
-        // Format reminders
-        let text = match self.db.get_sorted_reminders(self.chat_id.0).await {
-            Ok(sorted_reminders) => {
-                std::iter::once(TgResponse::RemindersListHeader.to_string())
-                    .chain(sorted_reminders.into_iter().map(|rem| {
-                        rem.to_string(user_tz).replace('@', "@\u{200B}")
-                    }))
+        let lang = self.user_lang().await;
+
+        let reminders_str =
+            match self.db.get_sorted_reminders(self.chat_id.0).await {
+                Ok(sorted_reminders) => sorted_reminders
+                    .into_iter()
+                    .map(|rem| {
+                        rem.to_unescaped_string(user_tz)
+                            .replace('@', "@\u{200B}")
+                    })
                     .collect::<Vec<String>>()
-                    .join("\n")
-            }
-            Err(err) => {
-                log::error!("{}", err);
-                TgResponse::QueryingError.to_string()
-            }
-        };
-        self.reply(&text).await.map(|_| ())
+                    .join("\n"),
+                Err(err) => {
+                    log::error!("{}", err);
+                    TgResponse::QueryingError.to_string_lang(lang.code())
+                }
+            };
+        self.reply(TgResponse::RemindersList(reminders_str))
+            .await
+            .map(|_| ())
     }
 
     /// Send a markup with all timezones to select
     pub(crate) async fn choose_timezone(&self) -> Result<(), RequestError> {
+        let lang = self.user_lang().await;
         tg::send_markup(
-            &TgResponse::SelectTimezone.to_string(),
+            &TgResponse::SelectTimezone.to_string_lang(lang.code()),
             self.get_markup_for_tz_page_idx(0),
+            &self.bot,
+            self.chat_id,
+        )
+        .await
+    }
+
+    pub(crate) async fn choose_language(&self) -> Result<(), RequestError> {
+        let lang = self.user_lang().await;
+        tg::send_markup(
+            &TgResponse::SelectLanguage.to_string_lang(lang.code()),
+            self.get_markup_for_languages(),
+            &self.bot,
+            self.chat_id,
+        )
+        .await
+    }
+
+    pub(crate) async fn choose_settings(&self) -> Result<(), RequestError> {
+        let lang = self.user_lang().await;
+        tg::send_markup(
+            &TgResponse::SettingsMenu.to_string_lang(lang.code()),
+            self.get_markup_for_settings().await,
             &self.bot,
             self.chat_id,
         )
@@ -195,8 +237,14 @@ impl TgMessageController {
         response: TgResponse,
         markup: InlineKeyboardMarkup,
     ) -> Result<(), RequestError> {
-        tg::send_markup(&response.to_string(), markup, &self.bot, self.chat_id)
-            .await
+        let lang = self.user_lang().await;
+        tg::send_markup(
+            &response.to_string_lang(lang.code()),
+            markup,
+            &self.bot,
+            self.chat_id,
+        )
+        .await
     }
 
     /// Send a markup to select a reminder for deleting
@@ -501,6 +549,34 @@ impl TgMessageController {
             ))
         }
         markup.append_row(move_buttons)
+    }
+
+    pub(crate) fn get_markup_for_languages(&self) -> InlineKeyboardMarkup {
+        let row: Vec<InlineKeyboardButton> = crate::lang::LANGUAGES
+            .iter()
+            .map(|lang| {
+                InlineKeyboardButton::new(
+                    lang.name(),
+                    InlineKeyboardButtonKind::CallbackData(format!(
+                        "setlang::lang::{}",
+                        lang.code()
+                    )),
+                )
+            })
+            .collect();
+        InlineKeyboardMarkup::default().append_row(row)
+    }
+
+    pub(crate) async fn get_markup_for_settings(&self) -> InlineKeyboardMarkup {
+        let lang = self.user_lang().await;
+        InlineKeyboardMarkup::default().append_row(vec![
+            InlineKeyboardButton::new(
+                t!("ChangeLanguage", locale = lang.code()),
+                InlineKeyboardButtonKind::CallbackData(
+                    "settings::change_lang".into(),
+                ),
+            ),
+        ])
     }
 
     async fn get_markup_for_reminders_page_alteration(
@@ -845,6 +921,25 @@ impl TgMessageController {
         self.reply(response).await.map(|_| ())
     }
 
+    pub(crate) async fn set_language(
+        &self,
+        lang_code: &str,
+    ) -> Result<(), RequestError> {
+        let lang = Language::from_code(lang_code).unwrap_or_default();
+        let response = match self
+            .db
+            .insert_or_update_user_language(self.user_id.0 as i64, lang_code)
+            .await
+        {
+            Ok(()) => TgResponse::ChosenLanguage,
+            Err(err) => {
+                log::error!("{}", err);
+                TgResponse::FailedSetLanguage(lang.name().to_owned())
+            }
+        };
+        self.reply(response).await.map(|_| ())
+    }
+
     async fn get_reminder_by_msg_id(
         &self,
         msg_id: MessageId,
@@ -965,7 +1060,7 @@ impl TgCallbackController {
     ) -> Result<(), RequestError> {
         self.msg_ctl
             .bot
-            .answer_callback_query(&self.cb_id)
+            .answer_callback_query(self.cb_id.clone())
             .send()
             .await
             .map(|_| ())
@@ -976,6 +1071,14 @@ impl TgCallbackController {
         tz_name: &str,
     ) -> Result<(), RequestError> {
         self.msg_ctl.set_timezone(tz_name).await?;
+        self.acknowledge_callback().await
+    }
+
+    pub(crate) async fn set_language(
+        &self,
+        lang_code: &str,
+    ) -> Result<(), RequestError> {
+        self.msg_ctl.set_language(lang_code).await?;
         self.acknowledge_callback().await
     }
 
@@ -1052,19 +1155,18 @@ impl TgCallbackController {
         &self,
         rem_id: i64,
     ) -> Result<(), RequestError> {
+        let lang = self.msg_ctl.user_lang().await;
         let markup = InlineKeyboardMarkup::default().append_row(vec![
             InlineKeyboardButton::new(
-                "Time pattern",
+                t!("TimePattern", locale = lang.code()),
                 InlineKeyboardButtonKind::CallbackData(format!(
-                    "edit_rem_mode::rem_time_pattern::{}",
-                    rem_id
+                    "edit_rem_mode::rem_time_pattern::{rem_id}"
                 )),
             ),
             InlineKeyboardButton::new(
-                "Description",
+                t!("Description", locale = lang.code()),
                 InlineKeyboardButtonKind::CallbackData(format!(
-                    "edit_rem_mode::rem_description::{}",
-                    rem_id
+                    "edit_rem_mode::rem_description::{rem_id}"
                 )),
             ),
         ]);

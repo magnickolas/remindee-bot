@@ -3,4 +3,5 @@
 
 pub use super::cron_reminder::Entity as CronReminder;
 pub use super::reminder::Entity as Reminder;
+pub use super::user_language::Entity as UserLanguage;
 pub use super::user_timezone::Entity as UserTimezone;

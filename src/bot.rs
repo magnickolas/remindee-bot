@@ -247,9 +247,8 @@ mod test {
     use std::sync::Arc;
 
     use crate::{
-        bot::Command, db::MockDatabase, entity::reminder,
-        generic_reminder::GenericReminder, handlers::get_handler,
-        parsers::test::TEST_TIMESTAMP, tg::TgResponse,
+        db::MockDatabase, entity::reminder, generic_reminder::GenericReminder,
+        handlers::get_handler, parsers::test::TEST_TIMESTAMP, tg::TgResponse,
     };
     use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
     use chrono_tz::Tz;
@@ -265,12 +264,11 @@ mod test {
             InlineKeyboardMarkup, MediaKind::Text, MediaText, MessageCommon,
             MessageKind,
         },
-        utils::command::BotCommands,
     };
+    use teloxide_tests::mock_bot::DistributionKey;
     use teloxide_tests::{
         IntoUpdate, MockBot, MockCallbackQuery, MockMessageText,
     };
-    use teloxide_tests::mock_bot::DistributionKey;
 
     use super::State;
 
@@ -299,6 +297,10 @@ mod test {
         mock_timezone_name().parse::<Tz>().unwrap()
     }
 
+    fn mock_language_name() -> String {
+        "en".to_owned()
+    }
+
     fn mock_storage() -> Arc<InMemStorage<State>> {
         InMemStorage::<State>::new()
     }
@@ -318,16 +320,20 @@ mod test {
     #[tokio::test]
     async fn test_help() {
         let message = MockMessageText::new().text("/help");
-        let db = MockDatabase::new();
+        let mut db = MockDatabase::new();
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
         let mut bot = mock_bot(db, message);
-        bot.dispatch_and_check_last_text(&Command::descriptions().to_string())
+        bot.dispatch_and_check_last_text(&TgResponse::Help.to_string())
             .await;
     }
 
     #[tokio::test]
     async fn test_start() {
         let message = MockMessageText::new().text("/start");
-        let db = MockDatabase::new();
+        let mut db = MockDatabase::new();
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
         let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(&TgResponse::Hello.to_string())
             .await;
@@ -337,7 +343,9 @@ mod test {
     async fn test_start_group() {
         let mut message = MockMessageText::new().text("/start");
         message.chat.id.0 = -1;
-        let db = MockDatabase::new();
+        let mut db = MockDatabase::new();
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
         let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(&TgResponse::HelloGroup.to_string())
             .await;
@@ -349,6 +357,8 @@ mod test {
         let mut db = MockDatabase::new();
         db.expect_get_user_timezone_name()
             .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
         let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
             &TgResponse::ChosenTimezone(mock_timezone_name()).to_string(),
@@ -359,7 +369,9 @@ mod test {
     #[tokio::test]
     async fn test_set_timezone() {
         let message = MockMessageText::new().text("/settimezone");
-        let db = MockDatabase::new();
+        let mut db = MockDatabase::new();
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
         let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
             &TgResponse::SelectTimezone.to_string(),
@@ -378,31 +390,31 @@ mod test {
         markup: InlineKeyboardMarkup,
     }
 
-        impl From<MockMarkup> for MessageKind {
-            fn from(val: MockMarkup) -> Self {
-                MessageKind::Common(MessageCommon {
-                    author_signature: None,
-                    effect_id: None,
-                    forward_origin: None,
-                    reply_to_message: None,
-                    external_reply: None,
-                    quote: None,
-                    reply_to_story: None,
-                    sender_boost_count: None,
-                    edit_date: None,
-                    media_kind: Text(MediaText {
-                        text: val.media_text,
-                        entities: vec![],
-                        link_preview_options: None,
-                    }),
-                    reply_markup: Some(val.markup),
-                    is_automatic_forward: false,
-                    has_protected_content: false,
-                    is_from_offline: false,
-                    business_connection_id: None,
-                })
-            }
+    impl From<MockMarkup> for MessageKind {
+        fn from(val: MockMarkup) -> Self {
+            MessageKind::Common(MessageCommon {
+                author_signature: None,
+                effect_id: None,
+                forward_origin: None,
+                reply_to_message: None,
+                external_reply: None,
+                quote: None,
+                reply_to_story: None,
+                sender_boost_count: None,
+                edit_date: None,
+                media_kind: Text(MediaText {
+                    text: val.media_text,
+                    entities: vec![],
+                    link_preview_options: None,
+                }),
+                reply_markup: Some(val.markup),
+                is_automatic_forward: false,
+                has_protected_content: false,
+                is_from_offline: false,
+                business_connection_id: None,
+            })
         }
+    }
 
     #[tokio::test]
     #[serial]
@@ -420,6 +432,8 @@ mod test {
         });
         db.expect_get_user_timezone_name()
             .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
         let rem_clone = rem.clone();
         db.expect_get_reminder()
             .with(eq(rem.id))
@@ -544,6 +558,8 @@ mod test {
         });
         db.expect_get_user_timezone_name()
             .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
         for rem in rems.iter() {
             let rem_clone = rem.clone();
             db.expect_get_reminder()
@@ -560,7 +576,7 @@ mod test {
                 vec![InlineKeyboardButton {
                     text: "02.02 02:02 <>".to_string().to_string(),
                     kind: CallbackData(
-                        format!("delrem::rem_alt::{}", i).to_string(),
+                        format!("delrem::rem_alt::{i}").to_string(),
                     ),
                 }]
             })
@@ -665,6 +681,8 @@ mod test {
         });
         db.expect_get_user_timezone_name()
             .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
         for rem in rems.iter() {
             let rem_clone = rem.clone();
             db.expect_get_reminder()
@@ -679,9 +697,9 @@ mod test {
         let mut page0_buttons = (1..=PAGE_REMINDERS_COUNT)
             .map(|i| {
                 vec![InlineKeyboardButton {
-                    text: format!("02.02 02:02 <{}>", i).to_string(),
+                    text: format!("02.02 02:02 <{i}>").to_string(),
                     kind: CallbackData(
-                        format!("delrem::rem_alt::{}", i).to_string(),
+                        format!("delrem::rem_alt::{i}").to_string(),
                     ),
                 }]
             })
@@ -693,9 +711,9 @@ mod test {
         let mut page1_buttons = (PAGE_REMINDERS_COUNT + 1..=REMINDERS_COUNT)
             .map(|i| {
                 vec![InlineKeyboardButton {
-                    text: format!("02.02 02:02 <{}>", i).to_string(),
+                    text: format!("02.02 02:02 <{i}>").to_string(),
                     kind: CallbackData(
-                        format!("delrem::rem_alt::{}", i).to_string(),
+                        format!("delrem::rem_alt::{i}").to_string(),
                     ),
                 }]
             })
@@ -778,6 +796,8 @@ mod test {
     async fn test_list_no_timezone() {
         let mut db = MockDatabase::new();
         db.expect_get_user_timezone_name().returning(|_| Ok(None));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
         let message = MockMessageText::new().text("/list");
         let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
@@ -791,11 +811,13 @@ mod test {
         let mut db = MockDatabase::new();
         db.expect_get_user_timezone_name()
             .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
         db.expect_get_sorted_reminders().returning(|_| Ok(vec![]));
         let message = MockMessageText::new().text("/list");
         let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
-            &TgResponse::RemindersListHeader.to_string(),
+            &TgResponse::RemindersList("".to_owned()).to_string(),
         )
         .await;
     }
@@ -806,6 +828,8 @@ mod test {
         let tz = mock_timezone();
         db.expect_get_user_timezone_name()
             .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
         let rem = basic_mock_reminder();
         let rem_clone = rem.clone();
         db.expect_get_sorted_reminders().returning(move |_| {
@@ -813,11 +837,12 @@ mod test {
         });
         let message = MockMessageText::new().text("/list");
         let mut bot = mock_bot(db, message);
-        bot.dispatch_and_check_last_text(&format!(
-            "{}\n{}",
-            TgResponse::RemindersListHeader,
-            rem.into_active_model().to_string(tz)
-        ))
+        bot.dispatch_and_check_last_text(
+            &TgResponse::RemindersList(
+                rem.into_active_model().to_unescaped_string(tz),
+            )
+            .to_string(),
+        )
         .await;
     }
 
@@ -832,6 +857,8 @@ mod test {
         let tz = mock_timezone();
         db.expect_get_user_timezone_name()
             .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
         let rem = basic_mock_reminder();
         let rem_clone = rem.clone();
         db.expect_get_reminder()
@@ -920,6 +947,8 @@ mod test {
         let rem_clone = rem.clone();
         db.expect_get_user_timezone_name()
             .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
         db.expect_insert_reminder()
             .returning(move |_| Ok(rem_clone.clone().into()));
         db.expect_set_reminder_reply_id().returning(|_, _| Ok(()));
@@ -931,5 +960,67 @@ mod test {
             .to_string(),
         )
         .await;
+    }
+
+    #[tokio::test]
+    async fn test_settings_menu() {
+        let message = MockMessageText::new().text("/settings");
+        let mut db = MockDatabase::new();
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        let mut bot = mock_bot(db, message);
+        bot.dispatch().await;
+        assert_eq!(
+            resp!(bot, sent_messages, kind),
+            vec![MockMarkup {
+                media_text: TgResponse::SettingsMenu.to_string(),
+                markup: InlineKeyboardMarkup {
+                    inline_keyboard: vec![vec![InlineKeyboardButton {
+                        text: "Change language".to_string(),
+                        kind: CallbackData("settings::change_lang".to_string()),
+                    }]],
+                },
+            }
+            .into()]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_change_language_menu() {
+        let message = MockMessageText::new().text("/settings");
+        let mut db = MockDatabase::new();
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        let mut bot = mock_bot(db, message);
+        bot.dispatch().await;
+        bot.update(
+            MockCallbackQuery::new()
+                .data("settings::change_lang")
+                .message(bot.get_responses().sent_messages[0].clone()),
+        );
+        bot.dispatch().await;
+        assert_eq!(
+            resp!(bot, sent_messages, kind),
+            vec![MockMarkup {
+                media_text: TgResponse::SelectLanguage.to_string(),
+                markup: InlineKeyboardMarkup {
+                    inline_keyboard: vec![vec![
+                        InlineKeyboardButton {
+                            text: "English".to_string(),
+                            kind: CallbackData("setlang::lang::en".to_string()),
+                        },
+                        InlineKeyboardButton {
+                            text: "Nederlands".to_string(),
+                            kind: CallbackData("setlang::lang::nl".to_string()),
+                        },
+                        InlineKeyboardButton {
+                            text: "Русский".to_string(),
+                            kind: CallbackData("setlang::lang::ru".to_string()),
+                        },
+                    ]],
+                },
+            }
+            .into()]
+        );
     }
 }

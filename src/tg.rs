@@ -1,3 +1,4 @@
+#[cfg(test)]
 use std::fmt::Display;
 
 use teloxide::payloads::SendMessageSetters;
@@ -9,13 +10,15 @@ use teloxide::types::{
 use teloxide::utils::markdown::escape;
 use teloxide::RequestError;
 
+use rust_i18n::t;
+
 pub(crate) enum TgResponse {
     SuccessInsert(String),
     SuccessPeriodicInsert(String),
     FailedInsert,
     IncorrectRequest,
     QueryingError,
-    RemindersListHeader,
+    RemindersList(String),
     SelectTimezone,
     ChosenTimezone(String),
     FailedSetTimezone(String),
@@ -35,67 +38,113 @@ pub(crate) enum TgResponse {
     HelloGroup,
     EnterNewTimePattern,
     EnterNewDescription,
+    SettingsMenu,
+    SelectLanguage,
+    ChosenLanguage,
+    FailedSetLanguage(String),
+    Help,
 }
 
 impl TgResponse {
-    pub(crate) fn to_unescaped_string(&self) -> String {
+    pub(crate) fn to_unescaped_string_lang(&self, lang: &str) -> String {
         match self {
-            Self::SuccessInsert(reminder_str) => format!("Added a reminder:\n{}", reminder_str),
-            Self::SuccessPeriodicInsert(reminder_str) => format!("Added a periodic reminder:\n{}", reminder_str),
-            Self::FailedInsert => "Failed to create a reminder...".to_owned(),
-            Self::IncorrectRequest => "Incorrect request!".to_owned(),
-            Self::QueryingError => "Error occured while querying reminders...".to_owned(),
-            Self::RemindersListHeader => "List of reminders:".to_owned(),
-            Self::SelectTimezone => "Select your timezone:".to_owned(),
-            Self::ChosenTimezone(tz_name) => format!(
-                concat!(
-                    "Selected timezone {}. Now you can set some reminders.\n\n",
-                    "You can get the commands I understand with /help."
-                ),
-                tz_name
-            ),
-            Self::FailedSetTimezone(tz_name) => format!("Failed to set timezone {}", tz_name),
-            Self::ChooseDeleteReminder => "Choose a reminder to delete:".to_owned(),
-            Self::SuccessDelete(reminder_str) => format!("🗑 Deleted a reminder: {}", reminder_str),
-            Self::FailedDelete => "Failed to delete...".to_owned(),
-            Self::ChooseEditReminder => "Choose a reminder to edit:".to_owned(),
-            Self::EnterNewReminder => "Enter reminder to replace with:".to_owned(),
-            Self::SuccessEdit(old_reminder_str, reminder_str) => format!("📝 Replaced a reminder: {}\nwith ➡️ {}", old_reminder_str, reminder_str),
-            Self::FailedEdit => "Failed to edit... You can try again or cancel editing with /cancel".to_owned(),
-            Self::CancelEdit => "Canceled editing".to_owned(),
-            Self::ChoosePauseReminder => "Choose a reminder to pause/resume:".to_owned(),
-            Self::SuccessPause(reminder_str) => format!("⏸ Paused a reminder: {}", reminder_str),
-            Self::SuccessResume(reminder_str) => format!("▶️ Resumed a reminder: {}", reminder_str),
-            Self::FailedPause => "Failed to pause...".to_owned(),
-            Self::Hello => concat!(
-                "Hello! I'm remindee bot. My purpose is to remind you of whatever you ask and ",
-                "whenever you ask.\n\n",
-                "Examples:\n17:30 go to restaurant => notify today at 5:30 PM\n",
-                "01.01 00:00 Happy New Year => notify at 1st of January at 12 AM\n",
-                "55 10 * * 1-5 meeting call => notify at 10:55 AM every weekday ",
-                "(CRON expression format)\n\n",
-                "Before we start, please either send me your location 📍 or manually select the timezone using the /settimezone command first."
+            Self::SuccessInsert(reminder_str) => {
+                t!("SuccessInsert", locale = lang, reminder = reminder_str)
+                    .to_string()
+            }
+            Self::SuccessPeriodicInsert(reminder_str) => t!(
+                "SuccessPeriodicInsert",
+                locale = lang,
+                reminder = reminder_str
             )
-            .to_owned(),
-            Self::HelloGroup => concat!(
-                "Hello! I'm remindee bot. My purpose is to remind you of whatever you ask and ",
-                "whenever you ask.\n\n",
-                "Examples:\n17:30 go to restaurant => notify today at 5:30 PM\n",
-                "01.01 00:00 Happy New Year => notify at 1st of January at 12 AM\n",
-                "55 10 * * 1-5 meeting call => notify at 10:55 AM every weekday ",
-                "(CRON expression format)\n\n",
-                "Before we start, please select the timezone using the /settimezone command first."
+            .to_string(),
+            Self::FailedInsert => t!("FailedInsert", locale = lang).to_string(),
+            Self::IncorrectRequest => {
+                t!("IncorrectRequest", locale = lang).to_string()
+            }
+            Self::QueryingError => {
+                t!("QueryingError", locale = lang).to_string()
+            }
+            Self::RemindersList(reminders_str) => {
+                t!("RemindersList", locale = lang, reminders = reminders_str)
+                    .to_string()
+            }
+            Self::SelectTimezone => {
+                t!("SelectTimezone", locale = lang).to_string()
+            }
+            Self::ChosenTimezone(tz_name) => {
+                t!("ChosenTimezone", locale = lang, tz = tz_name).to_string()
+            }
+            Self::FailedSetTimezone(tz_name) => {
+                t!("FailedSetTimezone", locale = lang, tz = tz_name).to_string()
+            }
+            Self::ChooseDeleteReminder => {
+                t!("ChooseDeleteReminder", locale = lang).to_string()
+            }
+            Self::SuccessDelete(reminder_str) => {
+                t!("SuccessDelete", locale = lang, reminder = reminder_str)
+                    .to_string()
+            }
+            Self::FailedDelete => t!("FailedDelete", locale = lang).to_string(),
+            Self::ChooseEditReminder => {
+                t!("ChooseEditReminder", locale = lang).to_string()
+            }
+            Self::EnterNewReminder => {
+                t!("EnterNewReminder", locale = lang).to_string()
+            }
+            Self::SuccessEdit(old_reminder_str, reminder_str) => t!(
+                "SuccessEdit",
+                locale = lang,
+                old = old_reminder_str,
+                new = reminder_str
             )
-            .to_owned(),
-            Self::EnterNewTimePattern => "Enter a new time pattern for the reminder".to_owned(),
-            Self::EnterNewDescription => "Enter a new description for the reminder".to_owned(),
+            .to_string(),
+            Self::FailedEdit => t!("FailedEdit", locale = lang).to_string(),
+            Self::CancelEdit => t!("CancelEdit", locale = lang).to_string(),
+            Self::ChoosePauseReminder => {
+                t!("ChoosePauseReminder", locale = lang).to_string()
+            }
+            Self::SuccessPause(reminder_str) => {
+                t!("SuccessPause", locale = lang, reminder = reminder_str)
+                    .to_string()
+            }
+            Self::SuccessResume(reminder_str) => {
+                t!("SuccessResume", locale = lang, reminder = reminder_str)
+                    .to_string()
+            }
+            Self::FailedPause => t!("FailedPause", locale = lang).to_string(),
+            Self::Hello => t!("Hello", locale = lang).to_string(),
+            Self::HelloGroup => t!("HelloGroup", locale = lang).to_string(),
+            Self::EnterNewTimePattern => {
+                t!("EnterNewTimePattern", locale = lang).to_string()
+            }
+            Self::EnterNewDescription => {
+                t!("EnterNewDescription", locale = lang).to_string()
+            }
+            Self::SettingsMenu => t!("SettingsMenu", locale = lang).to_string(),
+            Self::SelectLanguage => {
+                t!("SelectLanguage", locale = lang).to_string()
+            }
+            Self::ChosenLanguage => {
+                t!("ChosenLanguage", locale = lang).to_string()
+            }
+            Self::FailedSetLanguage(lang_name) => {
+                t!("FailedSetLanguage", locale = lang, lang = lang_name)
+                    .to_string()
+            }
+            Self::Help => t!("Help", locale = lang).to_string(),
         }
+    }
+
+    pub(crate) fn to_string_lang(&self, lang: &str) -> String {
+        escape(&self.to_unescaped_string_lang(lang))
     }
 }
 
+#[cfg(test)]
 impl Display for TgResponse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", escape(&self.to_unescaped_string()))
+        write!(f, "{}", self.to_string_lang("en"))
     }
 }
 
