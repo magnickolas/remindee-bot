@@ -1,4 +1,7 @@
 [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://stand-with-ukraine.pp.ua)
+[![crate](https://img.shields.io/crates/v/remindee-bot.svg)](https://crates.io/crates/remindee-bot)
+[![CI](https://github.com/magnickolas/remindee-bot/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/magnickolas/remindee-bot/actions/workflows/ci.yml)
+
 
 # remindee-bot
 
