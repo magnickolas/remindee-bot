@@ -757,9 +757,7 @@ impl DateDisplay for NaiveDate {
         if same_day {
             Ok(false)
         } else {
-            if same_month {
-                write!(f, "{}", self.format("%d"))?;
-            } else if same_year {
+            if same_year {
                 write!(f, "{}", self.format("%d.%m"))?;
             } else {
                 write!(f, "{}", self.format("%d.%m.%y"))?;
