@@ -13,9 +13,20 @@ on:
       - src/**
 
 jobs:
-  ci:
-    name: CI
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip.outputs.should_skip }}
+    steps:
+      - id: skip
+        uses: fkirc/skip-duplicate-actions@v5
+        with:
+          concurrent_skipping: 'same_content'
 
+  ci:
+    needs: guard
+    if: needs.guard.outputs.should_skip != 'true'
+    name: CI
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
