@@ -67,3 +67,5 @@ Help: |
 TimePattern: "Временной шаблон"
 Description: "Описание"
 ChangeLanguage: "Сменить язык"
+WhatToEdit: "Что вы хотите отредактировать?"
+NextTime: "Следующее напоминание"

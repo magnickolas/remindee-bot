@@ -7,6 +7,7 @@ use crate::entity::{cron_reminder, reminder};
 use crate::err::Error;
 use crate::format;
 use crate::handlers::{get_handler, Command, State};
+use crate::lang::get_user_language;
 use crate::parsers::now_time;
 use crate::serializers::Pattern;
 use crate::tg::send_message;
@@ -42,11 +43,16 @@ async fn send_reminder(
 async fn send_cron_reminder(
     reminder: &cron_reminder::Model,
     next_reminder: Option<&cron_reminder::Model>,
+    user_lang: String,
     user_timezone: Tz,
     bot: &Bot,
 ) -> Result<(), Error> {
-    let text =
-        format::format_cron_reminder(reminder, next_reminder, user_timezone);
+    let text = format::format_cron_reminder(
+        reminder,
+        next_reminder,
+        user_lang,
+        user_timezone,
+    );
     send_message(&text, bot, ChatId(reminder.chat_id))
         .await
         .map(|_| ())
@@ -123,6 +129,7 @@ async fn process_due_reminders(db: &Database, bot: &Bot) {
                 match send_cron_reminder(
                     &cron_reminder,
                     new_cron_reminder.as_ref(),
+                    get_user_language(db, user_id).await.code().to_owned(),
                     user_timezone,
                     bot,
                 )

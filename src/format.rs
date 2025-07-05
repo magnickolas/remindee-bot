@@ -18,14 +18,15 @@ pub(crate) fn format_reminder<T: ActiveModelTrait + GenericReminder>(
 pub(crate) fn format_cron_reminder(
     reminder: &cron_reminder::Model,
     next_reminder: Option<&cron_reminder::Model>,
+    user_lang: String,
     user_timezone: Tz,
 ) -> String {
     let formatted_reminder =
         format_reminder(&reminder.clone().into_active_model(), user_timezone);
     match next_reminder {
         Some(next_reminder) => format!(
-            "{}\n\nNext time → {}",
-            formatted_reminder,
+            "{formatted_reminder}\n\n{} → {}",
+            t!("NextTime", locale = user_lang),
             next_reminder
                 .clone()
                 .into_active_model()

@@ -67,3 +67,5 @@ Help: |
 TimePattern: "Tijdschema"
 Description: "Omschrijving"
 ChangeLanguage: "Taal wijzigen"
+WhatToEdit: "Wat wil je bewerken?"
+NextTime: "De volgende"

@@ -1180,7 +1180,7 @@ impl TgCallbackController {
             ),
         ]);
         tg::send_markup(
-            "What would you like to edit?",
+            &t!("WhatToEdit", locale = lang.code()),
             markup,
             &self.msg_ctl.bot,
             self.msg_ctl.chat_id,

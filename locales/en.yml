@@ -67,3 +67,5 @@ Help: |
 TimePattern: "Time pattern"
 Description: "Description"
 ChangeLanguage: "Change language"
+WhatToEdit: "What would you like to edit?"
+NextTime: "The next one"
