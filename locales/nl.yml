@@ -22,7 +22,8 @@ SuccessEdit: |
   📝 Herinnering gewijzigd van: %{old}
   naar ➡️ %{new}
 FailedEdit: "⚠️ Bewerken mislukt. Je kunt het opnieuw proberen of annuleren met /cancel"
-CancelEdit: "Bewerken geannuleerd"
+CancelEdit: "Bewerken geannuleerd."
+EditReminderNotFound: "⚠️ Herinnering bestaat niet meer. Bewerken geannuleerd."
 ChoosePauseReminder: "Kies een herinnering om te pauzeren of hervatten:"
 SuccessPause: "⏸ Herinnering gepauzeerd: %{reminder}"
 SuccessResume: "▶️ Herinnering hervat: %{reminder}"

@@ -16,7 +16,7 @@ use crate::{
     controller::{
         EditMode, ReminderUpdate, TgCallbackController, TgMessageController,
     },
-    err::Error,
+    tg::TgResponse,
     tz::{self, get_timezone_name_of_location},
 };
 
@@ -159,7 +159,6 @@ pub(crate) fn get_handler(
         .branch(
             Update::filter_callback_query()
                 .filter_map(TgCallbackController::new)
-                .map(|cb_ctl: TgCallbackController| cb_ctl.msg_ctl)
                 .filter_map(|cb_query: CallbackQuery| cb_query.data)
                 .branch(
                     dptree::filter(|cb_data: String| {
@@ -180,7 +179,8 @@ pub(crate) fn get_handler(
                     .endpoint(settings_menu_handler),
                 )
                 .branch(
-                    dptree::filter_map_async(get_user_timezone)
+                    dptree::map(|cb_ctl: TgCallbackController| cb_ctl.msg_ctl)
+                        .filter_map_async(get_user_timezone)
                         .endpoint(callback_handler),
                 ),
         )
@@ -368,54 +368,51 @@ async fn message_handler(
 
 async fn select_timezone_handler(
     ctl: TgCallbackController,
-    msg_ctl: TgMessageController,
-    cb_query: CallbackQuery,
     cb_data: String,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Some(page_num) = cb_data
         .strip_prefix("seltz::page::")
         .and_then(|x| x.parse::<usize>().ok())
     {
-        msg_ctl
+        ctl.msg_ctl
             .select_timezone_set_page(page_num)
             .await
             .map_err(From::from)
     } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
         ctl.set_timezone(tz_name).await.map_err(From::from)
     } else {
-        Err(Error::UnmatchedQuery(Box::new(cb_query)))?
+        ctl.msg_ctl.reply(TgResponse::IncorrectRequest).await?;
+        ctl.acknowledge_callback().await.map_err(From::from)
     }
 }
 
 async fn select_language_handler(
     ctl: TgCallbackController,
-    cb_query: CallbackQuery,
     cb_data: String,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Some(lang_code) = cb_data.strip_prefix("setlang::lang::") {
         ctl.set_language(lang_code).await.map_err(From::from)
     } else {
-        Err(Error::UnmatchedQuery(Box::new(cb_query)))?
+        ctl.msg_ctl.reply(TgResponse::IncorrectRequest).await?;
+        ctl.acknowledge_callback().await.map_err(From::from)
     }
 }
 
 async fn settings_menu_handler(
     ctl: TgCallbackController,
-    cb_query: CallbackQuery,
     cb_data: String,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if cb_data == "settings::change_lang" {
         ctl.msg_ctl.choose_language().await?;
         ctl.acknowledge_callback().await.map_err(From::from)
     } else {
-        Err(Error::UnmatchedQuery(Box::new(cb_query)))?
+        ctl.msg_ctl.reply(TgResponse::IncorrectRequest).await?;
+        ctl.acknowledge_callback().await.map_err(From::from)
     }
 }
 
 async fn callback_handler(
     ctl: TgCallbackController,
-    msg_ctl: TgMessageController,
-    cb_query: CallbackQuery,
     cb_data: String,
     user_tz: Tz,
     dialogue: MyDialogue,
@@ -424,7 +421,7 @@ async fn callback_handler(
         .strip_prefix("seltz::page::")
         .and_then(|x| x.parse::<usize>().ok())
     {
-        msg_ctl
+        ctl.msg_ctl
             .select_timezone_set_page(page_num)
             .await
             .map_err(From::from)
@@ -439,7 +436,7 @@ async fn callback_handler(
         .strip_prefix("delrem::page::")
         .and_then(|x| x.parse::<usize>().ok())
     {
-        msg_ctl
+        ctl.msg_ctl
             .delete_reminder_set_page(page_num, user_tz)
             .await
             .map_err(From::from)
@@ -461,7 +458,7 @@ async fn callback_handler(
         .strip_prefix("editrem::page::")
         .and_then(|x| x.parse::<usize>().ok())
     {
-        msg_ctl
+        ctl.msg_ctl
             .edit_reminder_set_page(page_num, user_tz)
             .await
             .map_err(From::from)
@@ -486,7 +483,7 @@ async fn callback_handler(
         .strip_prefix("pauserem::page::")
         .and_then(|x| x.parse::<usize>().ok())
     {
-        msg_ctl
+        ctl.msg_ctl
             .pause_reminder_set_page(page_num, user_tz)
             .await
             .map_err(From::from)
@@ -531,6 +528,7 @@ async fn callback_handler(
             .await
             .map_err(From::from)
     } else {
-        Err(Error::UnmatchedQuery(Box::new(cb_query)))?
+        ctl.msg_ctl.reply(TgResponse::IncorrectRequest).await?;
+        ctl.acknowledge_callback().await.map_err(From::from)
     }
 }

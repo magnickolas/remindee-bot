@@ -29,6 +29,7 @@ pub(crate) enum TgResponse {
     EnterNewReminder,
     SuccessEdit(String, String),
     FailedEdit,
+    EditReminderNotFound,
     CancelEdit,
     ChoosePauseReminder,
     SuccessPause(String),
@@ -100,6 +101,9 @@ impl TgResponse {
             )
             .to_string(),
             Self::FailedEdit => t!("FailedEdit", locale = lang).to_string(),
+            Self::EditReminderNotFound => {
+                t!("EditReminderNotFound", locale = lang).to_string()
+            }
             Self::CancelEdit => t!("CancelEdit", locale = lang).to_string(),
             Self::ChoosePauseReminder => {
                 t!("ChoosePauseReminder", locale = lang).to_string()

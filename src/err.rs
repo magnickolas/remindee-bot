@@ -7,9 +7,6 @@ pub(crate) enum Error {
     Parse(chrono_tz::ParseError),
     CronParse(cron_parser::ParseError),
     TeloxideRequest(teloxide::RequestError),
-    UnmatchedQuery(Box<teloxide::types::CallbackQuery>),
-    ReminderNotFound(i64),
-    CronReminderNotFound(i64),
 }
 
 impl fmt::Display for Error {
@@ -20,15 +17,6 @@ impl fmt::Display for Error {
             Self::CronParse(ref err) => write!(f, "Cron parse error: {err}"),
             Self::TeloxideRequest(ref err) => {
                 write!(f, "Telegram request error: {err}")
-            }
-            Self::UnmatchedQuery(ref cb_query) => {
-                write!(f, "Could not match callback query: {cb_query:?}")
-            }
-            Self::ReminderNotFound(rem_id) => {
-                write!(f, "Reminder with id {rem_id} not found")
-            }
-            Self::CronReminderNotFound(cron_rem_id) => {
-                write!(f, "Cron reminder with id {cron_rem_id} not found")
             }
         }
     }

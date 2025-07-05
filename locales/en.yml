@@ -22,7 +22,8 @@ SuccessEdit: |
   📝 Replaced a reminder: %{old}
   with ➡️ %{new}
 FailedEdit: "⚠️ Failed to edit. You can try again or cancel editing with /cancel"
-CancelEdit: "Canceled editing"
+CancelEdit: "Canceled editing."
+EditReminderNotFound: "⚠️ Reminder does not exist. Editing canceled."
 ChoosePauseReminder: "Choose a reminder to pause or resume:"
 SuccessPause: "⏸ Paused a reminder: %{reminder}"
 SuccessResume: "▶️ Resumed a reminder: %{reminder}"
