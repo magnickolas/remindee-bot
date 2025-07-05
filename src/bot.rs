@@ -254,8 +254,12 @@ mod test {
     use std::sync::Arc;
 
     use crate::{
-        db::MockDatabase, entity::reminder, generic_reminder::GenericReminder,
-        handlers::get_handler, parsers::test::TEST_TIMESTAMP, tg::TgResponse,
+        db::MockDatabase,
+        entity::{cron_reminder, reminder},
+        generic_reminder::GenericReminder,
+        handlers::get_handler,
+        parsers::test::TEST_TIMESTAMP,
+        tg::TgResponse,
     };
     use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
     use chrono_tz::Tz;
@@ -291,6 +295,23 @@ mod test {
             user_id: None,
             paused: false,
             pattern: None,
+            msg_id: None,
+            reply_id: None,
+        }
+    }
+
+    fn basic_mock_cron_reminder() -> cron_reminder::Model {
+        cron_reminder::Model {
+            id: 1,
+            chat_id: 1,
+            cron_expr: "* * * * *".to_string(),
+            time: NaiveDateTime::new(
+                NaiveDate::from_ymd_opt(2024, 2, 2).unwrap(),
+                NaiveTime::from_hms_opt(1, 2, 3).unwrap(),
+            ),
+            desc: "".to_owned(),
+            user_id: None,
+            paused: false,
             msg_id: None,
             reply_id: None,
         }
@@ -849,6 +870,90 @@ mod test {
                 rem.into_active_model().to_unescaped_string(tz),
             )
             .to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_edit_reminder_not_found() {
+        *TEST_TIMESTAMP.write().unwrap() = mock_timezone()
+            .with_ymd_and_hms(2024, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
+        let rem = basic_mock_reminder();
+        let rem_clone = rem.clone();
+        let mut db = MockDatabase::new();
+        db.expect_get_sorted_reminders().returning(move |_| {
+            Ok(vec![Box::new(rem_clone.clone().into_active_model())])
+        });
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        db.expect_get_reminder()
+            .with(eq(rem.id))
+            .returning(|_| Ok(None));
+
+        let message = MockMessageText::new().text("/edit");
+        let mut bot = mock_bot(db, message);
+
+        bot.dispatch().await;
+        bot.update(
+            MockCallbackQuery::new()
+                .data("editrem::rem_alt::1")
+                .message(bot.get_responses().sent_messages[0].clone()),
+        );
+        bot.dispatch().await;
+        bot.update(
+            MockCallbackQuery::new()
+                .data("edit_rem_mode::rem_description::1")
+                .message(bot.get_responses().sent_messages[0].clone()),
+        );
+        bot.dispatch().await;
+
+        bot.update(MockMessageText::new().text("new description"));
+        bot.dispatch_and_check_last_text(
+            &TgResponse::EditReminderNotFound.to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_edit_cron_reminder_not_found() {
+        *TEST_TIMESTAMP.write().unwrap() = mock_timezone()
+            .with_ymd_and_hms(2024, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
+        let cron = basic_mock_cron_reminder();
+        let cron_clone = cron.clone();
+        let mut db = MockDatabase::new();
+        db.expect_get_sorted_reminders().returning(move |_| {
+            Ok(vec![Box::new(cron_clone.clone().into_active_model())])
+        });
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        db.expect_get_cron_reminder()
+            .with(eq(cron.id))
+            .returning(|_| Ok(None));
+
+        let message = MockMessageText::new().text("/edit");
+        let mut bot = mock_bot(db, message);
+
+        bot.dispatch().await;
+        bot.update(
+            MockCallbackQuery::new()
+                .data("editrem::cron_rem_alt::1")
+                .message(bot.get_responses().sent_messages[0].clone()),
+        );
+        bot.dispatch().await;
+
+        bot.update(MockMessageText::new().text("* * * * * new reminder"));
+        bot.dispatch_and_check_last_text(
+            &TgResponse::EditReminderNotFound.to_string(),
         )
         .await;
     }
