@@ -442,3 +442,77 @@ impl Database {
         self.notify.notified()
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+    use sea_orm::{ActiveValue::NotSet, IntoActiveModel};
+
+    async fn new_db_in_memory() -> Result<Database, Error> {
+        let mut opts = ConnectOptions::new("sqlite::memory:");
+        opts.max_connections(1);
+        let pool = SeaOrmDatabase::connect(opts).await?;
+        Ok(Database {
+            pool,
+            notify: Notify::new(),
+        })
+    }
+
+    fn ts(y: i32, m: u32, d: u32, h: u32, min: u32, s: u32) -> NaiveDateTime {
+        NaiveDateTime::new(
+            NaiveDate::from_ymd_opt(y, m, d).unwrap(),
+            NaiveTime::from_hms_opt(h, min, s).unwrap(),
+        )
+    }
+
+    fn basic_mock_reminder() -> reminder::Model {
+        reminder::Model {
+            id: 1,
+            chat_id: 1,
+            time: NaiveDateTime::new(
+                NaiveDate::from_ymd_opt(2024, 2, 2).unwrap(),
+                NaiveTime::from_hms_opt(1, 2, 3).unwrap(),
+            ),
+            desc: "".to_owned(),
+            user_id: None,
+            paused: false,
+            pattern: None,
+            msg_id: None,
+            reply_id: None,
+        }
+    }
+
+    fn basic_mock_new_reminder_act() -> reminder::ActiveModel {
+        let mut rem_act = basic_mock_reminder().into_active_model();
+        rem_act.id = NotSet;
+        rem_act
+    }
+
+    #[tokio::test]
+    async fn test_get_sorted_reminders() {
+        let db = new_db_in_memory().await.unwrap();
+        db.apply_migrations().await.unwrap();
+        let mut rem1_act = basic_mock_new_reminder_act();
+        let mut rem2_act = basic_mock_new_reminder_act();
+        let mut rem3_act = basic_mock_new_reminder_act();
+        rem1_act.time = Set(ts(2024, 1, 1, 1, 0, 0));
+        rem2_act.time = Set(ts(2024, 1, 1, 2, 0, 0));
+        rem3_act.time = Set(ts(2024, 1, 1, 3, 0, 0));
+
+        db.insert_reminder(rem1_act.clone()).await.unwrap();
+        db.insert_reminder(rem3_act.clone()).await.unwrap();
+        db.insert_reminder(rem2_act.clone()).await.unwrap();
+
+        let result = db.get_sorted_reminders(1).await.unwrap();
+        let times: Vec<_> = result.iter().map(|r| r.get_time()).collect();
+        assert_eq!(
+            times,
+            vec![
+                rem1_act.time.unwrap(),
+                rem2_act.time.unwrap(),
+                rem3_act.time.unwrap(),
+            ]
+        );
+    }
+}
