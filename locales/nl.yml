@@ -45,7 +45,7 @@ HelloGroup: |
   01.01 00:00 Gelukkig nieuwjaar => 1 januari om 00:00
   55 10 * * 1-5 vergadering => om 10:55 elke werkdag (CRON-formaat)
 
-  Stel eerst de tijdpatroon in met /settimezone.
+  Stel eerst de tijdzone in met /settimezone.
 EnterNewTimePattern: "Voer een nieuw tijdschema voor de herinnering in:"
 EnterNewDescription: "Voer een nieuwe omschrijving voor de herinnering in:"
 SettingsMenu: "Instellingen:"
