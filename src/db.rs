@@ -354,15 +354,16 @@ impl Database {
             self.get_pending_chat_cron_reminders(chat_id)
         )?;
 
-        Ok(reminders
-            .into_iter()
-            .map(|m| Box::new(reminder::ActiveModel::from(m)) as _)
-            .chain(
-                cron_reminders.into_iter().map(|m| {
+        let mut all_reminders: Vec<_> =
+            reminders
+                .into_iter()
+                .map(|m| Box::new(reminder::ActiveModel::from(m)) as _)
+                .chain(cron_reminders.into_iter().map(|m| {
                     Box::new(cron_reminder::ActiveModel::from(m)) as _
-                }),
-            )
-            .collect())
+                }))
+                .collect();
+        all_reminders.sort_unstable();
+        Ok(all_reminders)
     }
 
     pub(crate) async fn get_reminder_by_msg_id(
