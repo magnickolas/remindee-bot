@@ -440,6 +440,7 @@ mod test {
                 has_protected_content: false,
                 is_from_offline: false,
                 business_connection_id: None,
+                paid_star_count: None,
             })
         }
     }

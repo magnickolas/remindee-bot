@@ -1058,7 +1058,7 @@ impl TgCallbackController {
             msg_ctl: TgMessageController::from_callback_query(
                 db, bot, &cb_query,
             )?,
-            cb_id: cb_query.id,
+            cb_id: cb_query.id.to_string(),
         })
     }
 
@@ -1075,7 +1075,9 @@ impl TgCallbackController {
     ) -> Result<(), RequestError> {
         self.msg_ctl
             .bot
-            .answer_callback_query(self.cb_id.clone())
+            .answer_callback_query(teloxide::types::CallbackQueryId(
+                self.cb_id.clone(),
+            ))
             .send()
             .await
             .map(|_| ())
