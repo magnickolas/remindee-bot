@@ -12,7 +12,7 @@ keywords = ["bot", "reminder", "cron", "telegram-bot", "reminders"]
 categories = ["command-line-utilities"]
 
 [workspace]
-members = ["."]
+members = [".", "remindee-parser"]
 
 [dependencies]
 chrono = "0.4"
@@ -25,8 +25,6 @@ log = "0.4"
 pretty_env_logger = "0.5"
 regex = "1.7"
 sea-orm = "1.0"
-pest = "2.0"
-pest_derive = "2.0"
 serde_json = "1.0"
 bitmask-enum = "2.1"
 nonempty = "0.12"
@@ -34,6 +32,7 @@ tzf-rs = { version = "1.0.0", default-features = false }
 teloxide_tests = "0.4.0"
 teloxide_tests_macros = "0.2.0"
 mockall = "0.13.1"
+remindee-parser = { path = "remindee-parser" }
 
 [dependencies.serde]
 version = "1.0"

@@ -2,6 +2,7 @@ use bitmask_enum::bitmask;
 use nonempty::{nonempty, NonEmpty};
 
 use pest::{iterators::Pair, Parser};
+use pest_derive::Parser;
 
 extern crate alloc;
 
@@ -10,21 +11,21 @@ extern crate alloc;
 struct ReminderParser;
 
 #[derive(Debug, Default)]
-pub(crate) struct HoleyDate {
-    pub(crate) year: Option<i32>,
-    pub(crate) month: Option<u32>,
-    pub(crate) day: Option<u32>,
+pub struct HoleyDate {
+    pub year: Option<i32>,
+    pub month: Option<u32>,
+    pub day: Option<u32>,
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Interval {
-    pub(crate) years: i32,
-    pub(crate) months: u32,
-    pub(crate) weeks: u32,
-    pub(crate) days: u32,
-    pub(crate) hours: u32,
-    pub(crate) minutes: u32,
-    pub(crate) seconds: u32,
+pub struct Interval {
+    pub years: i32,
+    pub months: u32,
+    pub weeks: u32,
+    pub days: u32,
+    pub hours: u32,
+    pub minutes: u32,
+    pub seconds: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,7 +40,7 @@ enum Weekday {
 }
 
 #[bitmask(u8)]
-pub(crate) enum Weekdays {
+pub enum Weekdays {
     Monday,
     Tuesday,
     Wednesday,
@@ -50,16 +51,16 @@ pub(crate) enum Weekdays {
 }
 
 #[derive(Debug)]
-pub(crate) enum DateDivisor {
+pub enum DateDivisor {
     Weekdays(Weekdays),
     Interval(DateInterval),
 }
 
 #[derive(Debug)]
-pub(crate) struct DateRange {
-    pub(crate) from: HoleyDate,
-    pub(crate) until: Option<HoleyDate>,
-    pub(crate) date_divisor: DateDivisor,
+pub struct DateRange {
+    pub from: HoleyDate,
+    pub until: Option<HoleyDate>,
+    pub date_divisor: DateDivisor,
 }
 
 impl Default for DateRange {
@@ -76,132 +77,129 @@ impl Default for DateRange {
 }
 
 #[derive(Debug)]
-pub(crate) enum DatePattern {
+pub enum DatePattern {
     Point(HoleyDate),
     Range(DateRange),
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Time {
-    pub(crate) hour: u32,
-    pub(crate) minute: u32,
-    pub(crate) second: u32,
+pub struct Time {
+    pub hour: u32,
+    pub minute: u32,
+    pub second: u32,
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct TimeInterval {
-    pub(crate) hours: u32,
-    pub(crate) minutes: u32,
-    pub(crate) seconds: u32,
+pub struct TimeInterval {
+    pub hours: u32,
+    pub minutes: u32,
+    pub seconds: u32,
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct DateInterval {
-    pub(crate) years: i32,
-    pub(crate) months: u32,
-    pub(crate) weeks: u32,
-    pub(crate) days: u32,
+pub struct DateInterval {
+    pub years: i32,
+    pub months: u32,
+    pub weeks: u32,
+    pub days: u32,
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct TimeRange {
-    pub(crate) from: Option<Time>,
-    pub(crate) until: Option<Time>,
-    pub(crate) interval: TimeInterval,
+pub struct TimeRange {
+    pub from: Option<Time>,
+    pub until: Option<Time>,
+    pub interval: TimeInterval,
 }
 
 #[derive(Debug)]
-pub(crate) enum TimePattern {
+pub enum TimePattern {
     Point(Time),
     Range(TimeRange),
 }
 
 #[derive(Debug)]
-pub(crate) struct Recurrence {
-    pub(crate) dates_patterns: NonEmpty<DatePattern>,
-    pub(crate) time_patterns: Vec<TimePattern>,
+pub struct Recurrence {
+    pub dates_patterns: NonEmpty<DatePattern>,
+    pub time_patterns: Vec<TimePattern>,
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Countdown {
-    pub(crate) durations: Vec<Interval>,
+pub struct Countdown {
+    pub durations: Vec<Interval>,
 }
 
 #[derive(Debug)]
-pub(crate) enum ReminderPattern {
+pub enum ReminderPattern {
     Recurrence(Recurrence),
     Countdown(Countdown),
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Reminder {
-    pub(crate) description: Option<Description>,
-    pub(crate) pattern: Option<ReminderPattern>,
+pub struct Reminder {
+    pub description: Option<Description>,
+    pub pattern: Option<ReminderPattern>,
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Description(pub(crate) String);
+pub struct Description(pub String);
 
 trait Parse {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()>
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self>
     where
         Self: Sized;
 }
 
 impl Parse for HoleyDate {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
         let mut holey_date = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::year => {
-                    holey_date.year =
-                        Some(rec.as_str().parse().map_err(|_| ())?);
+                    holey_date.year = Some(rec.as_str().parse().ok()?);
                 }
                 Rule::month => {
-                    holey_date.month =
-                        Some(rec.as_str().parse().map_err(|_| ())?);
+                    holey_date.month = Some(rec.as_str().parse().ok()?);
                 }
                 Rule::day => {
-                    holey_date.day =
-                        Some(rec.as_str().parse().map_err(|_| ())?);
+                    holey_date.day = Some(rec.as_str().parse().ok()?);
                 }
                 _ => unreachable!(),
             }
         }
-        Ok(holey_date)
+        Some(holey_date)
     }
 }
 
 impl Parse for Interval {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
         let mut interval = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::interval_years => {
-                    interval.years = rec.as_str().parse().map_err(|_| ())?;
+                    interval.years = rec.as_str().parse().ok()?;
                 }
                 Rule::interval_months => {
-                    interval.months = rec.as_str().parse().map_err(|_| ())?;
+                    interval.months = rec.as_str().parse().ok()?;
                 }
                 Rule::interval_weeks => {
-                    interval.weeks = rec.as_str().parse().map_err(|_| ())?;
+                    interval.weeks = rec.as_str().parse().ok()?;
                 }
                 Rule::interval_days => {
-                    interval.days = rec.as_str().parse().map_err(|_| ())?;
+                    interval.days = rec.as_str().parse().ok()?;
                 }
                 Rule::interval_hours => {
-                    interval.hours = rec.as_str().parse().map_err(|_| ())?;
+                    interval.hours = rec.as_str().parse().ok()?;
                 }
                 Rule::interval_minutes => {
-                    interval.minutes = rec.as_str().parse().map_err(|_| ())?;
+                    interval.minutes = rec.as_str().parse().ok()?;
                 }
                 Rule::interval_seconds => {
-                    interval.seconds = rec.as_str().parse().map_err(|_| ())?;
+                    interval.seconds = rec.as_str().parse().ok()?;
                 }
                 _ => unreachable!(),
             }
         }
-        Ok(interval)
+        Some(interval)
     }
 }
 
@@ -220,7 +218,7 @@ impl Weekday {
 }
 
 impl Parse for Weekday {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
         pair.into_inner()
             .next()
             .map(|weekday| match weekday.as_rule() {
@@ -233,7 +231,6 @@ impl Parse for Weekday {
                 Rule::sunday => Self::Sunday,
                 _ => unreachable!(),
             })
-            .ok_or(())
     }
 }
 
@@ -251,30 +248,25 @@ impl Weekdays {
     }
 }
 impl Parse for Weekdays {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
         let mut weekdays = Self::none();
         let mut weekday_range = pair.into_inner();
-        let mut weekday_from = weekday_range
-            .next()
-            .map(Weekday::parse)
-            .transpose()?
-            .ok_or(())?;
+        let mut weekday_from = weekday_range.next().and_then(Weekday::parse)?;
         let weekday_to = weekday_range
             .next()
-            .map(Weekday::parse)
-            .transpose()?
+            .and_then(Weekday::parse)
             .unwrap_or(weekday_from);
         while weekday_from != weekday_to {
             weekdays.push(weekday_from);
             weekday_from = weekday_from.next();
         }
         weekdays.push(weekday_from);
-        Ok(weekdays)
+        Some(weekdays)
     }
 }
 
 impl Parse for DateRange {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
         let mut date_range = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
@@ -305,88 +297,78 @@ impl Parse for DateRange {
                 _ => unreachable!(),
             }
         }
-        Ok(date_range)
+        Some(date_range)
     }
 }
 
 impl Parse for Time {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
         let mut time = Self::default();
         for time_component in pair.into_inner() {
             match time_component.as_rule() {
                 Rule::hour => {
-                    time.hour =
-                        time_component.as_str().parse().map_err(|_| ())?;
+                    time.hour = time_component.as_str().parse().ok()?;
                 }
                 Rule::minute => {
-                    time.minute =
-                        time_component.as_str().parse().map_err(|_| ())?;
+                    time.minute = time_component.as_str().parse().ok()?;
                 }
                 Rule::second => {
-                    time.second =
-                        time_component.as_str().parse().map_err(|_| ())?;
+                    time.second = time_component.as_str().parse().ok()?;
                 }
                 _ => unreachable!(),
             }
         }
-        Ok(time)
+        Some(time)
     }
 }
 
 impl Parse for TimeInterval {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
         let mut time_interval = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::interval_hours => {
-                    time_interval.hours =
-                        rec.as_str().parse().map_err(|_| ())?;
+                    time_interval.hours = rec.as_str().parse().ok()?;
                 }
                 Rule::interval_minutes => {
-                    time_interval.minutes =
-                        rec.as_str().parse().map_err(|_| ())?;
+                    time_interval.minutes = rec.as_str().parse().ok()?;
                 }
                 Rule::interval_seconds => {
-                    time_interval.seconds =
-                        rec.as_str().parse().map_err(|_| ())?;
+                    time_interval.seconds = rec.as_str().parse().ok()?;
                 }
                 _ => unreachable!(),
             }
         }
-        Ok(time_interval)
+        Some(time_interval)
     }
 }
 
 impl Parse for DateInterval {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
         let mut date_interval = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
                 Rule::interval_years => {
-                    date_interval.years =
-                        rec.as_str().parse().map_err(|_| ())?;
+                    date_interval.years = rec.as_str().parse().ok()?;
                 }
                 Rule::interval_months => {
-                    date_interval.months =
-                        rec.as_str().parse().map_err(|_| ())?;
+                    date_interval.months = rec.as_str().parse().ok()?;
                 }
                 Rule::interval_weeks => {
-                    date_interval.weeks =
-                        rec.as_str().parse().map_err(|_| ())?;
+                    date_interval.weeks = rec.as_str().parse().ok()?;
                 }
                 Rule::interval_days => {
-                    date_interval.days =
-                        rec.as_str().parse().map_err(|_| ())?;
+                    date_interval.days = rec.as_str().parse().ok()?;
                 }
                 _ => unreachable!(),
             }
         }
-        Ok(date_interval)
+        Some(date_interval)
     }
 }
 
 impl Parse for TimeRange {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
         let mut time_range = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
@@ -402,7 +384,7 @@ impl Parse for TimeRange {
                 _ => unreachable!(),
             }
         }
-        Ok(time_range)
+        Some(time_range)
     }
 }
 
@@ -418,7 +400,7 @@ impl Default for Recurrence {
 }
 
 impl Parse for Recurrence {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
         let mut recurrence = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
@@ -449,12 +431,12 @@ impl Parse for Recurrence {
             recurrence.dates_patterns =
                 NonEmpty::from_vec(recurrence.dates_patterns.tail).unwrap();
         }
-        Ok(recurrence)
+        Some(recurrence)
     }
 }
 
 impl Parse for Countdown {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
         let mut countdown = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
@@ -464,18 +446,18 @@ impl Parse for Countdown {
                 _ => unreachable!(),
             }
         }
-        Ok(countdown)
+        Some(countdown)
     }
 }
 
 impl Parse for Description {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
-        Ok(Self(pair.as_str().to_string()))
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
+        Some(Self(pair.as_str().to_string()))
     }
 }
 
 impl Parse for Reminder {
-    fn parse(pair: Pair<'_, Rule>) -> Result<Self, ()> {
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
         let mut reminder = Self::default();
         for rec in pair.into_inner() {
             match rec.as_rule() {
@@ -496,17 +478,17 @@ impl Parse for Reminder {
                 _ => unreachable!(),
             }
         }
-        Ok(reminder)
+        Some(reminder)
     }
 }
 
-pub(crate) fn parse_reminder(s: &str) -> Result<Reminder, ()> {
+pub fn parse_reminder(s: &str) -> Option<Reminder> {
     Reminder::parse(
         ReminderParser::parse(Rule::reminder, s)
             .map_err(|err| {
                 log::debug!("{}", err);
-            })?
-            .next()
-            .ok_or(())?,
+            })
+            .ok()?
+            .next()?,
     )
 }

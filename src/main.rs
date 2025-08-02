@@ -1,9 +1,6 @@
 #[macro_use]
 extern crate lazy_static;
-extern crate pest;
 extern crate pretty_env_logger;
-#[macro_use]
-extern crate pest_derive;
 #[macro_use]
 extern crate rust_i18n;
 
@@ -18,7 +15,6 @@ mod entity;
 mod err;
 mod format;
 mod generic_reminder;
-mod grammar;
 mod handlers;
 mod lang;
 mod migration;

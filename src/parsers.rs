@@ -1,4 +1,3 @@
-use crate::grammar;
 use crate::serializers::Pattern;
 
 use crate::entity::{cron_reminder, reminder};
@@ -21,7 +20,7 @@ pub(crate) async fn parse_reminder(
     msg_id: i32,
     user_timezone: Tz,
 ) -> Option<reminder::ActiveModel> {
-    let rem = grammar::parse_reminder(s).ok()?;
+    let rem = remindee_parser::parse_reminder(s)?;
     let description = rem.description.map(|x| x.0).unwrap_or("".to_owned());
     let mut pattern =
         Pattern::from_with_tz(rem.pattern?, user_timezone).ok()?;

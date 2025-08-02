@@ -10,8 +10,8 @@ use nonempty::NonEmpty;
 use serde::{Deserialize, Serialize};
 
 use crate::date;
-use crate::grammar;
 use crate::parsers::now_time;
+use remindee_parser as grammar;
 
 #[derive(Debug)]
 pub(crate) struct Tz(chrono_tz::Tz);
@@ -863,10 +863,8 @@ mod test {
     use serial_test::serial;
 
     use super::*;
-    use crate::{
-        grammar::parse_reminder,
-        parsers::test::{TEST_TIME, TEST_TIMESTAMP, TEST_TZ},
-    };
+    use crate::parsers::test::{TEST_TIME, TEST_TIMESTAMP, TEST_TZ};
+    use remindee_parser::parse_reminder;
 
     fn get_all_times(
         mut pattern: Pattern,

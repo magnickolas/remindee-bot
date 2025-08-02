@@ -1,0 +1,14 @@
+[package]
+name = "remindee-parser"
+version = "0.1.0"
+authors = ["Nikolai Oplachko <magnickolas@gmail.com>"]
+edition = "2021"
+license = "GPL-3.0-only"
+description = "Natural language reminder parser for remindee-bot"
+
+[dependencies]
+bitmask-enum = "2.1"
+nonempty = "0.12"
+pest = "2.0"
+pest_derive = "2.0"
+log = "0.4"

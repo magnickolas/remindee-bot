@@ -3223,10 +3223,9 @@ dependencies = [
  "mockall",
  "nonempty",
  "openssl",
- "pest",
- "pest_derive",
  "pretty_env_logger",
  "regex",
+ "remindee-parser",
  "rust-i18n",
  "sea-orm",
  "sea-orm-migration",
@@ -3241,6 +3240,17 @@ dependencies = [
  "test-case",
  "tokio",
  "tzf-rs",
+]
+
+[[package]]
+name = "remindee-parser"
+version = "0.1.0"
+dependencies = [
+ "bitmask-enum",
+ "log",
+ "nonempty",
+ "pest",
+ "pest_derive",
 ]
 
 [[package]]
