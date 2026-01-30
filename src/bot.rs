@@ -3,19 +3,16 @@ use crate::cli::CLI;
 use crate::db::Database;
 #[cfg(test)]
 use crate::db::MockDatabase as Database;
-use crate::entity::{cron_reminder, reminder};
+use crate::entity::reminder;
 use crate::err::Error;
 use crate::format;
 use crate::handlers::{get_handler, Command, State};
-use crate::lang::get_user_language;
 use crate::parsers::now_time;
 use crate::serializers::Pattern;
 use crate::tg::send_message;
 use crate::tz::get_user_timezone;
-use chrono::prelude::*;
-use chrono::{NaiveDateTime, TimeDelta, Utc};
+use chrono::{NaiveDateTime, TimeDelta};
 use chrono_tz::Tz;
-use cron_parser::parse as parse_cron;
 use sea_orm::{ActiveValue::NotSet, IntoActiveModel};
 use serde_json::{from_str, to_string};
 use std::cmp::max;
@@ -32,25 +29,6 @@ async fn send_reminder(
 ) -> Result<(), Error> {
     let text = format::format_reminder(
         &reminder.clone().into_active_model(),
-        user_timezone,
-    );
-    send_message(&text, bot, ChatId(reminder.chat_id))
-        .await
-        .map(|_| ())
-        .map_err(From::from)
-}
-
-async fn send_cron_reminder(
-    reminder: &cron_reminder::Model,
-    next_reminder: Option<&cron_reminder::Model>,
-    user_lang: String,
-    user_timezone: Tz,
-    bot: &Bot,
-) -> Result<(), Error> {
-    let text = format::format_cron_reminder(
-        reminder,
-        next_reminder,
-        user_lang,
         user_timezone,
     );
     send_message(&text, bot, ChatId(reminder.chat_id))
@@ -97,63 +75,6 @@ async fn process_due_reminders(db: &Database, bot: &Bot) {
                             .unwrap_or_else(|err| {
                                 log::error!("{}", err);
                             });
-                    }
-                }
-            }
-        }
-    }
-    let cron_reminders = db
-        .get_active_cron_reminders()
-        .await
-        .expect("Failed to get cron reminders from database");
-    for cron_reminder in cron_reminders {
-        if let Some(user_id) = cron_reminder.user_id.map(|x| UserId(x as u64)) {
-            if let Ok(Some(user_timezone)) =
-                get_user_timezone(db, user_id).await
-            {
-                let new_time = parse_cron(
-                    &cron_reminder.cron_expr,
-                    &user_timezone.from_utc_datetime(&now_time()),
-                )
-                .map(|user_time| user_time.with_timezone(&Utc));
-                let new_cron_reminder = match new_time {
-                    Ok(new_time) => Some(cron_reminder::Model {
-                        time: new_time.naive_utc(),
-                        ..cron_reminder.clone()
-                    }),
-                    Err(err) => {
-                        log::error!("{}", err);
-                        None
-                    }
-                };
-                match send_cron_reminder(
-                    &cron_reminder,
-                    new_cron_reminder.as_ref(),
-                    get_user_language(db, user_id).await.code().to_owned(),
-                    user_timezone,
-                    bot,
-                )
-                .await
-                {
-                    Ok(()) => {
-                        db.delete_cron_reminder(cron_reminder.id)
-                            .await
-                            .unwrap_or_else(|err| {
-                                log::error!("{}", err);
-                            });
-                        if let Some(new_cron_reminder) = new_cron_reminder {
-                            let mut new_cron_reminder: cron_reminder::ActiveModel = new_cron_reminder.into();
-                            new_cron_reminder.id = NotSet;
-                            db.insert_cron_reminder(new_cron_reminder)
-                                .await
-                                .map(|_| ())
-                                .unwrap_or_else(|err| {
-                                    log::error!("{}", err);
-                                });
-                        }
-                    }
-                    Err(err) => {
-                        log::error!("{}", err);
                     }
                 }
             }
@@ -254,12 +175,8 @@ mod test {
     use std::sync::Arc;
 
     use crate::{
-        db::MockDatabase,
-        entity::{cron_reminder, reminder},
-        generic_reminder::GenericReminder,
-        handlers::get_handler,
-        parsers::test::TEST_TIMESTAMP,
-        tg::TgResponse,
+        db::MockDatabase, entity::reminder, generic_reminder::GenericReminder,
+        handlers::get_handler, parsers::test::TEST_TIMESTAMP, tg::TgResponse,
     };
     use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
     use chrono_tz::Tz;
@@ -295,23 +212,6 @@ mod test {
             user_id: None,
             paused: false,
             pattern: None,
-            msg_id: None,
-            reply_id: None,
-        }
-    }
-
-    fn basic_mock_cron_reminder() -> cron_reminder::Model {
-        cron_reminder::Model {
-            id: 1,
-            chat_id: 1,
-            cron_expr: "* * * * *".to_string(),
-            time: NaiveDateTime::new(
-                NaiveDate::from_ymd_opt(2024, 2, 2).unwrap(),
-                NaiveTime::from_hms_opt(1, 2, 3).unwrap(),
-            ),
-            desc: "".to_owned(),
-            user_id: None,
-            paused: false,
             msg_id: None,
             reply_id: None,
         }
@@ -914,45 +814,6 @@ mod test {
         bot.dispatch().await;
 
         bot.update(MockMessageText::new().text("new description"));
-        bot.dispatch_and_check_last_text(
-            &TgResponse::EditReminderNotFound.to_string(),
-        )
-        .await;
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn test_edit_cron_reminder_not_found() {
-        *TEST_TIMESTAMP.write().unwrap() = mock_timezone()
-            .with_ymd_and_hms(2024, 1, 1, 0, 0, 0)
-            .unwrap()
-            .timestamp();
-        let cron = basic_mock_cron_reminder();
-        let cron_clone = cron.clone();
-        let mut db = MockDatabase::new();
-        db.expect_get_sorted_reminders().returning(move |_| {
-            Ok(vec![Box::new(cron_clone.clone().into_active_model())])
-        });
-        db.expect_get_user_timezone_name()
-            .returning(|_| Ok(Some(mock_timezone_name())));
-        db.expect_get_user_language_name()
-            .returning(|_| Ok(Some(mock_language_name())));
-        db.expect_get_cron_reminder()
-            .with(eq(cron.id))
-            .returning(|_| Ok(None));
-
-        let message = MockMessageText::new().text("/edit");
-        let mut bot = mock_bot(db, message);
-
-        bot.dispatch().await;
-        bot.update(
-            MockCallbackQuery::new()
-                .data("editrem::cron_rem_alt::1")
-                .message(bot.get_responses().sent_messages[0].clone()),
-        );
-        bot.dispatch().await;
-
-        bot.update(MockMessageText::new().text("* * * * * new reminder"));
         bot.dispatch_and_check_last_text(
             &TgResponse::EditReminderNotFound.to_string(),
         )

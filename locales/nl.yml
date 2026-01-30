@@ -1,6 +1,5 @@
 _version: 1
 SuccessInsert: "Herinnering toegevoegd:\n%{reminder}"
-SuccessPeriodicInsert: "Periodieke herinnering toegevoegd:\n%{reminder}"
 FailedInsert: "⚠️ Kon herinnering niet aanmaken."
 IncorrectRequest: "Ongeldig verzoek!"
 QueryingError: "⚠️ Fout bij het ophalen van herinneringen."
@@ -17,7 +16,6 @@ ChooseDeleteReminder: "Kies een herinnering om te verwijderen:"
 SuccessDelete: "🗑 Herinnering verwijderd: %{reminder}"
 FailedDelete: "⚠️ Verwijderen is mislukt."
 ChooseEditReminder: "Kies een herinnering om te bewerken:"
-EnterNewReminder: "Voer de nieuwe herinnering in:"
 SuccessEdit: |
   📝 Herinnering gewijzigd van: %{old}
   naar ➡️ %{new}

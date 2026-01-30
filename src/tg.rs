@@ -14,7 +14,6 @@ use rust_i18n::t;
 
 pub(crate) enum TgResponse {
     SuccessInsert(String),
-    SuccessPeriodicInsert(String),
     FailedInsert,
     IncorrectRequest,
     QueryingError,
@@ -26,7 +25,6 @@ pub(crate) enum TgResponse {
     SuccessDelete(String),
     FailedDelete,
     ChooseEditReminder,
-    EnterNewReminder,
     SuccessEdit(String, String),
     FailedEdit,
     EditReminderNotFound,
@@ -53,12 +51,6 @@ impl TgResponse {
                 t!("SuccessInsert", locale = lang, reminder = reminder_str)
                     .to_string()
             }
-            Self::SuccessPeriodicInsert(reminder_str) => t!(
-                "SuccessPeriodicInsert",
-                locale = lang,
-                reminder = reminder_str
-            )
-            .to_string(),
             Self::FailedInsert => t!("FailedInsert", locale = lang).to_string(),
             Self::IncorrectRequest => {
                 t!("IncorrectRequest", locale = lang).to_string()
@@ -89,9 +81,6 @@ impl TgResponse {
             Self::FailedDelete => t!("FailedDelete", locale = lang).to_string(),
             Self::ChooseEditReminder => {
                 t!("ChooseEditReminder", locale = lang).to_string()
-            }
-            Self::EnterNewReminder => {
-                t!("EnterNewReminder", locale = lang).to_string()
             }
             Self::SuccessEdit(old_reminder_str, reminder_str) => t!(
                 "SuccessEdit",

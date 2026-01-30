@@ -1,10 +1,10 @@
 use crate::serializers::Pattern;
 
-use crate::entity::{cron_reminder, reminder};
+use crate::entity::reminder;
 use chrono::prelude::*;
+#[cfg(not(test))]
 use chrono::Utc;
 use chrono_tz::Tz;
-use cron_parser::parse as parse_cron;
 use sea_orm::ActiveValue::{NotSet, Set};
 use serde_json::to_string;
 
@@ -37,38 +37,6 @@ pub(crate) async fn parse_reminder(
         msg_id: Set(Some(msg_id)),
         reply_id: Set(None), // set after replying
     })
-}
-
-pub(crate) async fn parse_cron_reminder(
-    text: &str,
-    chat_id: i64,
-    user_id: u64,
-    msg_id: i32,
-    user_timezone: Tz,
-) -> Option<cron_reminder::ActiveModel> {
-    let cron_fields: Vec<&str> = text.split_whitespace().take(5).collect();
-    if cron_fields.len() < 5 {
-        None
-    } else {
-        let cron_expr = cron_fields.join(" ");
-        parse_cron(&cron_expr, &user_timezone.from_utc_datetime(&now_time()))
-            .map(|time| cron_reminder::ActiveModel {
-                id: NotSet,
-                chat_id: Set(chat_id),
-                user_id: Set(Some(user_id as i64)),
-                cron_expr: Set(cron_expr.clone()),
-                time: Set(time.with_timezone(&Utc).naive_utc()),
-                desc: Set(text
-                    .strip_prefix(&(cron_expr.to_owned()))
-                    .unwrap_or("")
-                    .trim()
-                    .to_owned()),
-                paused: Set(false),
-                msg_id: Set(Some(msg_id)),
-                reply_id: Set(None), // set after replying
-            })
-            .ok()
-    }
 }
 
 #[cfg(test)]

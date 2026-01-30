@@ -5,7 +5,6 @@ use std::fmt;
 pub(crate) enum Error {
     Database(db::Error),
     Parse(chrono_tz::ParseError),
-    CronParse(cron_parser::ParseError),
     TeloxideRequest(teloxide::RequestError),
 }
 
@@ -14,7 +13,6 @@ impl fmt::Display for Error {
         match *self {
             Self::Database(ref err) => write!(f, "Database error: {err}"),
             Self::Parse(ref err) => write!(f, "Parse error: {err}"),
-            Self::CronParse(ref err) => write!(f, "Cron parse error: {err}"),
             Self::TeloxideRequest(ref err) => {
                 write!(f, "Telegram request error: {err}")
             }
@@ -25,12 +23,6 @@ impl fmt::Display for Error {
 impl From<db::Error> for Error {
     fn from(err: db::Error) -> Self {
         Self::Database(err)
-    }
-}
-
-impl From<cron_parser::ParseError> for Error {
-    fn from(err: cron_parser::ParseError) -> Self {
-        Self::CronParse(err)
     }
 }
 

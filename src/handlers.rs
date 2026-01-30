@@ -28,9 +28,6 @@ pub(crate) enum State {
         id: i64,
         mode: EditMode,
     },
-    EditCron {
-        id: i64,
-    },
 }
 
 #[cfg(not(test))]
@@ -121,10 +118,6 @@ pub(crate) fn get_handler(
                             .branch(
                                 case![State::Edit { id, mode }]
                                     .endpoint(edit_message_handler),
-                            )
-                            .branch(
-                                case![State::EditCron { id }]
-                                    .endpoint(edit_cron_message_handler),
                             )
                             .endpoint(message_handler),
                         )
@@ -342,19 +335,6 @@ async fn edit_message_handler(
     dialogue.update(State::Default).await.map_err(From::from)
 }
 
-async fn edit_cron_message_handler(
-    ctl: TgMessageController,
-    text: String,
-    cron_rem_id: i64,
-    user_tz: Tz,
-    dialogue: MyDialogue,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    ctl.edit_reminder(ReminderUpdate::CronReminder(cron_rem_id, text), user_tz)
-        .await?;
-    #[allow(clippy::useless_conversion)]
-    dialogue.update(State::Default).await.map_err(From::from)
-}
-
 async fn message_handler(
     ctl: TgMessageController,
     text: String,
@@ -447,13 +427,6 @@ async fn callback_handler(
         ctl.delete_reminder(rem_id, user_tz)
             .await
             .map_err(From::from)
-    } else if let Some(cron_rem_id) = cb_data
-        .strip_prefix("delrem::cron_rem_alt::")
-        .and_then(|x| x.parse::<i64>().ok())
-    {
-        ctl.delete_cron_reminder(cron_rem_id, user_tz)
-            .await
-            .map_err(From::from)
     } else if let Some(page_num) = cb_data
         .strip_prefix("editrem::page::")
         .and_then(|x| x.parse::<usize>().ok())
@@ -469,16 +442,6 @@ async fn callback_handler(
         ctl.choose_edit_mode_reminder(rem_id)
             .await
             .map_err(From::from)
-    } else if let Some(cron_rem_id) = cb_data
-        .strip_prefix("editrem::cron_rem_alt::")
-        .and_then(|x| x.parse::<i64>().ok())
-    {
-        ctl.edit_cron_reminder().await?;
-        #[allow(clippy::useless_conversion)]
-        dialogue
-            .update(State::EditCron { id: cron_rem_id })
-            .await
-            .map_err(From::from)
     } else if let Some(page_num) = cb_data
         .strip_prefix("pauserem::page::")
         .and_then(|x| x.parse::<usize>().ok())
@@ -492,13 +455,6 @@ async fn callback_handler(
         .and_then(|x| x.parse::<i64>().ok())
     {
         ctl.pause_reminder(rem_id, user_tz)
-            .await
-            .map_err(From::from)
-    } else if let Some(cron_rem_id) = cb_data
-        .strip_prefix("pauserem::cron_rem_alt::")
-        .and_then(|x| x.parse::<i64>().ok())
-    {
-        ctl.pause_cron_reminder(cron_rem_id, user_tz)
             .await
             .map_err(From::from)
     } else if let Some(rem_id) = cb_data

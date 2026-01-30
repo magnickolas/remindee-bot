@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::cli::CLI;
-use crate::entity::{cron_reminder, reminder, user_language, user_timezone};
+use crate::entity::{reminder, user_language, user_timezone};
 use crate::generic_reminder;
 use crate::migration::{DbErr, Migrator, MigratorTrait};
 use crate::parsers::now_time;
@@ -126,28 +126,10 @@ impl Database {
             .map(|r| r.time))
     }
 
-    async fn next_cron_reminder_time(
-        &self,
-    ) -> Result<Option<NaiveDateTime>, Error> {
-        Ok(cron_reminder::Entity::find()
-            .filter(cron_reminder::Column::Paused.eq(false))
-            .order_by_asc(cron_reminder::Column::Time)
-            .one(&self.pool)
-            .await?
-            .map(|r| r.time))
-    }
-
     pub(crate) async fn get_next_reminder_time(
         &self,
     ) -> Result<Option<NaiveDateTime>, Error> {
-        let next_reminder_time = self.next_reminder_time().await?;
-        let next_cron_reminder_time = self.next_cron_reminder_time().await?;
-        match (next_reminder_time, next_cron_reminder_time) {
-            (Some(rem), Some(cron_rem)) => Ok(Some(rem.min(cron_rem))),
-            (Some(rem), None) => Ok(Some(rem)),
-            (None, Some(cron_rem)) => Ok(Some(cron_rem)),
-            (None, None) => Ok(None),
-        }
+        self.next_reminder_time().await
     }
 
     pub(crate) async fn get_active_reminders(
@@ -256,37 +238,6 @@ impl Database {
         Ok(())
     }
 
-    pub(crate) async fn get_cron_reminder(
-        &self,
-        id: i64,
-    ) -> Result<Option<cron_reminder::Model>, Error> {
-        Ok(cron_reminder::Entity::find()
-            .filter(cron_reminder::Column::Id.eq(id))
-            .one(&self.pool)
-            .await?)
-    }
-
-    pub(crate) async fn insert_cron_reminder(
-        &self,
-        rem: cron_reminder::ActiveModel,
-    ) -> Result<cron_reminder::ActiveModel, Error> {
-        defer!(self.notify.notify_one());
-        Ok(rem.save(&self.pool).await?)
-    }
-
-    pub(crate) async fn delete_cron_reminder(
-        &self,
-        id: i64,
-    ) -> Result<(), Error> {
-        cron_reminder::ActiveModel {
-            id: Set(id),
-            ..Default::default()
-        }
-        .delete(&self.pool)
-        .await?;
-        Ok(())
-    }
-
     pub(crate) async fn toggle_reminder_paused(
         &self,
         id: i64,
@@ -305,63 +256,16 @@ impl Database {
         }
     }
 
-    pub(crate) async fn toggle_cron_reminder_paused(
-        &self,
-        id: i64,
-    ) -> Result<bool, Error> {
-        defer!(self.notify.notify_one());
-        let cron_rem: Option<cron_reminder::Model> =
-            cron_reminder::Entity::find_by_id(id)
-                .one(&self.pool)
-                .await?;
-        if let Some(cron_rem) = cron_rem {
-            let paused_value = !cron_rem.paused;
-            let mut cron_rem_act: cron_reminder::ActiveModel = cron_rem.into();
-            cron_rem_act.paused = Set(paused_value);
-            cron_rem_act.update(&self.pool).await?;
-            Ok(paused_value)
-        } else {
-            Err(Error::Database(DbErr::RecordNotFound(id.to_string())))
-        }
-    }
-
-    pub(crate) async fn get_active_cron_reminders(
-        &self,
-    ) -> Result<Vec<cron_reminder::Model>, Error> {
-        Ok(cron_reminder::Entity::find()
-            .filter(cron_reminder::Column::Paused.eq(false))
-            .filter(cron_reminder::Column::Time.lt(now_time()))
-            .all(&self.pool)
-            .await?)
-    }
-
-    pub(crate) async fn get_pending_chat_cron_reminders(
-        &self,
-        chat_id: i64,
-    ) -> Result<Vec<cron_reminder::Model>, Error> {
-        Ok(cron_reminder::Entity::find()
-            .filter(cron_reminder::Column::ChatId.eq(chat_id))
-            .all(&self.pool)
-            .await?)
-    }
-
     pub(crate) async fn get_sorted_reminders(
         &self,
         chat_id: i64,
     ) -> Result<Vec<Box<dyn generic_reminder::GenericReminder>>, Error> {
-        let (reminders, cron_reminders) = tokio::try_join!(
-            self.get_pending_chat_reminders(chat_id),
-            self.get_pending_chat_cron_reminders(chat_id)
-        )?;
+        let reminders = self.get_pending_chat_reminders(chat_id).await?;
 
-        let mut all_reminders: Vec<_> =
-            reminders
-                .into_iter()
-                .map(|m| Box::new(reminder::ActiveModel::from(m)) as _)
-                .chain(cron_reminders.into_iter().map(|m| {
-                    Box::new(cron_reminder::ActiveModel::from(m)) as _
-                }))
-                .collect();
+        let mut all_reminders: Vec<_> = reminders
+            .into_iter()
+            .map(|m| Box::new(reminder::ActiveModel::from(m)) as _)
+            .collect();
         all_reminders.sort_unstable();
         Ok(all_reminders)
     }
@@ -376,32 +280,12 @@ impl Database {
             .await?)
     }
 
-    pub(crate) async fn get_cron_reminder_by_msg_id(
-        &self,
-        msg_id: i32,
-    ) -> Result<Option<cron_reminder::Model>, Error> {
-        Ok(cron_reminder::Entity::find()
-            .filter(cron_reminder::Column::MsgId.eq(msg_id))
-            .one(&self.pool)
-            .await?)
-    }
-
     pub(crate) async fn get_reminder_by_reply_id(
         &self,
         reply_id: i32,
     ) -> Result<Option<reminder::Model>, Error> {
         Ok(reminder::Entity::find()
             .filter(reminder::Column::ReplyId.eq(reply_id))
-            .one(&self.pool)
-            .await?)
-    }
-
-    pub(crate) async fn get_cron_reminder_by_reply_id(
-        &self,
-        reply_id: i32,
-    ) -> Result<Option<cron_reminder::Model>, Error> {
-        Ok(cron_reminder::Entity::find()
-            .filter(cron_reminder::Column::ReplyId.eq(reply_id))
             .one(&self.pool)
             .await?)
     }
@@ -413,16 +297,6 @@ impl Database {
     ) -> Result<(), Error> {
         rem.reply_id = Set(Some(reply_id));
         rem.update(&self.pool).await?;
-        Ok(())
-    }
-
-    pub(crate) async fn set_cron_reminder_reply_id(
-        &self,
-        mut cron_rem: cron_reminder::ActiveModel,
-        reply_id: i32,
-    ) -> Result<(), Error> {
-        cron_rem.reply_id = Set(Some(reply_id));
-        cron_rem.update(&self.pool).await?;
         Ok(())
     }
 

@@ -1,4 +1,4 @@
-use crate::entity::{cron_reminder, reminder};
+use crate::entity::reminder;
 use crate::parsers::now_time;
 use crate::serializers::Pattern;
 use chrono::prelude::*;
@@ -106,60 +106,6 @@ impl GenericReminder for reminder::ActiveModel {
             }
             None => main_part,
         };
-        if self.paused.clone().unwrap() {
-            format!("⏸ {s}")
-        } else {
-            s
-        }
-    }
-
-    fn user_id(&self) -> Option<UserId> {
-        self.user_id.clone().unwrap().map(|id| UserId(id as u64))
-    }
-
-    fn chat_id(&self) -> ChatId {
-        ChatId(self.chat_id.clone().unwrap())
-    }
-
-    fn is_paused(&self) -> bool {
-        self.paused.clone().unwrap()
-    }
-}
-
-impl GenericReminder for cron_reminder::ActiveModel {
-    fn get_time(&self) -> NaiveDateTime {
-        self.time.clone().unwrap()
-    }
-
-    fn get_id(&self) -> Option<i64> {
-        self.id.clone().take()
-    }
-
-    fn get_type(&self) -> &'static str {
-        "cron_rem"
-    }
-
-    fn to_unescaped_string(&self, user_timezone: Tz) -> String {
-        let s = format!(
-            "{} <{}> [{}]",
-            self.serialize_time_unescaped(user_timezone),
-            self.desc.clone().unwrap(),
-            self.cron_expr.clone().unwrap()
-        );
-        if self.paused.clone().unwrap() {
-            format!("⏸ {s}")
-        } else {
-            s
-        }
-    }
-
-    fn to_string(&self, user_timezone: Tz) -> String {
-        let s = format!(
-            r"{} <{}\> \[{}\]",
-            self.serialize_time(user_timezone),
-            bold(&escape(&self.desc.clone().unwrap())),
-            escape(&self.cron_expr.clone().unwrap())
-        );
         if self.paused.clone().unwrap() {
             format!("⏸ {s}")
         } else {

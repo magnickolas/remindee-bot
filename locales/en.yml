@@ -1,6 +1,5 @@
 _version: 1
 SuccessInsert: "Added a reminder:\n%{reminder}"
-SuccessPeriodicInsert: "Added a periodic reminder:\n%{reminder}"
 FailedInsert: "⚠️ Failed to create a reminder."
 IncorrectRequest: "Incorrect request!"
 QueryingError: "⚠️ Failed to query reminders."
@@ -17,7 +16,6 @@ ChooseDeleteReminder: "Choose a reminder to delete:"
 SuccessDelete: "🗑 Deleted a reminder: %{reminder}"
 FailedDelete: "⚠️ Failed to delete."
 ChooseEditReminder: "Choose a reminder to edit:"
-EnterNewReminder: "Enter reminder to replace with:"
 SuccessEdit: |
   📝 Replaced a reminder: %{old}
   with ➡️ %{new}
