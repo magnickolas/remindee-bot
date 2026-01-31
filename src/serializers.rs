@@ -6,6 +6,7 @@ use chrono::offset::TimeZone;
 use chrono::prelude::*;
 use chrono::Duration;
 use chronoutil::{shift_months, shift_years};
+use cron_parser::parse as parse_cron;
 use nonempty::NonEmpty;
 use serde::{Deserialize, Serialize};
 
@@ -125,9 +126,18 @@ pub(crate) struct Countdown {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct Cron {
+    #[serde(rename = "expr")]
+    pub(crate) expr: String,
+    #[serde(rename = "tz")]
+    pub(crate) timezone: Tz,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub(crate) enum Pattern {
     Recurrence(Recurrence),
     Countdown(Countdown),
+    Cron(Cron),
 }
 
 trait DateDisplay {
@@ -597,6 +607,28 @@ impl Countdown {
     }
 }
 
+impl Cron {
+    fn from_with_tz(
+        cron: grammar::Cron,
+        tz: chrono_tz::Tz,
+    ) -> Result<Self, ()> {
+        let timezone = Tz(tz);
+        let now = timezone.0.from_utc_datetime(&now_time());
+        parse_cron(&cron.expr, &now).map_err(|_| ())?;
+        Ok(Self {
+            expr: cron.expr,
+            timezone,
+        })
+    }
+
+    pub(crate) fn next(&self, cur: NaiveDateTime) -> Option<NaiveDateTime> {
+        let cur = self.timezone.0.from_utc_datetime(&cur);
+        parse_cron(&self.expr, &cur)
+            .ok()
+            .map(|next| next.with_timezone(&Utc).naive_utc())
+    }
+}
+
 impl Pattern {
     pub(crate) fn from_with_tz(
         reminder_pattern: grammar::ReminderPattern,
@@ -609,6 +641,9 @@ impl Pattern {
             grammar::ReminderPattern::Countdown(countdown) => {
                 Ok(Self::Countdown(Countdown::from_with_tz(countdown, tz)))
             }
+            grammar::ReminderPattern::Cron(cron) => {
+                Ok(Self::Cron(Cron::from_with_tz(cron, tz)?))
+            }
         }
     }
 
@@ -616,6 +651,7 @@ impl Pattern {
         match self {
             Self::Recurrence(recurrence) => recurrence.next(cur),
             Self::Countdown(countdown) => countdown.next(),
+            Self::Cron(cron) => cron.next(cur),
         }
     }
 }
@@ -625,6 +661,7 @@ impl std::fmt::Display for Pattern {
         match self {
             Self::Recurrence(recurrence) => write!(f, "{recurrence}"),
             Self::Countdown(countdown) => write!(f, "{countdown}"),
+            Self::Cron(cron) => write!(f, "{cron}"),
         }
     }
 }
@@ -668,6 +705,12 @@ impl std::fmt::Display for Countdown {
             write!(f, "{interval}")?;
         }
         Ok(())
+    }
+}
+
+impl std::fmt::Display for Cron {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "cron {}", self.expr)
     }
 }
 

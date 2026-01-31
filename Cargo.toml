@@ -18,6 +18,7 @@ members = [".", "remindee-parser"]
 chrono = "0.4"
 chrono-tz = "0.10"
 chronoutil = "0.2"
+cron-parser = "0.10"
 directories = "6.0"
 lazy_static = "1.4"
 log = "0.4"

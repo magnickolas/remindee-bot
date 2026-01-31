@@ -132,12 +132,18 @@ pub struct Countdown {
 pub enum ReminderPattern {
     Recurrence(Recurrence),
     Countdown(Countdown),
+    Cron(Cron),
 }
 
 #[derive(Debug, Default)]
 pub struct Reminder {
     pub description: Option<Description>,
     pub pattern: Option<ReminderPattern>,
+}
+
+#[derive(Debug)]
+pub struct Cron {
+    pub expr: String,
 }
 
 #[derive(Debug, Default)]
@@ -450,6 +456,19 @@ impl Parse for Countdown {
     }
 }
 
+impl Parse for Cron {
+    fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
+        for rec in pair.into_inner() {
+            if rec.as_rule() == Rule::cron_expr {
+                return Some(Self {
+                    expr: rec.as_str().to_string(),
+                });
+            }
+        }
+        None
+    }
+}
+
 impl Parse for Description {
     fn parse(pair: Pair<'_, Rule>) -> Option<Self> {
         Some(Self(pair.as_str().to_string()))
@@ -473,6 +492,10 @@ impl Parse for Reminder {
                     reminder.pattern = Some(ReminderPattern::Countdown(
                         Countdown::parse(rec)?,
                     ));
+                }
+                Rule::cron => {
+                    reminder.pattern =
+                        Some(ReminderPattern::Cron(Cron::parse(rec)?));
                 }
                 Rule::EOI => {}
                 _ => unreachable!(),

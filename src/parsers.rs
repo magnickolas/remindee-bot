@@ -48,6 +48,8 @@ pub(crate) fn now_time() -> NaiveDateTime {
 #[cfg(test)]
 pub(crate) mod test {
     use super::*;
+    use crate::serializers::Pattern;
+    use serde_json::from_str;
     use serial_test::serial;
     use test_case::test_case;
     extern crate strfmt;
@@ -122,5 +124,39 @@ pub(crate) mod test {
             }
             None => None,
         }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_parse_cron_reminder_valid() {
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
+        let result = parse_reminder(
+            "cron: */5 * * * * cron test",
+            0,
+            0,
+            "0:0".to_owned(),
+            *TEST_TZ,
+        )
+        .await;
+        let reminder = result.expect("cron reminder should parse");
+        assert_eq!(reminder.desc.unwrap(), "cron test".to_owned());
+        let pattern_json = reminder.pattern.unwrap().unwrap();
+        let pattern: Pattern = from_str(&pattern_json).unwrap();
+        assert!(matches!(pattern, Pattern::Cron(_)));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_parse_cron_reminder_invalid() {
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
+        let result = parse_reminder(
+            "cron: */5 * * * invalid",
+            0,
+            0,
+            "0:0".to_owned(),
+            *TEST_TZ,
+        )
+        .await;
+        assert!(result.is_none());
     }
 }

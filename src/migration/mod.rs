@@ -17,8 +17,8 @@ mod m20241114_105214_create_reply_id_columns;
 mod m20241114_105217_add_reply_id_indexes;
 mod m20241217_154950_remove_edit_columns;
 mod m20250618_171311_create_user_language_table;
-mod m20260130_120000_drop_cron_reminder_table;
 mod m20260130_130000_add_rec_id_and_message_links;
+mod m20260131_120000_migrate_cron_reminders;
 
 pub struct Migrator;
 
@@ -47,8 +47,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20241114_105217_add_reply_id_indexes::Migration),
             Box::new(m20241217_154950_remove_edit_columns::Migration),
             Box::new(m20250618_171311_create_user_language_table::Migration),
-            Box::new(m20260130_120000_drop_cron_reminder_table::Migration),
             Box::new(m20260130_130000_add_rec_id_and_message_links::Migration),
+            Box::new(m20260131_120000_migrate_cron_reminders::Migration),
         ]
     }
 }

@@ -67,6 +67,20 @@ weekdays_divisor_hrprefix = _{ ("/" | ^"every" | ^"on") ~ ws* }
 splitter = _{ "—" | "--" | "-" }
 // ----------------------------
 
+// --- cron ---
+cron_prefix = _{ ^"cron" ~ (":" | ws) ~ ws* }
+cron_field_char = _{
+    ASCII_ALPHANUMERIC
+  | "*"
+  | "/"
+  | "-"
+  | ","
+}
+cron_field = @{ cron_field_char+ }
+cron_expr = @{ cron_field ~ (ws+ ~ cron_field){4} }
+cron = ${ cron_prefix ~ cron_expr ~ &(ws | EOI) }
+// ------------
+
 // --- interval ---
 interval = ${
     interval_component+
@@ -195,7 +209,7 @@ countdown = ${
     countdown_one ~ ("," ~ countdown_one)* ~ &(ws | EOI)
 }
 reminder_pattern = _{
-    recurrence | countdown
+    recurrence | countdown | cron
 }
 // -------------------------
 
