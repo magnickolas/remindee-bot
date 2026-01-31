@@ -6,8 +6,8 @@ Reminders formats
    :caption: Contents:
 
 
-There are three supported types of reminders: one-time, recurring,
-and countdown.
+There are four supported types of reminders: one-time, recurring,
+countdown, and cron.
 
 One-time reminders
 ------------------
@@ -111,6 +111,23 @@ Examples
 
 -  ``5m grab tea`` => notify in 5 minutes
 -  ``1d1h`` => notify in 25 hours
+
+----
+
+Cron reminders
+-------------------
+
+Format
+~~~~~~
+
+Refer to `cron expression
+syntax <https://en.wikipedia.org/wiki/Cron#CRON_expression>`__.
+
+Examples
+~~~~~~~~
+
+-  ``cron 55 10 * * 1-5 go to school`` (at 10:55 AM every weekday)
+-  ``cron 0 14 1 * * pay rent`` => monthly on the 1st at 14:00
 
 Reminders grammar
 -----------------

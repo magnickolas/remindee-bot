@@ -8,7 +8,7 @@ description = "Reminder bot for Telegram without bullshit"
 homepage = "https://github.com/magnickolas/remindee-bot"
 repository = "https://github.com/magnickolas/remindee-bot"
 readme = "README.md"
-keywords = ["bot", "reminder", "telegram-bot", "reminders"]
+keywords = ["bot", "reminder", "cron", "telegram-bot", "reminders"]
 categories = ["command-line-utilities"]
 
 [workspace]
