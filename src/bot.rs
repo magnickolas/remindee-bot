@@ -26,14 +26,13 @@ async fn send_reminder(
     reminder: &reminder::Model,
     user_timezone: Tz,
     bot: &Bot,
-) -> Result<(), Error> {
+) -> Result<Message, Error> {
     let text = format::format_reminder(
         &reminder.clone().into_active_model(),
         user_timezone,
     );
     send_message(&text, bot, ChatId(reminder.chat_id))
         .await
-        .map(|_| ())
         .map_err(From::from)
 }
 
@@ -59,7 +58,19 @@ async fn process_due_reminders(db: &Database, bot: &Bot) {
                         });
                     }
                 }
-                if send_reminder(&reminder, user_timezone, bot).await.is_ok() {
+                if let Ok(sent_msg) =
+                    send_reminder(&reminder, user_timezone, bot).await
+                {
+                    if let Err(err) = db
+                        .insert_reminder_message(
+                            &reminder.rec_id,
+                            reminder.chat_id,
+                            sent_msg.id.0,
+                        )
+                        .await
+                    {
+                        log::error!("{}", err);
+                    }
                     db.delete_reminder(reminder.id).await.unwrap_or_else(
                         |err| {
                             log::error!("{}", err);
@@ -212,8 +223,7 @@ mod test {
             user_id: None,
             paused: false,
             pattern: None,
-            msg_id: None,
-            reply_id: None,
+            rec_id: "1:1".to_owned(),
         }
     }
 
@@ -370,6 +380,7 @@ mod test {
         db.expect_delete_reminder()
             .with(eq(rem.id))
             .returning(move |_| Ok(()));
+        db.expect_delete_reminder_messages().returning(|_| Ok(()));
         let mut bot = mock_bot(db, message);
         bot.dispatch().await;
         assert_eq!(
@@ -497,6 +508,7 @@ mod test {
             db.expect_delete_reminder()
                 .with(eq(rem.id))
                 .returning(move |_| Ok(()));
+            db.expect_delete_reminder_messages().returning(|_| Ok(()));
         }
         let mut bot = mock_bot(db, message);
         bot.dispatch().await;
@@ -620,6 +632,7 @@ mod test {
             db.expect_delete_reminder()
                 .with(eq(rem.id))
                 .returning(move |_| Ok(()));
+            db.expect_delete_reminder_messages().returning(|_| Ok(()));
         }
         let mut bot = mock_bot(db, message);
         bot.dispatch().await;
@@ -925,7 +938,9 @@ mod test {
             .returning(|_| Ok(Some(mock_language_name())));
         db.expect_insert_reminder()
             .returning(move |_| Ok(rem_clone.clone().into()));
-        db.expect_set_reminder_reply_id().returning(|_, _| Ok(()));
+        db.expect_insert_reminder_message()
+            .times(2)
+            .returning(|_, _, _| Ok(()));
         let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
             &TgResponse::SuccessInsert(

@@ -3,5 +3,6 @@
 pub mod prelude;
 
 pub mod reminder;
+pub mod reminder_message;
 pub mod user_language;
 pub mod user_timezone;

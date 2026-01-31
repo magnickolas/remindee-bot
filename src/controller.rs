@@ -100,6 +100,10 @@ impl TgMessageController {
         ))
     }
 
+    fn new_rec_id(&self) -> String {
+        format!("{}:{}", self.chat_id.0, self.msg_id.0)
+    }
+
     async fn user_lang(&self) -> crate::lang::Language {
         get_user_language(&self.db, self.user_id).await
     }
@@ -217,15 +221,24 @@ impl TgMessageController {
     pub(crate) async fn start_delete(&self, user_tz: Tz) -> Result<(), Error> {
         if let Some(reply_to_id) = self.reply_to_id {
             if let Ok(Some(reminder)) =
-                self.get_reminder_by_msg_or_reply_id(reply_to_id).await
+                self.get_reminder_by_message(reply_to_id).await
             {
                 let response = match self.db.delete_reminder(reminder.id).await
                 {
-                    Ok(()) => TgResponse::SuccessDelete(
-                        reminder
-                            .into_active_model()
-                            .to_unescaped_string(user_tz),
-                    ),
+                    Ok(()) => {
+                        if let Err(err) = self
+                            .db
+                            .delete_reminder_messages(&reminder.rec_id)
+                            .await
+                        {
+                            log::error!("{}", err);
+                        }
+                        TgResponse::SuccessDelete(
+                            reminder
+                                .into_active_model()
+                                .to_unescaped_string(user_tz),
+                        )
+                    }
                     Err(err) => {
                         log::error!("{}", err);
                         TgResponse::FailedDelete
@@ -284,7 +297,23 @@ impl TgMessageController {
             text,
             self.chat_id.0,
             self.user_id.0,
-            self.msg_id.0,
+            self.new_rec_id(),
+            tz,
+        )
+        .await
+    }
+
+    async fn parse_reminder_with_rec_id(
+        &self,
+        text: &str,
+        tz: Tz,
+        rec_id: String,
+    ) -> Option<reminder::ActiveModel> {
+        parsers::parse_reminder(
+            text,
+            self.chat_id.0,
+            self.user_id.0,
+            rec_id,
             tz,
         )
         .await
@@ -295,8 +324,16 @@ impl TgMessageController {
         &self,
         text: &str,
         user_tz: Tz,
+        rec_id: Option<String>,
     ) -> (Option<reminder::ActiveModel>, Option<TgResponse>) {
-        match self.parse_reminder(text, user_tz).await {
+        let parsed_reminder = match rec_id {
+            Some(rec_id) => {
+                self.parse_reminder_with_rec_id(text, user_tz, rec_id).await
+            }
+            None => self.parse_reminder(text, user_tz).await,
+        };
+
+        match parsed_reminder {
             Some(reminder) => match self
                 .db
                 .insert_reminder(reminder.clone())
@@ -323,13 +360,14 @@ impl TgMessageController {
         }
     }
 
-    async fn link_reminder_with_reply_msg(
+    async fn link_reminder_message(
         &self,
-        reminder: reminder::ActiveModel,
-        reply: &Message,
+        reminder: &reminder::ActiveModel,
+        msg_id: MessageId,
     ) -> Result<(), Error> {
+        let rec_id = reminder.rec_id.clone().unwrap();
         self.db
-            .set_reminder_reply_id(reminder, reply.id.0)
+            .insert_reminder_message(&rec_id, self.chat_id.0, msg_id.0)
             .await
             .map_err(From::from)
     }
@@ -339,15 +377,16 @@ impl TgMessageController {
         text: &str,
         user_tz: Tz,
     ) -> (Option<reminder::ActiveModel>, Option<TgResponse>) {
-        self._set_reminder(text, user_tz).await
+        self._set_reminder(text, user_tz, None).await
     }
 
     async fn set_reminder_silently(
         &self,
         text: &str,
         user_tz: Tz,
+        rec_id: Option<String>,
     ) -> Option<reminder::ActiveModel> {
-        self._set_reminder(text, user_tz).await.0
+        self._set_reminder(text, user_tz, rec_id).await.0
     }
 
     pub(crate) async fn incorrect_request(&self) -> Result<(), RequestError> {
@@ -582,7 +621,11 @@ impl TgMessageController {
     ) -> (Option<reminder::ActiveModel>, TgResponse) {
         match self.db.get_reminder(rem_id).await {
             Ok(Some(old_reminder)) => {
-                match self.set_reminder_silently(text, user_tz).await {
+                let rec_id = old_reminder.rec_id.clone();
+                match self
+                    .set_reminder_silently(text, user_tz, Some(rec_id))
+                    .await
+                {
                     Some(new_reminder) => {
                         match self.db.delete_reminder(rem_id).await {
                             Ok(()) => {
@@ -621,7 +664,7 @@ impl TgMessageController {
         update: ReminderUpdate,
         user_tz: Tz,
     ) -> Result<(), Error> {
-        let (reminder, old_reply_id, response) = match update {
+        let (reminder, response) = match update {
             ReminderUpdate::ReminderDescription(rem_id, desc) => {
                 match self.db.get_reminder(rem_id).await {
                     Ok(Some(old_reminder)) => {
@@ -647,12 +690,12 @@ impl TgMessageController {
                             ),
                             Err(_) => (None, TgResponse::FailedEdit),
                         };
-                        (reminder, old_reminder.reply_id, response)
+                        (reminder, response)
                     }
-                    Ok(None) => (None, None, TgResponse::EditReminderNotFound),
+                    Ok(None) => (None, TgResponse::EditReminderNotFound),
                     Err(err) => {
                         log::error!("{}", err);
-                        (None, None, TgResponse::FailedEdit)
+                        (None, TgResponse::FailedEdit)
                     }
                 }
             }
@@ -666,12 +709,12 @@ impl TgMessageController {
                                 user_tz,
                             )
                             .await;
-                        (set_result, old_reminder.reply_id, response)
+                        (set_result, response)
                     }
-                    Ok(None) => (None, None, TgResponse::EditReminderNotFound),
+                    Ok(None) => (None, TgResponse::EditReminderNotFound),
                     Err(err) => {
                         log::error!("{}", err);
-                        (None, None, TgResponse::FailedEdit)
+                        (None, TgResponse::FailedEdit)
                     }
                 }
             }
@@ -680,16 +723,7 @@ impl TgMessageController {
         let reply = self.reply(response).await?;
 
         if let Some(ref reminder) = reminder {
-            if let Some(old_reply_id) = old_reply_id {
-                self.update_reply_link(
-                    reminder,
-                    &reply,
-                    Some(MessageId(old_reply_id)),
-                )
-                .await?;
-            } else {
-                self.update_reply_link(reminder, &reply, None).await?;
-            }
+            self.link_reminder_message(reminder, reply.id).await?;
         }
 
         Ok(())
@@ -704,23 +738,11 @@ impl TgMessageController {
         if let Some(response) = response {
             let reply = self.reply(response).await?;
             if let Some(ref reminder) = reminder {
-                self.update_reply_link(reminder, &reply, None).await?;
+                self.link_reminder_message(reminder, self.msg_id).await?;
+                self.link_reminder_message(reminder, reply.id).await?;
             }
         }
         Ok(())
-    }
-
-    pub(crate) async fn update_reply_link(
-        &self,
-        reminder: &reminder::ActiveModel,
-        reply: &Message,
-        old_reply_id: Option<MessageId>,
-    ) -> Result<(), Error> {
-        if let Some(old_reply_id) = old_reply_id {
-            tg::delete_message(&self.bot, self.chat_id, old_reply_id).await?;
-        }
-        self.link_reminder_with_reply_msg(reminder.clone(), reply)
-            .await
     }
 
     pub(crate) async fn set_timezone(
@@ -760,35 +782,14 @@ impl TgMessageController {
         self.reply(response).await.map(|_| ())
     }
 
-    async fn get_reminder_by_msg_id(
+    async fn get_reminder_by_message(
         &self,
         msg_id: MessageId,
     ) -> Result<Option<reminder::Model>, Error> {
         self.db
-            .get_reminder_by_msg_id(msg_id.0)
+            .get_reminder_by_message(self.chat_id.0, msg_id.0)
             .await
             .map_err(From::from)
-    }
-
-    async fn get_reminder_by_reply_id(
-        &self,
-        reply_id: MessageId,
-    ) -> Result<Option<reminder::Model>, Error> {
-        self.db
-            .get_reminder_by_reply_id(reply_id.0)
-            .await
-            .map_err(From::from)
-    }
-
-    async fn get_reminder_by_msg_or_reply_id(
-        &self,
-        id: MessageId,
-    ) -> Result<Option<reminder::Model>, Error> {
-        if let Some(reminder) = self.get_reminder_by_msg_id(id).await? {
-            Ok(Some(reminder))
-        } else {
-            self.get_reminder_by_reply_id(id).await
-        }
     }
 
     pub(crate) async fn edit_reminder_from_edited_message(
@@ -796,29 +797,21 @@ impl TgMessageController {
         text: &str,
         user_tz: Tz,
     ) -> Result<(), Error> {
-        let (reminder, old_reply_id, response) =
-            match self.db.get_reminder_by_msg_id(self.msg_id.0).await? {
-                Some(old_rem) => {
-                    let (rem, resp) =
-                        self.replace_reminder(text, old_rem.id, user_tz).await;
-                    (rem, old_rem.reply_id, resp)
-                }
-                None => (None, None, TgResponse::EditReminderNotFound),
-            };
+        let (reminder, response) = match self
+            .db
+            .get_reminder_by_message(self.chat_id.0, self.msg_id.0)
+            .await?
+        {
+            Some(old_rem) => {
+                self.replace_reminder(text, old_rem.id, user_tz).await
+            }
+            None => (None, TgResponse::EditReminderNotFound),
+        };
 
         let reply = self.reply(response).await?;
 
         if let Some(ref reminder) = reminder {
-            if let Some(old_reply_id) = old_reply_id {
-                self.update_reply_link(
-                    reminder,
-                    &reply,
-                    Some(MessageId(old_reply_id)),
-                )
-                .await?;
-            } else {
-                self.update_reply_link(reminder, &reply, None).await?;
-            }
+            self.link_reminder_message(reminder, reply.id).await?;
         }
         Ok(())
     }
@@ -883,11 +876,21 @@ impl TgCallbackController {
         let response = match self.msg_ctl.db.get_reminder(rem_id).await {
             Ok(Some(reminder)) => {
                 match self.msg_ctl.db.delete_reminder(rem_id).await {
-                    Ok(()) => TgResponse::SuccessDelete(
-                        reminder
-                            .into_active_model()
-                            .to_unescaped_string(user_tz),
-                    ),
+                    Ok(()) => {
+                        if let Err(err) = self
+                            .msg_ctl
+                            .db
+                            .delete_reminder_messages(&reminder.rec_id)
+                            .await
+                        {
+                            log::error!("{}", err);
+                        }
+                        TgResponse::SuccessDelete(
+                            reminder
+                                .into_active_model()
+                                .to_unescaped_string(user_tz),
+                        )
+                    }
                     Err(err) => {
                         log::error!("{}", err);
                         TgResponse::FailedDelete

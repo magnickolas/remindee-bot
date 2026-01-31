@@ -17,7 +17,7 @@ pub(crate) async fn parse_reminder(
     s: &str,
     chat_id: i64,
     user_id: u64,
-    msg_id: i32,
+    rec_id: String,
     user_timezone: Tz,
 ) -> Option<reminder::ActiveModel> {
     let rem = remindee_parser::parse_reminder(s)?;
@@ -34,8 +34,7 @@ pub(crate) async fn parse_reminder(
         desc: Set(description),
         paused: Set(false),
         pattern: Set(to_string(&pattern).ok()),
-        msg_id: Set(Some(msg_id)),
-        reply_id: Set(None), // set after replying
+        rec_id: Set(rec_id),
     })
 }
 
@@ -95,15 +94,20 @@ pub(crate) mod test {
             ("desc".to_owned(), TEST_DESCRIPTION.to_owned()),
         ]);
         *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
-        let result =
-            parse_reminder(&strfmt(fmt_str, &vars).unwrap(), 0, 0, 0, *TEST_TZ)
-                .await
-                .map(|reminder| {
-                    (
-                        TEST_TZ.from_utc_datetime(&reminder.time.unwrap()),
-                        reminder.desc.unwrap(),
-                    )
-                });
+        let result = parse_reminder(
+            &strfmt(fmt_str, &vars).unwrap(),
+            0,
+            0,
+            "0:0".to_owned(),
+            *TEST_TZ,
+        )
+        .await
+        .map(|reminder| {
+            (
+                TEST_TZ.from_utc_datetime(&reminder.time.unwrap()),
+                reminder.desc.unwrap(),
+            )
+        });
         match result {
             Some((time, desc)) => {
                 assert_eq!(desc, TEST_DESCRIPTION.to_owned());

@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::cli::CLI;
-use crate::entity::{reminder, user_language, user_timezone};
+use crate::entity::{reminder, reminder_message, user_language, user_timezone};
 use crate::generic_reminder;
 use crate::migration::{DbErr, Migrator, MigratorTrait};
 use crate::parsers::now_time;
@@ -9,8 +9,9 @@ use chrono::NaiveDateTime;
 #[cfg(test)]
 use mockall::automock;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectOptions, Database as SeaOrmDatabase,
-    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, ConnectOptions,
+    Database as SeaOrmDatabase, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, Set,
 };
 use tokio::sync::futures::Notified;
 use tokio::sync::Notify;
@@ -270,33 +271,52 @@ impl Database {
         Ok(all_reminders)
     }
 
-    pub(crate) async fn get_reminder_by_msg_id(
+    pub(crate) async fn get_reminder_by_message(
         &self,
+        chat_id: i64,
         msg_id: i32,
     ) -> Result<Option<reminder::Model>, Error> {
-        Ok(reminder::Entity::find()
-            .filter(reminder::Column::MsgId.eq(msg_id))
+        let rec_id = reminder_message::Entity::find()
+            .filter(reminder_message::Column::ChatId.eq(chat_id))
+            .filter(reminder_message::Column::MsgId.eq(msg_id))
             .one(&self.pool)
-            .await?)
+            .await?
+            .map(|link| link.rec_id);
+
+        match rec_id {
+            Some(rec_id) => Ok(reminder::Entity::find()
+                .filter(reminder::Column::RecId.eq(rec_id))
+                .one(&self.pool)
+                .await?),
+            None => Ok(None),
+        }
     }
 
-    pub(crate) async fn get_reminder_by_reply_id(
+    pub(crate) async fn insert_reminder_message(
         &self,
-        reply_id: i32,
-    ) -> Result<Option<reminder::Model>, Error> {
-        Ok(reminder::Entity::find()
-            .filter(reminder::Column::ReplyId.eq(reply_id))
-            .one(&self.pool)
-            .await?)
-    }
-
-    pub(crate) async fn set_reminder_reply_id(
-        &self,
-        mut rem: reminder::ActiveModel,
-        reply_id: i32,
+        rec_id: &str,
+        chat_id: i64,
+        msg_id: i32,
     ) -> Result<(), Error> {
-        rem.reply_id = Set(Some(reply_id));
-        rem.update(&self.pool).await?;
+        reminder_message::ActiveModel {
+            id: NotSet,
+            rec_id: Set(rec_id.to_owned()),
+            chat_id: Set(chat_id),
+            msg_id: Set(msg_id),
+        }
+        .insert(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn delete_reminder_messages(
+        &self,
+        rec_id: &str,
+    ) -> Result<(), Error> {
+        reminder_message::Entity::delete_many()
+            .filter(reminder_message::Column::RecId.eq(rec_id))
+            .exec(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -352,8 +372,7 @@ mod test {
             user_id: None,
             paused: false,
             pattern: None,
-            msg_id: None,
-            reply_id: None,
+            rec_id: "1:1".to_owned(),
         }
     }
 

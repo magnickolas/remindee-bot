@@ -177,14 +177,6 @@ pub(crate) async fn send_silent_message(
     _send_message(text, bot, chat_id, true).await
 }
 
-pub(crate) async fn delete_message(
-    bot: &Bot,
-    chat_id: ChatId,
-    msg_id: MessageId,
-) -> Result<(), RequestError> {
-    bot.delete_message(chat_id, msg_id).await.map(|_| ())
-}
-
 pub(crate) async fn send_markup(
     text: &str,
     markup: InlineKeyboardMarkup,

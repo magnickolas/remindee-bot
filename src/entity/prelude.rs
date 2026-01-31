@@ -2,5 +2,6 @@
 #![allow(unused_imports)]
 
 pub use super::reminder::Entity as Reminder;
+pub use super::reminder_message::Entity as ReminderMessage;
 pub use super::user_language::Entity as UserLanguage;
 pub use super::user_timezone::Entity as UserTimezone;
