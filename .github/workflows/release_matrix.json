@@ -16,10 +16,11 @@
     },
     {
       "build": "windows",
-      "os": "ubuntu-latest",
+      "os": "windows-latest",
       "target": "x86_64-pc-windows-gnu",
       "binary": "remindee-bot.exe",
-      "zip_archive": true
+      "zip_archive": true,
+      "is_windows": true
     },
     {
       "build": "macos-amd64",
