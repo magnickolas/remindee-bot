@@ -1,6 +1,6 @@
 [package]
 name = "remindee-bot"
-version = "0.3.3"
+version = "0.4.0"
 authors = ["Nikolai Oplachko <magnickolas@gmail.com>"]
 edition = "2021"
 license = "GPL-3.0-only"
@@ -18,7 +18,7 @@ members = [".", "remindee-parser"]
 chrono = "0.4"
 chrono-tz = "0.10"
 chronoutil = "0.2"
-cron-parser = "0.10"
+cron-parser = "0.11"
 directories = "6.0"
 lazy_static = "1.4"
 log = "0.4"
@@ -31,8 +31,8 @@ nonempty = "0.12"
 tzf-rs = { version = "1.0.0", default-features = false }
 teloxide_tests = "0.4.0"
 teloxide_tests_macros = "0.2.0"
-mockall = "0.13.1"
-remindee-parser = { version = "0.1.0", path = "remindee-parser" }
+mockall = "0.14"
+remindee-parser = { path = "remindee-parser" }
 
 [dependencies.serde]
 version = "1.0"
