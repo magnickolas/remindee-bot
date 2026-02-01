@@ -206,7 +206,7 @@ mod test {
     };
     use teloxide_tests::mock_bot::DistributionKey;
     use teloxide_tests::{
-        IntoUpdate, MockBot, MockCallbackQuery, MockMessageText,
+        IntoUpdate, MockBot, MockCallbackQuery, MockMessageText, MockUser,
     };
 
     use super::State;
@@ -462,6 +462,43 @@ mod test {
                     .clone(),
             ),
         );
+        bot.dispatch_and_check_last_text(
+            &TgResponse::SuccessDelete(
+                rem.into_active_model().to_unescaped_string(mock_timezone()),
+            )
+            .to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_delete_reply() {
+        *TEST_TIMESTAMP.write().unwrap() = mock_timezone()
+            .with_ymd_and_hms(2024, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
+        let mut db = MockDatabase::new();
+        let rem = basic_mock_reminder();
+        let rem_clone = rem.clone();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        db.expect_get_reminder_by_message()
+            .with(eq(MockUser::ID as i64), eq(42))
+            .returning(move |_, _| Ok(Some(rem_clone.clone())));
+        db.expect_delete_reminder()
+            .with(eq(rem.id))
+            .returning(|_| Ok(()));
+        db.expect_delete_reminder_messages().returning(|_| Ok(()));
+
+        let reply_to_message = MockMessageText::new().id(42).build();
+        let message = MockMessageText::new()
+            .text("/delete")
+            .reply_to_message(Box::new(reply_to_message));
+        let mut bot = mock_bot(db, message);
+
         bot.dispatch_and_check_last_text(
             &TgResponse::SuccessDelete(
                 rem.into_active_model().to_unescaped_string(mock_timezone()),
@@ -786,6 +823,53 @@ mod test {
             .to_string(),
         )
         .await;
+    }
+
+    #[tokio::test]
+    async fn test_edit_reply() {
+        let mut db = MockDatabase::new();
+        let rem = basic_mock_reminder();
+        let rem_clone = rem.clone();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        db.expect_get_reminder_by_message()
+            .with(eq(MockUser::ID as i64), eq(42))
+            .returning(move |_, _| Ok(Some(rem_clone.clone())));
+
+        let reply_to_message = MockMessageText::new().id(42).build();
+        let message = MockMessageText::new()
+            .text("/edit")
+            .reply_to_message(Box::new(reply_to_message));
+        let mut bot = mock_bot(db, message);
+
+        bot.dispatch().await;
+
+        assert_eq!(
+            resp!(bot, sent_messages, kind),
+            vec![MockMarkup {
+                media_text: "What would you like to edit?".to_string(),
+                markup: InlineKeyboardMarkup {
+                    inline_keyboard: vec![vec![
+                        InlineKeyboardButton {
+                            text: "Time pattern".to_string(),
+                            kind: CallbackData(
+                                "edit_rem_mode::rem_time_pattern::1"
+                                    .to_string(),
+                            ),
+                        },
+                        InlineKeyboardButton {
+                            text: "Description".to_string(),
+                            kind: CallbackData(
+                                "edit_rem_mode::rem_description::1".to_string(),
+                            ),
+                        },
+                    ]],
+                },
+            }
+            .into()]
+        );
     }
 
     #[tokio::test]

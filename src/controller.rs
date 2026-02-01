@@ -266,6 +266,15 @@ impl TgMessageController {
         &self,
         user_tz: Tz,
     ) -> Result<(), RequestError> {
+        if let Some(reply_to_id) = self.reply_to_id {
+            if let Ok(Some(reminder)) =
+                self.get_reminder_by_message(reply_to_id).await
+            {
+                self.send_edit_mode_markup(reminder.id).await?;
+                return Ok(());
+            }
+        }
+
         let markup =
             self.get_markup_for_reminders_page_editing(0, user_tz).await;
         self.start_alter(TgResponse::ChooseEditReminder, markup)
@@ -286,6 +295,35 @@ impl TgMessageController {
             self.get_markup_for_reminders_page_pausing(0, user_tz).await;
         self.start_alter(TgResponse::ChoosePauseReminder, markup)
             .await
+    }
+
+    async fn send_edit_mode_markup(
+        &self,
+        rem_id: i64,
+    ) -> Result<(), RequestError> {
+        let lang = self.user_lang().await;
+        let markup = InlineKeyboardMarkup::default().append_row(vec![
+            InlineKeyboardButton::new(
+                t!("TimePattern", locale = lang.code()),
+                InlineKeyboardButtonKind::CallbackData(format!(
+                    "edit_rem_mode::rem_time_pattern::{rem_id}"
+                )),
+            ),
+            InlineKeyboardButton::new(
+                t!("Description", locale = lang.code()),
+                InlineKeyboardButtonKind::CallbackData(format!(
+                    "edit_rem_mode::rem_description::{rem_id}"
+                )),
+            ),
+        ]);
+        tg::send_markup(
+            &t!("WhatToEdit", locale = lang.code()),
+            markup,
+            &self.bot,
+            self.chat_id,
+        )
+        .await?;
+        Ok(())
     }
 
     async fn parse_reminder(
@@ -911,28 +949,7 @@ impl TgCallbackController {
         &self,
         rem_id: i64,
     ) -> Result<(), RequestError> {
-        let lang = self.msg_ctl.user_lang().await;
-        let markup = InlineKeyboardMarkup::default().append_row(vec![
-            InlineKeyboardButton::new(
-                t!("TimePattern", locale = lang.code()),
-                InlineKeyboardButtonKind::CallbackData(format!(
-                    "edit_rem_mode::rem_time_pattern::{rem_id}"
-                )),
-            ),
-            InlineKeyboardButton::new(
-                t!("Description", locale = lang.code()),
-                InlineKeyboardButtonKind::CallbackData(format!(
-                    "edit_rem_mode::rem_description::{rem_id}"
-                )),
-            ),
-        ]);
-        tg::send_markup(
-            &t!("WhatToEdit", locale = lang.code()),
-            markup,
-            &self.msg_ctl.bot,
-            self.msg_ctl.chat_id,
-        )
-        .await?;
+        self.msg_ctl.send_edit_mode_markup(rem_id).await?;
         self.acknowledge_callback().await
     }
 
