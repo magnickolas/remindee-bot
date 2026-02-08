@@ -82,6 +82,7 @@ impl MigrationTrait for Migration {
                 desc: Set(desc),
                 user_id: Set(user_id),
                 paused: Set(paused),
+                nag_interval_sec: NotSet,
                 pattern: Set(Some(pattern_json)),
             }
             .insert(conn)
@@ -93,6 +94,7 @@ impl MigrationTrait for Migration {
                     rec_id: Set(rec_id.clone()),
                     chat_id: Set(chat_id),
                     msg_id: Set(msg_id),
+                    is_delivery: NotSet,
                 }
                 .insert(conn)
                 .await?;
@@ -104,6 +106,7 @@ impl MigrationTrait for Migration {
                     rec_id: Set(rec_id.clone()),
                     chat_id: Set(chat_id),
                     msg_id: Set(reply_id),
+                    is_delivery: NotSet,
                 }
                 .insert(conn)
                 .await?;

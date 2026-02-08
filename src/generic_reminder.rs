@@ -10,6 +10,28 @@ use teloxide::types::ChatId;
 use teloxide::types::UserId;
 use teloxide::utils::markdown::{bold, escape};
 
+fn format_nag_interval(mut secs: i64) -> String {
+    let mut s = String::new();
+    for (suffix, unit_secs) in [
+        ("w", 7 * 24 * 60 * 60),
+        ("d", 24 * 60 * 60),
+        ("h", 60 * 60),
+        ("m", 60),
+        ("s", 1),
+    ] {
+        let unit_value = secs / unit_secs;
+        if unit_value > 0 {
+            s += &format!("{unit_value}{suffix}");
+            secs %= unit_secs;
+        }
+    }
+    if s.is_empty() {
+        "0s".to_owned()
+    } else {
+        s
+    }
+}
+
 /// Interface to grab reminders of different types together
 /// to format, display, sort or get attributes
 pub(crate) trait GenericReminder {
@@ -73,7 +95,7 @@ impl GenericReminder for reminder::ActiveModel {
             self.serialize_time_unescaped(user_timezone),
             self.desc.clone().unwrap(),
         );
-        let s = match self.pattern.clone().unwrap() {
+        let mut s = match self.pattern.clone().unwrap() {
             Some(ref s) => {
                 let pattern: Pattern = from_str(s).unwrap();
                 match pattern.to_string().as_str() {
@@ -83,6 +105,9 @@ impl GenericReminder for reminder::ActiveModel {
             }
             None => main_part,
         };
+        if let Some(nag_interval_sec) = self.nag_interval_sec.clone().unwrap() {
+            s = format!("{s} [!{}]", format_nag_interval(nag_interval_sec));
+        }
         if self.paused.clone().unwrap() {
             format!("⏸ {s}")
         } else {
@@ -96,7 +121,7 @@ impl GenericReminder for reminder::ActiveModel {
             self.serialize_time(user_timezone),
             bold(&escape(&self.desc.clone().unwrap())),
         );
-        let s = match self.pattern.clone().unwrap() {
+        let mut s = match self.pattern.clone().unwrap() {
             Some(ref s) => {
                 let pattern: Pattern = from_str(s).unwrap();
                 match pattern.to_string().as_str() {
@@ -106,6 +131,13 @@ impl GenericReminder for reminder::ActiveModel {
             }
             None => main_part,
         };
+        if let Some(nag_interval_sec) = self.nag_interval_sec.clone().unwrap() {
+            s = format!(
+                r"{} \[\!{}\]",
+                s,
+                format_nag_interval(nag_interval_sec)
+            );
+        }
         if self.paused.clone().unwrap() {
             format!("⏸ {s}")
         } else {

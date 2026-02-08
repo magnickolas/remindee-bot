@@ -172,6 +172,12 @@ pub(crate) fn get_handler(
                     .endpoint(settings_menu_handler),
                 )
                 .branch(
+                    dptree::filter(|cb_data: String| {
+                        cb_data.starts_with("donerem::occ::")
+                    })
+                    .endpoint(done_occurrence_handler),
+                )
+                .branch(
                     dptree::map(|cb_ctl: TgCallbackController| cb_ctl.msg_ctl)
                         .filter_map_async(get_user_timezone)
                         .endpoint(callback_handler),
@@ -385,6 +391,21 @@ async fn settings_menu_handler(
     if cb_data == "settings::change_lang" {
         ctl.msg_ctl.choose_language().await?;
         ctl.acknowledge_callback().await.map_err(From::from)
+    } else {
+        ctl.msg_ctl.reply(TgResponse::IncorrectRequest).await?;
+        ctl.acknowledge_callback().await.map_err(From::from)
+    }
+}
+
+async fn done_occurrence_handler(
+    ctl: TgCallbackController,
+    cb_data: String,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if let Some(occ_id) = cb_data
+        .strip_prefix("donerem::occ::")
+        .and_then(|x| x.parse::<i64>().ok())
+    {
+        ctl.done_occurrence(occ_id).await.map_err(From::from)
     } else {
         ctl.msg_ctl.reply(TgResponse::IncorrectRequest).await?;
         ctl.acknowledge_callback().await.map_err(From::from)

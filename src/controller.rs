@@ -20,7 +20,7 @@ use teloxide::types::MessageId;
 use teloxide::types::{
     InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup,
 };
-use teloxide::RequestError;
+use teloxide::{ApiError, RequestError};
 use tg::TgResponse;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -48,6 +48,16 @@ pub(crate) struct TgCallbackController {
 pub(crate) enum ReminderUpdate {
     ReminderDescription(i64, String),
     ReminderTimePattern(i64, String),
+}
+
+fn is_ignorable_markup_clear_error(err: &RequestError) -> bool {
+    matches!(
+        err,
+        RequestError::Api(ApiError::MessageNotModified)
+            | RequestError::Api(ApiError::MessageCantBeEdited)
+            | RequestError::Api(ApiError::MessageToEditNotFound)
+            | RequestError::Api(ApiError::MessageIdInvalid)
+    )
 }
 
 impl TgMessageController {
@@ -228,6 +238,13 @@ impl TgMessageController {
                     Ok(()) => {
                         if let Err(err) = self
                             .db
+                            .close_open_occurrences(&reminder.rec_id)
+                            .await
+                        {
+                            log::error!("{}", err);
+                        }
+                        if let Err(err) = self
+                            .db
                             .delete_reminder_messages(&reminder.rec_id)
                             .await
                         {
@@ -405,7 +422,7 @@ impl TgMessageController {
     ) -> Result<(), Error> {
         let rec_id = reminder.rec_id.clone().unwrap();
         self.db
-            .insert_reminder_message(&rec_id, self.chat_id.0, msg_id.0)
+            .insert_reminder_message(&rec_id, self.chat_id.0, msg_id.0, false)
             .await
             .map_err(From::from)
     }
@@ -761,6 +778,13 @@ impl TgMessageController {
         let reply = self.reply(response).await?;
 
         if let Some(ref reminder) = reminder {
+            if let Err(err) = self
+                .db
+                .close_open_occurrences(&reminder.rec_id.clone().unwrap())
+                .await
+            {
+                log::error!("{}", err);
+            }
             self.link_reminder_message(reminder, reply.id).await?;
         }
 
@@ -849,6 +873,13 @@ impl TgMessageController {
         let reply = self.reply(response).await?;
 
         if let Some(ref reminder) = reminder {
+            if let Err(err) = self
+                .db
+                .close_open_occurrences(&reminder.rec_id.clone().unwrap())
+                .await
+            {
+                log::error!("{}", err);
+            }
             self.link_reminder_message(reminder, reply.id).await?;
         }
         Ok(())
@@ -918,6 +949,14 @@ impl TgCallbackController {
                         if let Err(err) = self
                             .msg_ctl
                             .db
+                            .close_open_occurrences(&reminder.rec_id)
+                            .await
+                        {
+                            log::error!("{}", err);
+                        }
+                        if let Err(err) = self
+                            .msg_ctl
+                            .db
                             .delete_reminder_messages(&reminder.rec_id)
                             .await
                         {
@@ -961,11 +1000,21 @@ impl TgCallbackController {
         let response = match self.msg_ctl.db.get_reminder(rem_id).await {
             Ok(Some(reminder)) => {
                 match self.msg_ctl.db.toggle_reminder_paused(rem_id).await {
-                    Ok(true) => TgResponse::SuccessPause(
-                        reminder
-                            .into_active_model()
-                            .to_unescaped_string(user_tz),
-                    ),
+                    Ok(true) => {
+                        if let Err(err) = self
+                            .msg_ctl
+                            .db
+                            .close_open_occurrences(&reminder.rec_id)
+                            .await
+                        {
+                            log::error!("{}", err);
+                        }
+                        TgResponse::SuccessPause(
+                            reminder
+                                .into_active_model()
+                                .to_unescaped_string(user_tz),
+                        )
+                    }
                     Ok(false) => TgResponse::SuccessResume(
                         reminder
                             .into_active_model()
@@ -992,5 +1041,37 @@ impl TgCallbackController {
             EditMode::Description => TgResponse::EnterNewDescription,
         };
         self.answer_callback_query(response).await
+    }
+
+    pub(crate) async fn done_occurrence(
+        &self,
+        occ_id: i64,
+    ) -> Result<(), RequestError> {
+        if let Err(err) = self
+            .msg_ctl
+            .db
+            .complete_occurrence(occ_id, self.msg_ctl.chat_id.0)
+            .await
+        {
+            log::error!("{}", err);
+        }
+
+        self.acknowledge_callback().await?;
+
+        if let Err(err) = tg::clear_markup(
+            &self.msg_ctl.bot,
+            self.msg_ctl.msg_id,
+            self.msg_ctl.chat_id,
+        )
+        .await
+        {
+            if is_ignorable_markup_clear_error(&err) {
+                log::debug!("{}", err);
+            } else {
+                log::error!("{}", err);
+            }
+        }
+
+        Ok(())
     }
 }

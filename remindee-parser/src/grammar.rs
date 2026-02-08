@@ -139,6 +139,7 @@ pub enum ReminderPattern {
 pub struct Reminder {
     pub description: Option<Description>,
     pub pattern: Option<ReminderPattern>,
+    pub nag_interval: Option<Interval>,
 }
 
 #[derive(Debug)]
@@ -496,6 +497,16 @@ impl Parse for Reminder {
                 Rule::cron => {
                     reminder.pattern =
                         Some(ReminderPattern::Cron(Cron::parse(rec)?));
+                }
+                Rule::nag_suffix => {
+                    let nag_interval = rec.into_inner().find_map(|inner| {
+                        if inner.as_rule() == Rule::interval {
+                            Interval::parse(inner)
+                        } else {
+                            None
+                        }
+                    })?;
+                    reminder.nag_interval = Some(nag_interval);
                 }
                 Rule::EOI => {}
                 _ => unreachable!(),

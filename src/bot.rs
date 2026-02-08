@@ -1,39 +1,132 @@
 use crate::cli::CLI;
 #[cfg(not(test))]
 use crate::db::Database;
+use crate::db::InsertReminderOccurrence;
 #[cfg(test)]
 use crate::db::MockDatabase as Database;
-use crate::entity::reminder;
+use crate::entity::{reminder, reminder_occurrence};
 use crate::err::Error;
 use crate::format;
 use crate::handlers::{get_handler, Command, State};
+use crate::lang::{get_user_language, Language};
 use crate::parsers::now_time;
 use crate::serializers::Pattern;
-use crate::tg::send_message;
+use crate::tg::{clear_markup, send_message, send_message_with_markup};
 use crate::tz::get_user_timezone;
 use chrono::{NaiveDateTime, TimeDelta};
-use chrono_tz::Tz;
-use sea_orm::{ActiveValue::NotSet, IntoActiveModel};
+use chrono_tz::{Tz, UTC};
+use sea_orm::{ActiveValue::NotSet, ActiveValue::Set, IntoActiveModel};
 use serde_json::{from_str, to_string};
 use std::cmp::max;
+use std::collections::HashMap;
 use std::sync::Arc;
 use teloxide::dispatching::dialogue::serializer::Json;
 use teloxide::dispatching::dialogue::{ErasedStorage, SqliteStorage, Storage};
-use teloxide::{prelude::*, utils::command::BotCommands};
+use teloxide::types::{
+    InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup,
+    MessageId,
+};
+use teloxide::{
+    prelude::*, utils::command::BotCommands, ApiError, RequestError,
+};
 use tokio::time::Instant;
+
+fn done_markup(lang: Language, occ_id: i64) -> InlineKeyboardMarkup {
+    InlineKeyboardMarkup::default().append_row(vec![InlineKeyboardButton::new(
+        t!("Done", locale = lang.code()),
+        InlineKeyboardButtonKind::CallbackData(format!(
+            "donerem::occ::{occ_id}"
+        )),
+    )])
+}
+
+fn is_ignorable_markup_clear_error(err: &RequestError) -> bool {
+    matches!(
+        err,
+        RequestError::Api(ApiError::MessageNotModified)
+            | RequestError::Api(ApiError::MessageCantBeEdited)
+            | RequestError::Api(ApiError::MessageToEditNotFound)
+            | RequestError::Api(ApiError::MessageIdInvalid)
+    )
+}
+
+async fn clear_previous_done_markup(
+    bot: &Bot,
+    chat_id: i64,
+    prev_msg_id: Option<i32>,
+    new_msg_id: i32,
+) {
+    if let Some(prev_msg_id) = prev_msg_id {
+        if prev_msg_id == new_msg_id {
+            return;
+        }
+        if let Err(err) =
+            clear_markup(bot, MessageId(prev_msg_id), ChatId(chat_id)).await
+        {
+            if is_ignorable_markup_clear_error(&err) {
+                log::debug!("{}", err);
+            } else {
+                log::error!("{}", err);
+            }
+        }
+    }
+}
 
 async fn send_reminder(
     reminder: &reminder::Model,
     user_timezone: Tz,
+    lang: Language,
+    done_occurrence_id: Option<i64>,
     bot: &Bot,
 ) -> Result<Message, Error> {
     let text = format::format_reminder(
         &reminder.clone().into_active_model(),
         user_timezone,
     );
-    send_message(&text, bot, ChatId(reminder.chat_id))
+    if let Some(occ_id) = done_occurrence_id {
+        send_message_with_markup(
+            &text,
+            done_markup(lang, occ_id),
+            bot,
+            ChatId(reminder.chat_id),
+        )
         .await
         .map_err(From::from)
+    } else {
+        send_message(&text, bot, ChatId(reminder.chat_id))
+            .await
+            .map_err(From::from)
+    }
+}
+
+async fn send_occurrence_reminder(
+    occ: &reminder_occurrence::Model,
+    user_timezone: Tz,
+    lang: Language,
+    bot: &Bot,
+) -> Result<Message, Error> {
+    let text = format::format_reminder(
+        &reminder::ActiveModel {
+            id: NotSet,
+            rec_id: Set(occ.rec_id.clone()),
+            chat_id: Set(occ.chat_id),
+            time: Set(occ.due_at),
+            desc: Set(occ.desc_snapshot.clone()),
+            user_id: Set(occ.user_id),
+            paused: Set(false),
+            nag_interval_sec: Set(Some(occ.nag_interval_sec)),
+            pattern: Set(None),
+        },
+        user_timezone,
+    );
+    send_message_with_markup(
+        &text,
+        done_markup(lang, occ.id),
+        bot,
+        ChatId(occ.chat_id),
+    )
+    .await
+    .map_err(From::from)
 }
 
 async fn process_due_reminders(db: &Database, bot: &Bot) {
@@ -46,11 +139,14 @@ async fn process_due_reminders(db: &Database, bot: &Bot) {
             if let Ok(Some(user_timezone)) =
                 get_user_timezone(db, user_id).await
             {
+                let lang = get_user_language(db, user_id).await;
                 let mut next_reminder = None;
+                let mut next_occurrence_time = None;
                 if let Some(ref serialized) = reminder.pattern {
                     let mut pattern: Pattern = from_str(serialized).unwrap();
                     let lower_bound = max(reminder.time, now_time());
                     if let Some(next_time) = pattern.next(lower_bound) {
+                        next_occurrence_time = Some(next_time);
                         next_reminder = Some(reminder::Model {
                             time: next_time,
                             pattern: to_string(&pattern).ok(),
@@ -58,19 +154,90 @@ async fn process_due_reminders(db: &Database, bot: &Bot) {
                         });
                     }
                 }
-                if let Ok(sent_msg) =
-                    send_reminder(&reminder, user_timezone, bot).await
+                let mut rollover_prev_msg_id = None;
+                if reminder.nag_interval_sec.is_some() {
+                    let closed_rows =
+                        match db.close_open_occurrences(&reminder.rec_id).await
+                        {
+                            Ok(rows_affected) => rows_affected,
+                            Err(err) => {
+                                log::error!("{}", err);
+                                0
+                            }
+                        };
+                    if closed_rows > 0 {
+                        rollover_prev_msg_id = match db
+                            .get_latest_reminder_message_id(
+                                reminder.chat_id,
+                                &reminder.rec_id,
+                            )
+                            .await
+                        {
+                            Ok(msg_id) => msg_id,
+                            Err(err) => {
+                                log::error!("{}", err);
+                                None
+                            }
+                        };
+                    }
+                }
+
+                let mut created_occurrence = None;
+                let send_result = if let Some(nag_interval_sec) =
+                    reminder.nag_interval_sec
                 {
+                    match db
+                        .insert_reminder_occurrence(InsertReminderOccurrence {
+                            rec_id: reminder.rec_id.clone(),
+                            chat_id: reminder.chat_id,
+                            user_id: reminder.user_id,
+                            due_at: reminder.time,
+                            nag_interval_sec,
+                            stop_at: next_occurrence_time,
+                            desc_snapshot: reminder.desc.clone(),
+                        })
+                        .await
+                    {
+                        Ok(occ) => {
+                            created_occurrence = Some(occ.id);
+                            send_reminder(
+                                &reminder,
+                                user_timezone,
+                                lang,
+                                Some(occ.id),
+                                bot,
+                            )
+                            .await
+                        }
+                        Err(err) => {
+                            log::error!("{}", err);
+                            continue;
+                        }
+                    }
+                } else {
+                    send_reminder(&reminder, user_timezone, lang, None, bot)
+                        .await
+                };
+
+                if let Ok(sent_msg) = send_result {
                     if let Err(err) = db
                         .insert_reminder_message(
                             &reminder.rec_id,
                             reminder.chat_id,
                             sent_msg.id.0,
+                            true,
                         )
                         .await
                     {
                         log::error!("{}", err);
                     }
+                    clear_previous_done_markup(
+                        bot,
+                        reminder.chat_id,
+                        rollover_prev_msg_id,
+                        sent_msg.id.0,
+                    )
+                    .await;
                     db.delete_reminder(reminder.id).await.unwrap_or_else(
                         |err| {
                             log::error!("{}", err);
@@ -87,7 +254,90 @@ async fn process_due_reminders(db: &Database, bot: &Bot) {
                                 log::error!("{}", err);
                             });
                     }
+                } else if let Some(occ_id) = created_occurrence {
+                    if let Err(err) = db.delete_occurrence(occ_id).await {
+                        log::error!("{}", err);
+                    }
                 }
+            }
+        }
+    }
+}
+
+async fn process_due_occurrences(db: &Database, bot: &Bot) {
+    if let Err(err) = db.close_elapsed_occurrences().await {
+        log::error!("{}", err);
+    }
+
+    let occurrences = db
+        .get_due_reminder_occurrences()
+        .await
+        .expect("Failed to get reminder occurrences from database");
+    let mut user_context_cache: HashMap<i64, (Tz, Language)> = HashMap::new();
+    for occ in occurrences {
+        let (user_timezone, lang) = if let Some(user_id) = occ.user_id {
+            if let Some(cached) = user_context_cache.get(&user_id) {
+                *cached
+            } else {
+                let user_timezone =
+                    get_user_timezone(db, UserId(user_id as u64))
+                        .await
+                        .ok()
+                        .flatten()
+                        .unwrap_or(UTC);
+                let lang = get_user_language(db, UserId(user_id as u64)).await;
+                user_context_cache.insert(user_id, (user_timezone, lang));
+                (user_timezone, lang)
+            }
+        } else {
+            (UTC, Language::default())
+        };
+
+        let prev_msg_id = match db
+            .get_latest_reminder_message_id(occ.chat_id, &occ.rec_id)
+            .await
+        {
+            Ok(msg_id) => msg_id,
+            Err(err) => {
+                log::error!("{}", err);
+                None
+            }
+        };
+
+        let is_open = match db.is_occurrence_open(occ.id).await {
+            Ok(is_open) => is_open,
+            Err(err) => {
+                log::error!("{}", err);
+                false
+            }
+        };
+        if !is_open {
+            continue;
+        }
+
+        if let Ok(sent_msg) =
+            send_occurrence_reminder(&occ, user_timezone, lang, bot).await
+        {
+            if let Err(err) = db
+                .insert_reminder_message(
+                    &occ.rec_id,
+                    occ.chat_id,
+                    sent_msg.id.0,
+                    true,
+                )
+                .await
+            {
+                log::error!("{}", err);
+            }
+            clear_previous_done_markup(
+                bot,
+                occ.chat_id,
+                prev_msg_id,
+                sent_msg.id.0,
+            )
+            .await;
+            if let Err(err) = db.bump_occurrence_nag(occ.id).await {
+                log::error!("{}", err);
             }
         }
     }
@@ -125,6 +375,7 @@ async fn poll_reminders(db: Arc<Database>, bot: Bot) {
             }
             () = &mut next_deadline => {
                 process_due_reminders(&db, &bot).await;
+                process_due_occurrences(&db, &bot).await;
 
                 next_deadline.as_mut().reset(get_next_reminder_time().await);
             }
@@ -222,6 +473,7 @@ mod test {
             desc: "".to_owned(),
             user_id: None,
             paused: false,
+            nag_interval_sec: None,
             pattern: None,
             rec_id: "1:1".to_owned(),
         }
@@ -380,6 +632,7 @@ mod test {
         db.expect_delete_reminder()
             .with(eq(rem.id))
             .returning(move |_| Ok(()));
+        db.expect_close_open_occurrences().returning(|_| Ok(0));
         db.expect_delete_reminder_messages().returning(|_| Ok(()));
         let mut bot = mock_bot(db, message);
         bot.dispatch().await;
@@ -491,6 +744,7 @@ mod test {
         db.expect_delete_reminder()
             .with(eq(rem.id))
             .returning(|_| Ok(()));
+        db.expect_close_open_occurrences().returning(|_| Ok(0));
         db.expect_delete_reminder_messages().returning(|_| Ok(()));
 
         let reply_to_message = MockMessageText::new().id(42).build();
@@ -545,6 +799,7 @@ mod test {
             db.expect_delete_reminder()
                 .with(eq(rem.id))
                 .returning(move |_| Ok(()));
+            db.expect_close_open_occurrences().returning(|_| Ok(0));
             db.expect_delete_reminder_messages().returning(|_| Ok(()));
         }
         let mut bot = mock_bot(db, message);
@@ -669,6 +924,7 @@ mod test {
             db.expect_delete_reminder()
                 .with(eq(rem.id))
                 .returning(move |_| Ok(()));
+            db.expect_close_open_occurrences().returning(|_| Ok(0));
             db.expect_delete_reminder_messages().returning(|_| Ok(()));
         }
         let mut bot = mock_bot(db, message);
@@ -939,6 +1195,9 @@ mod test {
             .with(eq(rem.id))
             .times(1)
             .returning(move |_| Ok(true));
+        db.expect_close_open_occurrences()
+            .times(1)
+            .returning(|_| Ok(0));
         db.expect_toggle_reminder_paused()
             .with(eq(rem.id))
             .times(1)
@@ -1024,7 +1283,7 @@ mod test {
             .returning(move |_| Ok(rem_clone.clone().into()));
         db.expect_insert_reminder_message()
             .times(2)
-            .returning(|_, _, _| Ok(()));
+            .returning(|_, _, _, _| Ok(()));
         let mut bot = mock_bot(db, message);
         bot.dispatch_and_check_last_text(
             &TgResponse::SuccessInsert(
@@ -1095,5 +1354,33 @@ mod test {
             }
             .into()]
         );
+    }
+
+    #[tokio::test]
+    async fn test_done_callback_without_timezone() {
+        let cb_message = MockMessageText::new().id(42).build();
+        let update = MockCallbackQuery::new()
+            .data("donerem::occ::1")
+            .message(cb_message);
+        let mut db = MockDatabase::new();
+        db.expect_complete_occurrence()
+            .with(eq(1), eq(MockUser::ID as i64))
+            .returning(|_, _| Ok(true));
+        let mut bot = mock_bot(db, update);
+        bot.dispatch().await;
+    }
+
+    #[tokio::test]
+    async fn test_done_callback_clears_stale_markup() {
+        let cb_message = MockMessageText::new().id(42).build();
+        let update = MockCallbackQuery::new()
+            .data("donerem::occ::1")
+            .message(cb_message);
+        let mut db = MockDatabase::new();
+        db.expect_complete_occurrence()
+            .with(eq(1), eq(MockUser::ID as i64))
+            .returning(|_, _| Ok(false));
+        let mut bot = mock_bot(db, update);
+        bot.dispatch().await;
     }
 }

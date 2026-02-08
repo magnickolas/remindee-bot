@@ -10,6 +10,7 @@ pub struct Model {
     pub rec_id: String,
     pub chat_id: i64,
     pub msg_id: i32,
+    pub is_delivery: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

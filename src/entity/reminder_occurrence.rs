@@ -4,18 +4,19 @@ use chrono::NaiveDateTime;
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "reminder")]
+#[sea_orm(table_name = "reminder_occurrence")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
     pub rec_id: String,
     pub chat_id: i64,
-    pub time: NaiveDateTime,
-    pub desc: String,
     pub user_id: Option<i64>,
-    pub paused: bool,
-    pub nag_interval_sec: Option<i64>,
-    pub pattern: Option<String>,
+    pub due_at: NaiveDateTime,
+    pub next_nag_at: NaiveDateTime,
+    pub nag_interval_sec: i64,
+    pub stop_at: Option<NaiveDateTime>,
+    pub done_at: Option<NaiveDateTime>,
+    pub desc_snapshot: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

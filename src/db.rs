@@ -1,7 +1,10 @@
 use std::path::Path;
 
 use crate::cli::CLI;
-use crate::entity::{reminder, reminder_message, user_language, user_timezone};
+use crate::entity::{
+    reminder, reminder_message, reminder_occurrence, user_language,
+    user_timezone,
+};
 use crate::generic_reminder;
 use crate::migration::{DbErr, Migrator, MigratorTrait};
 use crate::parsers::now_time;
@@ -9,9 +12,9 @@ use chrono::NaiveDateTime;
 #[cfg(test)]
 use mockall::automock;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, ConnectOptions,
-    Database as SeaOrmDatabase, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, Set,
+    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, Condition,
+    ConnectOptions, Database as SeaOrmDatabase, DatabaseConnection,
+    EntityTrait, QueryFilter, QueryOrder, Set,
 };
 use tokio::sync::futures::Notified;
 use tokio::sync::Notify;
@@ -72,6 +75,32 @@ macro_rules! defer {
     };
 }
 
+fn checked_add_seconds(
+    dt: NaiveDateTime,
+    seconds: i64,
+) -> Result<NaiveDateTime, Error> {
+    let delta = chrono::TimeDelta::try_seconds(seconds).ok_or_else(|| {
+        Error::Database(DbErr::Custom(format!(
+            "Invalid seconds value: {seconds}",
+        )))
+    })?;
+    dt.checked_add_signed(delta).ok_or_else(|| {
+        Error::Database(DbErr::Custom(format!(
+            "Datetime overflow while adding {seconds} seconds",
+        )))
+    })
+}
+
+pub(crate) struct InsertReminderOccurrence {
+    pub(crate) rec_id: String,
+    pub(crate) chat_id: i64,
+    pub(crate) user_id: Option<i64>,
+    pub(crate) due_at: NaiveDateTime,
+    pub(crate) nag_interval_sec: i64,
+    pub(crate) stop_at: Option<NaiveDateTime>,
+    pub(crate) desc_snapshot: String,
+}
+
 pub(crate) struct Database {
     pool: DatabaseConnection,
     notify: Notify,
@@ -127,10 +156,28 @@ impl Database {
             .map(|r| r.time))
     }
 
+    async fn next_occurrence_nag_time(
+        &self,
+    ) -> Result<Option<NaiveDateTime>, Error> {
+        Ok(reminder_occurrence::Entity::find()
+            .filter(reminder_occurrence::Column::DoneAt.is_null())
+            .order_by_asc(reminder_occurrence::Column::NextNagAt)
+            .one(&self.pool)
+            .await?
+            .map(|occ| occ.next_nag_at))
+    }
+
     pub(crate) async fn get_next_reminder_time(
         &self,
     ) -> Result<Option<NaiveDateTime>, Error> {
-        self.next_reminder_time().await
+        let rem_time = self.next_reminder_time().await?;
+        let nag_time = self.next_occurrence_nag_time().await?;
+        Ok(match (rem_time, nag_time) {
+            (Some(rem), Some(nag)) => Some(rem.min(nag)),
+            (Some(rem), None) => Some(rem),
+            (None, Some(nag)) => Some(nag),
+            (None, None) => None,
+        })
     }
 
     pub(crate) async fn get_active_reminders(
@@ -292,21 +339,182 @@ impl Database {
         }
     }
 
+    pub(crate) async fn get_latest_reminder_message_id(
+        &self,
+        chat_id: i64,
+        rec_id: &str,
+    ) -> Result<Option<i32>, Error> {
+        Ok(reminder_message::Entity::find()
+            .filter(reminder_message::Column::ChatId.eq(chat_id))
+            .filter(reminder_message::Column::RecId.eq(rec_id))
+            .filter(reminder_message::Column::IsDelivery.eq(true))
+            .order_by_desc(reminder_message::Column::Id)
+            .one(&self.pool)
+            .await?
+            .map(|link| link.msg_id))
+    }
+
     pub(crate) async fn insert_reminder_message(
         &self,
         rec_id: &str,
         chat_id: i64,
         msg_id: i32,
+        is_delivery: bool,
     ) -> Result<(), Error> {
         reminder_message::ActiveModel {
             id: NotSet,
             rec_id: Set(rec_id.to_owned()),
             chat_id: Set(chat_id),
             msg_id: Set(msg_id),
+            is_delivery: Set(is_delivery),
         }
         .insert(&self.pool)
         .await?;
         Ok(())
+    }
+
+    pub(crate) async fn insert_reminder_occurrence(
+        &self,
+        args: InsertReminderOccurrence,
+    ) -> Result<reminder_occurrence::Model, Error> {
+        let InsertReminderOccurrence {
+            rec_id,
+            chat_id,
+            user_id,
+            due_at,
+            nag_interval_sec,
+            stop_at,
+            desc_snapshot,
+        } = args;
+        defer!(self.notify.notify_one());
+        let first_nag_at = checked_add_seconds(now_time(), nag_interval_sec)?;
+        Ok(reminder_occurrence::ActiveModel {
+            id: NotSet,
+            rec_id: Set(rec_id),
+            chat_id: Set(chat_id),
+            user_id: Set(user_id),
+            due_at: Set(due_at),
+            next_nag_at: Set(first_nag_at),
+            nag_interval_sec: Set(nag_interval_sec),
+            stop_at: Set(stop_at),
+            done_at: Set(None),
+            desc_snapshot: Set(desc_snapshot),
+        }
+        .insert(&self.pool)
+        .await?)
+    }
+
+    pub(crate) async fn get_due_reminder_occurrences(
+        &self,
+    ) -> Result<Vec<reminder_occurrence::Model>, Error> {
+        let now = now_time();
+        Ok(reminder_occurrence::Entity::find()
+            .filter(reminder_occurrence::Column::DoneAt.is_null())
+            .filter(reminder_occurrence::Column::NextNagAt.lte(now))
+            .filter(
+                Condition::any()
+                    .add(reminder_occurrence::Column::StopAt.is_null())
+                    .add(reminder_occurrence::Column::StopAt.gt(now)),
+            )
+            .all(&self.pool)
+            .await?)
+    }
+
+    pub(crate) async fn close_elapsed_occurrences(&self) -> Result<(), Error> {
+        let now = now_time();
+        reminder_occurrence::Entity::update_many()
+            .set(reminder_occurrence::ActiveModel {
+                done_at: Set(Some(now)),
+                ..Default::default()
+            })
+            .filter(reminder_occurrence::Column::DoneAt.is_null())
+            .filter(reminder_occurrence::Column::StopAt.lte(now))
+            .exec(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn close_open_occurrences(
+        &self,
+        rec_id: &str,
+    ) -> Result<u64, Error> {
+        defer!(self.notify.notify_one());
+        let now = now_time();
+        let result = reminder_occurrence::Entity::update_many()
+            .set(reminder_occurrence::ActiveModel {
+                done_at: Set(Some(now)),
+                ..Default::default()
+            })
+            .filter(reminder_occurrence::Column::RecId.eq(rec_id))
+            .filter(reminder_occurrence::Column::DoneAt.is_null())
+            .exec(&self.pool)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
+    pub(crate) async fn is_occurrence_open(
+        &self,
+        occ_id: i64,
+    ) -> Result<bool, Error> {
+        Ok(reminder_occurrence::Entity::find_by_id(occ_id)
+            .filter(reminder_occurrence::Column::DoneAt.is_null())
+            .one(&self.pool)
+            .await?
+            .is_some())
+    }
+
+    pub(crate) async fn bump_occurrence_nag(
+        &self,
+        occ_id: i64,
+    ) -> Result<(), Error> {
+        defer!(self.notify.notify_one());
+        let occ = reminder_occurrence::Entity::find_by_id(occ_id)
+            .one(&self.pool)
+            .await?
+            .ok_or_else(|| {
+                Error::Database(DbErr::RecordNotFound(occ_id.to_string()))
+            })?;
+        let mut occ_act: reminder_occurrence::ActiveModel = occ.into();
+        let nag_interval_sec = occ_act.nag_interval_sec.clone().unwrap();
+        let base = now_time().max(occ_act.next_nag_at.clone().unwrap());
+        occ_act.next_nag_at = Set(checked_add_seconds(base, nag_interval_sec)?);
+        occ_act.update(&self.pool).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn delete_occurrence(
+        &self,
+        occ_id: i64,
+    ) -> Result<(), Error> {
+        defer!(self.notify.notify_one());
+        reminder_occurrence::ActiveModel {
+            id: Set(occ_id),
+            ..Default::default()
+        }
+        .delete(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn complete_occurrence(
+        &self,
+        occ_id: i64,
+        chat_id: i64,
+    ) -> Result<bool, Error> {
+        defer!(self.notify.notify_one());
+        let now = now_time();
+        let result = reminder_occurrence::Entity::update_many()
+            .set(reminder_occurrence::ActiveModel {
+                done_at: Set(Some(now)),
+                ..Default::default()
+            })
+            .filter(reminder_occurrence::Column::Id.eq(occ_id))
+            .filter(reminder_occurrence::Column::ChatId.eq(chat_id))
+            .filter(reminder_occurrence::Column::DoneAt.is_null())
+            .exec(&self.pool)
+            .await?
+            .rows_affected;
+        Ok(result > 0)
     }
 
     pub(crate) async fn delete_reminder_messages(
@@ -340,8 +548,10 @@ impl Database {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::parsers::test::TEST_TIMESTAMP;
     use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
     use sea_orm::{ActiveValue::NotSet, IntoActiveModel};
+    use serial_test::serial;
 
     async fn new_db_in_memory() -> Result<Database, Error> {
         let mut opts = ConnectOptions::new("sqlite::memory:");
@@ -371,6 +581,7 @@ mod test {
             desc: "".to_owned(),
             user_id: None,
             paused: false,
+            nag_interval_sec: None,
             pattern: None,
             rec_id: "1:1".to_owned(),
         }
@@ -407,5 +618,73 @@ mod test {
                 rem3_act.time.unwrap(),
             ]
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_insert_occurrence_first_nag_is_from_now_time() {
+        let db = new_db_in_memory().await.unwrap();
+        db.apply_migrations().await.unwrap();
+
+        let due_at = ts(2024, 1, 1, 10, 0, 0);
+        let now = ts(2024, 1, 1, 10, 47, 0);
+        *TEST_TIMESTAMP.write().unwrap() = now.and_utc().timestamp();
+
+        let occ = db
+            .insert_reminder_occurrence(InsertReminderOccurrence {
+                rec_id: "1:1".to_owned(),
+                chat_id: 1,
+                user_id: Some(1),
+                due_at,
+                nag_interval_sec: 10 * 60,
+                stop_at: None,
+                desc_snapshot: "take a pill".to_owned(),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(occ.due_at, due_at);
+        assert_eq!(occ.next_nag_at, ts(2024, 1, 1, 10, 57, 0));
+    }
+
+    #[tokio::test]
+    async fn test_get_latest_reminder_message_id_uses_delivery_only() {
+        let db = new_db_in_memory().await.unwrap();
+        db.apply_migrations().await.unwrap();
+
+        db.insert_reminder_message("1:1", 1, 100, false)
+            .await
+            .unwrap();
+        db.insert_reminder_message("1:1", 1, 101, true)
+            .await
+            .unwrap();
+        db.insert_reminder_message("1:1", 1, 102, false)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            db.get_latest_reminder_message_id(1, "1:1").await.unwrap(),
+            Some(101),
+        );
+    }
+
+    #[tokio::test]
+    async fn test_insert_occurrence_rejects_datetime_overflow() {
+        let db = new_db_in_memory().await.unwrap();
+        db.apply_migrations().await.unwrap();
+
+        let result = db
+            .insert_reminder_occurrence(InsertReminderOccurrence {
+                rec_id: "1:1".to_owned(),
+                chat_id: 1,
+                user_id: Some(1),
+                due_at: ts(2024, 1, 1, 10, 0, 0),
+                nag_interval_sec: i64::MAX,
+                stop_at: None,
+                desc_snapshot: "take a pill".to_owned(),
+            })
+            .await;
+
+        assert!(result.is_err());
     }
 }

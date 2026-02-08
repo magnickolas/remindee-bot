@@ -13,6 +13,29 @@ pub(crate) fn now_time() -> NaiveDateTime {
     Utc::now().naive_utc()
 }
 
+fn nag_interval_to_secs(interval: &remindee_parser::Interval) -> Option<i64> {
+    if interval.years != 0 || interval.months != 0 {
+        return None;
+    }
+
+    let mut total_secs = 0i64;
+    for (value, multiplier) in [
+        (interval.weeks as i64, 7 * 24 * 60 * 60),
+        (interval.days as i64, 24 * 60 * 60),
+        (interval.hours as i64, 60 * 60),
+        (interval.minutes as i64, 60),
+        (interval.seconds as i64, 1),
+    ] {
+        total_secs = total_secs.checked_add(value.checked_mul(multiplier)?)?;
+    }
+
+    if total_secs > 0 {
+        Some(total_secs)
+    } else {
+        None
+    }
+}
+
 pub(crate) async fn parse_reminder(
     s: &str,
     chat_id: i64,
@@ -21,9 +44,18 @@ pub(crate) async fn parse_reminder(
     user_timezone: Tz,
 ) -> Option<reminder::ActiveModel> {
     let rem = remindee_parser::parse_reminder(s)?;
-    let description = rem.description.map(|x| x.0).unwrap_or("".to_owned());
-    let mut pattern =
-        Pattern::from_with_tz(rem.pattern?, user_timezone).ok()?;
+    let remindee_parser::Reminder {
+        description,
+        pattern,
+        nag_interval,
+    } = rem;
+
+    let description = description.map(|x| x.0).unwrap_or("".to_owned());
+    let nag_interval_sec = match nag_interval.as_ref() {
+        Some(interval) => Some(nag_interval_to_secs(interval)?),
+        None => None,
+    };
+    let mut pattern = Pattern::from_with_tz(pattern?, user_timezone).ok()?;
     let time = pattern.next(now_time())?;
     // Convert to UTC
     Some(reminder::ActiveModel {
@@ -33,6 +65,7 @@ pub(crate) async fn parse_reminder(
         time: Set(time),
         desc: Set(description),
         paused: Set(false),
+        nag_interval_sec: Set(nag_interval_sec),
         pattern: Set(to_string(&pattern).ok()),
         rec_id: Set(rec_id),
     })
@@ -151,6 +184,68 @@ pub(crate) mod test {
         *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
         let result = parse_reminder(
             "cron: */5 * * * invalid",
+            0,
+            0,
+            "0:0".to_owned(),
+            *TEST_TZ,
+        )
+        .await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_parse_reminder_with_recurrence_nag_interval() {
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
+        let result = parse_reminder(
+            "12:40!10m take pill",
+            0,
+            0,
+            "0:0".to_owned(),
+            *TEST_TZ,
+        )
+        .await
+        .expect("reminder should parse");
+        assert_eq!(result.nag_interval_sec.unwrap(), Some(600));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_parse_reminder_with_countdown_nag_interval() {
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
+        let result = parse_reminder(
+            "30m!5m turn off stove",
+            0,
+            0,
+            "0:0".to_owned(),
+            *TEST_TZ,
+        )
+        .await
+        .expect("countdown reminder should parse");
+        assert_eq!(result.nag_interval_sec.unwrap(), Some(300));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_parse_reminder_with_invalid_nag_interval() {
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
+        let result = parse_reminder(
+            "12:40!1mo take pill",
+            0,
+            0,
+            "0:0".to_owned(),
+            *TEST_TZ,
+        )
+        .await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_parse_reminder_with_malformed_nag_suffix() {
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
+        let result = parse_reminder(
+            "12:40!10mTake pill",
             0,
             0,
             "0:0".to_owned(),

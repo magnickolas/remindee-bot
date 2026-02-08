@@ -64,6 +64,7 @@ Help: |
   /start — show the greeting message
 TimePattern: "Time pattern"
 Description: "Description"
+Done: "Done"
 ChangeLanguage: "Change language"
 WhatToEdit: "What would you like to edit?"
 NextTime: "The next one"

@@ -64,6 +64,7 @@ Help: |
   /start — показать приветственное сообщение
 TimePattern: "Временной шаблон"
 Description: "Описание"
+Done: "Готово"
 ChangeLanguage: "Сменить язык"
 WhatToEdit: "Что вы хотите отредактировать?"
 NextTime: "Следующее напоминание"

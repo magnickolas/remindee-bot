@@ -169,6 +169,27 @@ pub(crate) async fn send_message(
     _send_message(text, bot, chat_id, false).await
 }
 
+pub(crate) async fn send_message_with_markup(
+    text: &str,
+    markup: InlineKeyboardMarkup,
+    bot: &Bot,
+    chat_id: ChatId,
+) -> Result<Message, RequestError> {
+    bot.send_message(chat_id, text)
+        .parse_mode(MarkdownV2)
+        .link_preview_options(LinkPreviewOptions {
+            is_disabled: true,
+            url: Default::default(),
+            prefer_small_media: Default::default(),
+            prefer_large_media: Default::default(),
+            show_above_text: Default::default(),
+        })
+        .disable_notification(false)
+        .reply_markup(markup)
+        .send()
+        .await
+}
+
 pub(crate) async fn send_silent_message(
     text: &str,
     bot: &Bot,
@@ -207,6 +228,17 @@ pub(crate) async fn edit_markup(
 ) -> Result<(), RequestError> {
     bot.edit_message_reply_markup(chat_id, msg_id)
         .reply_markup(markup)
+        .send()
+        .await
+        .map(|_| ())
+}
+
+pub(crate) async fn clear_markup(
+    bot: &Bot,
+    msg_id: MessageId,
+    chat_id: ChatId,
+) -> Result<(), RequestError> {
+    bot.edit_message_reply_markup(chat_id, msg_id)
         .send()
         .await
         .map(|_| ())

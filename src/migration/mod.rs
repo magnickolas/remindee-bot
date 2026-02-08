@@ -19,6 +19,7 @@ mod m20241217_154950_remove_edit_columns;
 mod m20250618_171311_create_user_language_table;
 mod m20260130_130000_add_rec_id_and_message_links;
 mod m20260131_120000_migrate_cron_reminders;
+mod m20260205_000001_add_nagging_occurrences;
 
 pub struct Migrator;
 
@@ -49,6 +50,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250618_171311_create_user_language_table::Migration),
             Box::new(m20260130_130000_add_rec_id_and_message_links::Migration),
             Box::new(m20260131_120000_migrate_cron_reminders::Migration),
+            Box::new(m20260205_000001_add_nagging_occurrences::Migration),
         ]
     }
 }

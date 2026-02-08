@@ -64,6 +64,7 @@ Help: |
   /start — welkomstbericht tonen
 TimePattern: "Tijdschema"
 Description: "Omschrijving"
+Done: "Klaar"
 ChangeLanguage: "Taal wijzigen"
 WhatToEdit: "Wat wil je bewerken?"
 NextTime: "De volgende"

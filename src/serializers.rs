@@ -290,7 +290,7 @@ impl DateRange {
             DateDivisor::Interval(int) => {
                 let mut nearest_date = self.from;
                 while nearest_date < date {
-                    nearest_date = date::add_date_interval(nearest_date, &int);
+                    nearest_date = date::add_date_interval(nearest_date, &int)?;
                 }
                 if self
                     .until
@@ -582,13 +582,16 @@ impl Countdown {
             .0
             .from_utc_datetime(&self.time_from)
             .naive_local();
-        let duration = *self
+        let (duration, next_time) = self
             .durations
             .iter()
-            .min_by_key(|duration| date::add_interval(start, duration))?;
+            .filter_map(|duration| {
+                date::add_interval(start, duration)
+                    .map(|next_time| (*duration, next_time))
+            })
+            .min_by_key(|(_, next_time)| *next_time)?;
         self.durations.retain(|&x| x != duration);
 
-        let next_time = date::add_interval(start, &duration);
         self.timezone.local_to_utc(&next_time)
     }
 }

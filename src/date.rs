@@ -1,6 +1,7 @@
 use crate::serializers::{DateInterval, Interval};
 use chrono::{Datelike, NaiveDate, NaiveDateTime};
-use chronoutil::{is_leap_year, shift_months, shift_years};
+use chronoutil::delta::{shift_months_opt, shift_years_opt};
+use chronoutil::is_leap_year;
 use nonempty::NonEmpty;
 
 pub(crate) fn normalise_day(year: i32, month: u32, day: u32) -> u32 {
@@ -20,21 +21,29 @@ pub(crate) fn normalise_day(year: i32, month: u32, day: u32) -> u32 {
 pub(crate) fn add_interval(
     time: NaiveDateTime,
     interval: &Interval,
-) -> NaiveDateTime {
-    shift_months(shift_years(time, interval.years), interval.months as i32)
-        + chrono::Duration::weeks(interval.weeks as i64)
-        + chrono::Duration::days(interval.days as i64)
-        + chrono::Duration::hours(interval.hours as i64)
-        + chrono::Duration::minutes(interval.minutes as i64)
-        + chrono::Duration::seconds(interval.seconds as i64)
+) -> Option<NaiveDateTime> {
+    let mut shifted = shift_months_opt(
+        shift_years_opt(time, interval.years)?,
+        interval.months as i32,
+    )?;
+    for delta in [
+        chrono::TimeDelta::try_weeks(interval.weeks as i64)?,
+        chrono::TimeDelta::try_days(interval.days as i64)?,
+        chrono::TimeDelta::try_hours(interval.hours as i64)?,
+        chrono::TimeDelta::try_minutes(interval.minutes as i64)?,
+        chrono::TimeDelta::try_seconds(interval.seconds as i64)?,
+    ] {
+        shifted = shifted.checked_add_signed(delta)?;
+    }
+    Some(shifted)
 }
 
 pub(crate) fn add_date_interval(
     date: NaiveDate,
     interval: &DateInterval,
-) -> NaiveDate {
+) -> Option<NaiveDate> {
     add_interval(
-        date.and_hms_opt(0, 0, 0).unwrap(),
+        date.and_hms_opt(0, 0, 0)?,
         &Interval {
             years: interval.years,
             months: interval.months,
@@ -45,7 +54,7 @@ pub(crate) fn add_date_interval(
             seconds: 0,
         },
     )
-    .date()
+    .map(|dt| dt.date())
 }
 
 pub(crate) fn find_nearest_weekday(
@@ -98,7 +107,7 @@ mod test {
             NaiveDate::from_ymd_opt(year, month, day).unwrap(),
             NaiveTime::from_hms_opt(hour, minute, second).unwrap(),
         );
-        let result = add_interval(datetime, &interval);
+        let result = add_interval(datetime, &interval).unwrap();
         Time(
             result.year(),
             result.month(),

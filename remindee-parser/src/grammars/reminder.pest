@@ -196,20 +196,23 @@ weekdays_ranges = _{
 // ----------------------------
 
 // --- reminder patterns ---
-// &(ws | EOI) looks ahead to not match
-// if there are no spaces between recurrence and description
 recurrence = ${
-    dates_patterns ~ ws+ ~ time_patterns ~ &(ws | EOI)
-  | time_patterns ~ &(ws | EOI)
+    dates_patterns ~ ws+ ~ time_patterns
+  | time_patterns
 }
 countdown_one = _{
     countdown_hrprefix ~ interval
 }
 countdown = ${
-    countdown_one ~ ("," ~ countdown_one)* ~ &(ws | EOI)
+    countdown_one ~ ("," ~ countdown_one)*
+}
+nag_suffix = ${
+    "!" ~ interval
 }
 reminder_pattern = _{
-    recurrence | countdown | cron
+    recurrence ~ nag_suffix? ~ &(ws | EOI)
+  | countdown ~ nag_suffix? ~ &(ws | EOI)
+  | cron
 }
 // -------------------------
 
