@@ -368,6 +368,16 @@ impl TimePattern {
 }
 
 impl Recurrence {
+    fn next_date_on_or_after(
+        pattern: &DatePattern,
+        date: NaiveDate,
+    ) -> Option<NaiveDate> {
+        match pattern {
+            DatePattern::Point(point) => (*point >= date).then_some(*point),
+            DatePattern::Range(range) => range.get_nearest_date(date),
+        }
+    }
+
     pub(crate) fn from_with_tz(
         recurrence: grammar::Recurrence,
         tz: chrono_tz::Tz,
@@ -470,11 +480,8 @@ impl Recurrence {
         let first_date = self
             .dates_patterns
             .iter()
-            .flat_map(|pattern| match pattern {
-                &DatePattern::Point(date) => Some(date),
-                DatePattern::Range(ref range) => {
-                    range.get_nearest_date(cur_date)
-                }
+            .filter_map(|pattern| {
+                Self::next_date_on_or_after(pattern, cur_date)
             })
             .min()?;
         let first_time = self
@@ -539,33 +546,11 @@ impl Recurrence {
         let next_date = self
             .dates_patterns
             .iter()
-            .filter(|&int| match int {
-                &DatePattern::Point(date) => date > cur_date,
-                DatePattern::Range(ref range) => range
-                    .until
-                    .map(|date_until| date_until > cur_date)
-                    .unwrap_or(true),
-            })
-            .flat_map(|int| match int {
-                &DatePattern::Point(date) => Some(date),
-                DatePattern::Range(ref range) => {
-                    let from = range.from;
-                    if from > cur_date {
-                        Some(from)
-                    } else {
-                        let next_date = range
-                            .get_nearest_date(cur_date + Duration::days(1))?;
-                        if range
-                            .until
-                            .map(|date_until| next_date <= date_until)
-                            .unwrap_or(true)
-                        {
-                            Some(next_date)
-                        } else {
-                            None
-                        }
-                    }
-                }
+            .filter_map(|pattern| {
+                Self::next_date_on_or_after(
+                    pattern,
+                    cur_date + Duration::days(1),
+                )
             })
             .min();
 
@@ -935,6 +920,20 @@ mod test {
             .naive_local()
     }
 
+    fn utc(
+        year: i32,
+        month: u32,
+        day: u32,
+        hour: u32,
+        min: u32,
+        sec: u32,
+    ) -> NaiveDateTime {
+        TEST_TZ
+            .with_ymd_and_hms(year, month, day, hour, min, sec)
+            .unwrap()
+            .naive_utc()
+    }
+
     #[test]
     #[serial]
     fn test_countdown() {
@@ -1054,6 +1053,16 @@ mod test {
             get_all_times(pattern).collect::<Vec<_>>(),
             vec![tz(2025, 6, 7, 13, 37, 0)]
         );
+    }
+
+    #[test]
+    #[serial]
+    fn test_time_only_pattern_does_not_repeat_on_next_day() {
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TIME.timestamp();
+        let s = "18:00 one shot";
+        let parsed = parse_reminder(s).unwrap().pattern.unwrap();
+        let mut pattern = Pattern::from_with_tz(parsed, *TEST_TZ).unwrap();
+        assert_eq!(pattern.next(utc(2007, 2, 3, 12, 0, 0)), None);
     }
 
     #[test]

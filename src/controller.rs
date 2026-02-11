@@ -158,7 +158,7 @@ impl TgMessageController {
                     .collect::<Vec<String>>()
                     .join("\n"),
                 Err(err) => {
-                    log::error!("{}", err);
+                    log::error!("{err}");
                     TgResponse::QueryingError.to_string_lang(lang.code())
                 }
             };
@@ -241,14 +241,14 @@ impl TgMessageController {
                             .close_open_occurrences(&reminder.rec_id)
                             .await
                         {
-                            log::error!("{}", err);
+                            log::error!("{err}");
                         }
                         if let Err(err) = self
                             .db
                             .delete_reminder_messages(&reminder.rec_id)
                             .await
                         {
-                            log::error!("{}", err);
+                            log::error!("{err}");
                         }
                         TgResponse::SuccessDelete(
                             reminder
@@ -257,7 +257,7 @@ impl TgMessageController {
                         )
                     }
                     Err(err) => {
-                        log::error!("{}", err);
+                        log::error!("{err}");
                         TgResponse::FailedDelete
                     }
                 };
@@ -401,7 +401,7 @@ impl TgMessageController {
                     (Some(reminder), Some(TgResponse::SuccessInsert(rem_str)))
                 }
                 Err(err) => {
-                    log::error!("{}", err);
+                    log::error!("{err}");
                     (None, Some(TgResponse::FailedInsert))
                 }
             },
@@ -698,7 +698,7 @@ impl TgMessageController {
                                 )
                             }
                             Err(err) => {
-                                log::error!("{}", err);
+                                log::error!("{err}");
                                 (None, TgResponse::FailedEdit)
                             }
                         }
@@ -707,7 +707,7 @@ impl TgMessageController {
                 }
             }
             Err(err) => {
-                log::error!("{}", err);
+                log::error!("{err}");
                 (None, TgResponse::FailedEdit)
             }
             _ => (None, TgResponse::EditReminderNotFound),
@@ -749,7 +749,7 @@ impl TgMessageController {
                     }
                     Ok(None) => (None, TgResponse::EditReminderNotFound),
                     Err(err) => {
-                        log::error!("{}", err);
+                        log::error!("{err}");
                         (None, TgResponse::FailedEdit)
                     }
                 }
@@ -768,7 +768,7 @@ impl TgMessageController {
                     }
                     Ok(None) => (None, TgResponse::EditReminderNotFound),
                     Err(err) => {
-                        log::error!("{}", err);
+                        log::error!("{err}");
                         (None, TgResponse::FailedEdit)
                     }
                 }
@@ -783,7 +783,7 @@ impl TgMessageController {
                 .close_open_occurrences(&reminder.rec_id.clone().unwrap())
                 .await
             {
-                log::error!("{}", err);
+                log::error!("{err}");
             }
             self.link_reminder_message(reminder, reply.id).await?;
         }
@@ -818,7 +818,7 @@ impl TgMessageController {
         {
             Ok(()) => TgResponse::ChosenTimezone(tz_name.to_owned()),
             Err(err) => {
-                log::error!("{}", err);
+                log::error!("{err}");
                 TgResponse::FailedSetTimezone(tz_name.to_owned())
             }
         };
@@ -837,7 +837,7 @@ impl TgMessageController {
         {
             Ok(()) => TgResponse::ChosenLanguage,
             Err(err) => {
-                log::error!("{}", err);
+                log::error!("{err}");
                 TgResponse::FailedSetLanguage(lang.name().to_owned())
             }
         };
@@ -878,7 +878,7 @@ impl TgMessageController {
                 .close_open_occurrences(&reminder.rec_id.clone().unwrap())
                 .await
             {
-                log::error!("{}", err);
+                log::error!("{err}");
             }
             self.link_reminder_message(reminder, reply.id).await?;
         }
@@ -952,7 +952,7 @@ impl TgCallbackController {
                             .close_open_occurrences(&reminder.rec_id)
                             .await
                         {
-                            log::error!("{}", err);
+                            log::error!("{err}");
                         }
                         if let Err(err) = self
                             .msg_ctl
@@ -960,7 +960,7 @@ impl TgCallbackController {
                             .delete_reminder_messages(&reminder.rec_id)
                             .await
                         {
-                            log::error!("{}", err);
+                            log::error!("{err}");
                         }
                         TgResponse::SuccessDelete(
                             reminder
@@ -969,13 +969,13 @@ impl TgCallbackController {
                         )
                     }
                     Err(err) => {
-                        log::error!("{}", err);
+                        log::error!("{err}");
                         TgResponse::FailedDelete
                     }
                 }
             }
             Err(err) => {
-                log::error!("{}", err);
+                log::error!("{err}");
                 TgResponse::FailedDelete
             }
             _ => TgResponse::FailedDelete,
@@ -1007,7 +1007,7 @@ impl TgCallbackController {
                             .close_open_occurrences(&reminder.rec_id)
                             .await
                         {
-                            log::error!("{}", err);
+                            log::error!("{err}");
                         }
                         TgResponse::SuccessPause(
                             reminder
@@ -1021,7 +1021,7 @@ impl TgCallbackController {
                             .to_unescaped_string(user_tz),
                     ),
                     Err(err) => {
-                        log::error!("{}", err);
+                        log::error!("{err}");
                         TgResponse::FailedPause
                     }
                 }
@@ -1053,7 +1053,7 @@ impl TgCallbackController {
             .complete_occurrence(occ_id, self.msg_ctl.chat_id.0)
             .await
         {
-            log::error!("{}", err);
+            log::error!("{err}");
         }
 
         self.acknowledge_callback().await?;
@@ -1066,9 +1066,9 @@ impl TgCallbackController {
         .await
         {
             if is_ignorable_markup_clear_error(&err) {
-                log::debug!("{}", err);
+                log::debug!("{err}");
             } else {
-                log::error!("{}", err);
+                log::error!("{err}");
             }
         }
 

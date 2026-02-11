@@ -520,7 +520,7 @@ pub fn parse_reminder(s: &str) -> Option<Reminder> {
     Reminder::parse(
         ReminderParser::parse(Rule::reminder, s)
             .map_err(|err| {
-                log::debug!("{}", err);
+                log::debug!("{err}");
             })
             .ok()?
             .next()?,

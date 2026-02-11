@@ -64,9 +64,9 @@ async fn clear_previous_done_markup(
             clear_markup(bot, MessageId(prev_msg_id), ChatId(chat_id)).await
         {
             if is_ignorable_markup_clear_error(&err) {
-                log::debug!("{}", err);
+                log::debug!("{err}");
             } else {
-                log::error!("{}", err);
+                log::error!("{err}");
             }
         }
     }
@@ -161,7 +161,7 @@ async fn process_due_reminders(db: &Database, bot: &Bot) {
                         {
                             Ok(rows_affected) => rows_affected,
                             Err(err) => {
-                                log::error!("{}", err);
+                                log::error!("{err}");
                                 0
                             }
                         };
@@ -175,7 +175,7 @@ async fn process_due_reminders(db: &Database, bot: &Bot) {
                         {
                             Ok(msg_id) => msg_id,
                             Err(err) => {
-                                log::error!("{}", err);
+                                log::error!("{err}");
                                 None
                             }
                         };
@@ -210,7 +210,7 @@ async fn process_due_reminders(db: &Database, bot: &Bot) {
                             .await
                         }
                         Err(err) => {
-                            log::error!("{}", err);
+                            log::error!("{err}");
                             continue;
                         }
                     }
@@ -229,7 +229,7 @@ async fn process_due_reminders(db: &Database, bot: &Bot) {
                         )
                         .await
                     {
-                        log::error!("{}", err);
+                        log::error!("{err}");
                     }
                     clear_previous_done_markup(
                         bot,
@@ -240,7 +240,7 @@ async fn process_due_reminders(db: &Database, bot: &Bot) {
                     .await;
                     db.delete_reminder(reminder.id).await.unwrap_or_else(
                         |err| {
-                            log::error!("{}", err);
+                            log::error!("{err}");
                         },
                     );
                     if let Some(next_reminder) = next_reminder {
@@ -251,12 +251,12 @@ async fn process_due_reminders(db: &Database, bot: &Bot) {
                             .await
                             .map(|_| ())
                             .unwrap_or_else(|err| {
-                                log::error!("{}", err);
+                                log::error!("{err}");
                             });
                     }
                 } else if let Some(occ_id) = created_occurrence {
                     if let Err(err) = db.delete_occurrence(occ_id).await {
-                        log::error!("{}", err);
+                        log::error!("{err}");
                     }
                 }
             }
@@ -266,7 +266,7 @@ async fn process_due_reminders(db: &Database, bot: &Bot) {
 
 async fn process_due_occurrences(db: &Database, bot: &Bot) {
     if let Err(err) = db.close_elapsed_occurrences().await {
-        log::error!("{}", err);
+        log::error!("{err}");
     }
 
     let occurrences = db
@@ -299,7 +299,7 @@ async fn process_due_occurrences(db: &Database, bot: &Bot) {
         {
             Ok(msg_id) => msg_id,
             Err(err) => {
-                log::error!("{}", err);
+                log::error!("{err}");
                 None
             }
         };
@@ -307,7 +307,7 @@ async fn process_due_occurrences(db: &Database, bot: &Bot) {
         let is_open = match db.is_occurrence_open(occ.id).await {
             Ok(is_open) => is_open,
             Err(err) => {
-                log::error!("{}", err);
+                log::error!("{err}");
                 false
             }
         };
@@ -327,7 +327,7 @@ async fn process_due_occurrences(db: &Database, bot: &Bot) {
                 )
                 .await
             {
-                log::error!("{}", err);
+                log::error!("{err}");
             }
             clear_previous_done_markup(
                 bot,
@@ -337,7 +337,7 @@ async fn process_due_occurrences(db: &Database, bot: &Bot) {
             )
             .await;
             if let Err(err) = db.bump_occurrence_nag(occ.id).await {
-                log::error!("{}", err);
+                log::error!("{err}");
             }
         }
     }
