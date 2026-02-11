@@ -2,6 +2,13 @@ _version: 1
 SuccessInsert: "Новое напоминание:\n%{reminder}"
 FailedInsert: "⚠️ Ошибка при создании напоминания."
 IncorrectRequest: "Некорректный запрос!"
+TimeIntervalTooLargeForRange: "⚠️ Интервал слишком большой для этого временного диапазона. Укажите меньший шаг."
+DateIntervalTooLargeForRange: "⚠️ Интервал слишком большой для этого диапазона дат. Укажите меньший шаг."
+TimeRangeEndBeforeStart: "⚠️ Конец диапазона времени должен быть позже начала."
+DateRangeEndBeforeStart: "⚠️ Конец диапазона дат должен быть не раньше начала."
+DateInPast: "⚠️ Указанная дата уже в прошлом. Укажите будущую дату."
+NagIntervalUnsupportedUnit: "⚠️ Для !интервала поддерживаются только w, d, h, m, s."
+CronExpressionInvalid: "⚠️ Некорректное cron-выражение."
 QueryingError: "⚠️ Ошибка при запросе уведомлений."
 RemindersList: |
   Уведомления:

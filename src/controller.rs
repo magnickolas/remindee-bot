@@ -347,8 +347,8 @@ impl TgMessageController {
         &self,
         text: &str,
         tz: Tz,
-    ) -> Option<reminder::ActiveModel> {
-        parsers::parse_reminder(
+    ) -> Result<reminder::ActiveModel, parsers::ParseError> {
+        parsers::parse_reminder_detailed(
             text,
             self.chat_id.0,
             self.user_id.0,
@@ -363,8 +363,8 @@ impl TgMessageController {
         text: &str,
         tz: Tz,
         rec_id: String,
-    ) -> Option<reminder::ActiveModel> {
-        parsers::parse_reminder(
+    ) -> Result<reminder::ActiveModel, parsers::ParseError> {
+        parsers::parse_reminder_detailed(
             text,
             self.chat_id.0,
             self.user_id.0,
@@ -389,7 +389,7 @@ impl TgMessageController {
         };
 
         match parsed_reminder {
-            Some(reminder) => match self
+            Ok(reminder) => match self
                 .db
                 .insert_reminder(reminder.clone())
                 .await
@@ -405,7 +405,56 @@ impl TgMessageController {
                     (None, Some(TgResponse::FailedInsert))
                 }
             },
-            None => {
+            Err(parsers::ParseError::TimeIntervalTooLargeForRange) => {
+                if self.user_id.0 == self.chat_id.0 as u64 {
+                    (None, Some(TgResponse::TimeIntervalTooLargeForRange))
+                } else {
+                    (None, None)
+                }
+            }
+            Err(parsers::ParseError::TimeRangeEndBeforeStart) => {
+                if self.user_id.0 == self.chat_id.0 as u64 {
+                    (None, Some(TgResponse::TimeRangeEndBeforeStart))
+                } else {
+                    (None, None)
+                }
+            }
+            Err(parsers::ParseError::DateIntervalTooLargeForRange) => {
+                if self.user_id.0 == self.chat_id.0 as u64 {
+                    (None, Some(TgResponse::DateIntervalTooLargeForRange))
+                } else {
+                    (None, None)
+                }
+            }
+            Err(parsers::ParseError::DateRangeEndBeforeStart) => {
+                if self.user_id.0 == self.chat_id.0 as u64 {
+                    (None, Some(TgResponse::DateRangeEndBeforeStart))
+                } else {
+                    (None, None)
+                }
+            }
+            Err(parsers::ParseError::DateInPast) => {
+                if self.user_id.0 == self.chat_id.0 as u64 {
+                    (None, Some(TgResponse::DateInPast))
+                } else {
+                    (None, None)
+                }
+            }
+            Err(parsers::ParseError::NagIntervalUnsupportedUnit) => {
+                if self.user_id.0 == self.chat_id.0 as u64 {
+                    (None, Some(TgResponse::NagIntervalUnsupportedUnit))
+                } else {
+                    (None, None)
+                }
+            }
+            Err(parsers::ParseError::CronExpressionInvalid) => {
+                if self.user_id.0 == self.chat_id.0 as u64 {
+                    (None, Some(TgResponse::CronExpressionInvalid))
+                } else {
+                    (None, None)
+                }
+            }
+            Err(parsers::ParseError::InvalidFormat) => {
                 if self.user_id.0 == self.chat_id.0 as u64 {
                     (None, Some(TgResponse::IncorrectRequest))
                 } else {

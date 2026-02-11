@@ -1296,6 +1296,131 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_time_interval_too_large_for_range_message() {
+        let message = MockMessageText::new().text("14-15/2h gg");
+        let mut db = MockDatabase::new();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        let mut bot = mock_bot(db, message);
+        bot.dispatch_and_check_last_text(
+            &TgResponse::TimeIntervalTooLargeForRange.to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_time_range_end_before_start_message() {
+        let message = MockMessageText::new().text("18-10/1h ff");
+        let mut db = MockDatabase::new();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        let mut bot = mock_bot(db, message);
+        bot.dispatch_and_check_last_text(
+            &TgResponse::TimeRangeEndBeforeStart.to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_date_interval_too_large_for_range_message() {
+        let message = MockMessageText::new().text("11-12/2d 10:00 ff");
+        let mut db = MockDatabase::new();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        let mut bot = mock_bot(db, message);
+        bot.dispatch_and_check_last_text(
+            &TgResponse::DateIntervalTooLargeForRange.to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_date_range_end_before_start_message() {
+        let message =
+            MockMessageText::new().text("12.02.2026-11.02.2026/1d 10:00 ff");
+        let mut db = MockDatabase::new();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        let mut bot = mock_bot(db, message);
+        bot.dispatch_and_check_last_text(
+            &TgResponse::DateRangeEndBeforeStart.to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_date_range_end_before_start_message_with_mixed_year() {
+        let message =
+            MockMessageText::new().text("11.02-10.02.2026/1d 10:00 ff");
+        let mut db = MockDatabase::new();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        let mut bot = mock_bot(db, message);
+        bot.dispatch_and_check_last_text(
+            &TgResponse::DateRangeEndBeforeStart.to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_date_in_past_message() {
+        *TEST_TIMESTAMP.write().unwrap() = mock_timezone()
+            .with_ymd_and_hms(2024, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
+        let message = MockMessageText::new().text("10.10.2000 ff");
+        let mut db = MockDatabase::new();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        let mut bot = mock_bot(db, message);
+        bot.dispatch_and_check_last_text(&TgResponse::DateInPast.to_string())
+            .await;
+    }
+
+    #[tokio::test]
+    async fn test_nag_interval_unsupported_unit_message() {
+        let message = MockMessageText::new().text("12:40!1mo take pill");
+        let mut db = MockDatabase::new();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        let mut bot = mock_bot(db, message);
+        bot.dispatch_and_check_last_text(
+            &TgResponse::NagIntervalUnsupportedUnit.to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_invalid_cron_expression_message() {
+        let message = MockMessageText::new().text("cron: */5 * * * invalid");
+        let mut db = MockDatabase::new();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        let mut bot = mock_bot(db, message);
+        bot.dispatch_and_check_last_text(
+            &TgResponse::CronExpressionInvalid.to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
     #[serial]
     async fn test_edited_message_sets_reminder_when_original_invalid() {
         *TEST_TIMESTAMP.write().unwrap() = mock_timezone()

@@ -16,6 +16,13 @@ pub(crate) enum TgResponse {
     SuccessInsert(String),
     FailedInsert,
     IncorrectRequest,
+    TimeIntervalTooLargeForRange,
+    DateIntervalTooLargeForRange,
+    TimeRangeEndBeforeStart,
+    DateRangeEndBeforeStart,
+    DateInPast,
+    NagIntervalUnsupportedUnit,
+    CronExpressionInvalid,
     QueryingError,
     RemindersList(String),
     SelectTimezone,
@@ -54,6 +61,25 @@ impl TgResponse {
             Self::FailedInsert => t!("FailedInsert", locale = lang).to_string(),
             Self::IncorrectRequest => {
                 t!("IncorrectRequest", locale = lang).to_string()
+            }
+            Self::TimeIntervalTooLargeForRange => {
+                t!("TimeIntervalTooLargeForRange", locale = lang).to_string()
+            }
+            Self::DateIntervalTooLargeForRange => {
+                t!("DateIntervalTooLargeForRange", locale = lang).to_string()
+            }
+            Self::TimeRangeEndBeforeStart => {
+                t!("TimeRangeEndBeforeStart", locale = lang).to_string()
+            }
+            Self::DateRangeEndBeforeStart => {
+                t!("DateRangeEndBeforeStart", locale = lang).to_string()
+            }
+            Self::DateInPast => t!("DateInPast", locale = lang).to_string(),
+            Self::NagIntervalUnsupportedUnit => {
+                t!("NagIntervalUnsupportedUnit", locale = lang).to_string()
+            }
+            Self::CronExpressionInvalid => {
+                t!("CronExpressionInvalid", locale = lang).to_string()
             }
             Self::QueryingError => {
                 t!("QueryingError", locale = lang).to_string()

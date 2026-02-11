@@ -2,6 +2,13 @@ _version: 1
 SuccessInsert: "Added a reminder:\n%{reminder}"
 FailedInsert: "⚠️ Failed to create a reminder."
 IncorrectRequest: "Incorrect request!"
+TimeIntervalTooLargeForRange: "⚠️ The interval is too large for this time range. Use a smaller step."
+DateIntervalTooLargeForRange: "⚠️ The interval is too large for this date range. Use a smaller step."
+TimeRangeEndBeforeStart: "⚠️ Time range end must be later than start."
+DateRangeEndBeforeStart: "⚠️ Date range end must be on or after start."
+DateInPast: "⚠️ Date is in the past. Use a future date."
+NagIntervalUnsupportedUnit: "⚠️ Nag interval supports only w, d, h, m, s."
+CronExpressionInvalid: "⚠️ Invalid cron expression."
 QueryingError: "⚠️ Failed to query reminders."
 RemindersList: |
   Reminders:

@@ -2,6 +2,13 @@ _version: 1
 SuccessInsert: "Herinnering toegevoegd:\n%{reminder}"
 FailedInsert: "⚠️ Kon herinnering niet aanmaken."
 IncorrectRequest: "Ongeldig verzoek!"
+TimeIntervalTooLargeForRange: "⚠️ Het interval is te groot voor dit tijdsbereik. Gebruik een kleinere stap."
+DateIntervalTooLargeForRange: "⚠️ Het interval is te groot voor dit datumbereik. Gebruik een kleinere stap."
+TimeRangeEndBeforeStart: "⚠️ Het einde van het tijdsbereik moet later zijn dan het begin."
+DateRangeEndBeforeStart: "⚠️ Het einde van het datumbereik moet op of na het begin liggen."
+DateInPast: "⚠️ Datum ligt in het verleden. Gebruik een toekomstige datum."
+NagIntervalUnsupportedUnit: "⚠️ Voor !interval worden alleen w, d, h, m en s ondersteund."
+CronExpressionInvalid: "⚠️ Ongeldige cron-expressie."
 QueryingError: "⚠️ Fout bij het ophalen van herinneringen."
 RemindersList: |
   Herinneringen:
