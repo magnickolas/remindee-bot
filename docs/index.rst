@@ -12,7 +12,8 @@ countdown, and cron.
 One-time reminders
 ------------------
 
-The format of a non-recurring reminder for a specific date and time is as follows:
+The format of a non-recurring (ordinary) reminder for a specific date and
+time is as follows:
 ``<date> <time> <description>``, where
 
 -  ``date`` is in either ``day.month.year`` or ``year/month/day``
@@ -44,8 +45,8 @@ Recurring reminders
 -------------------
 
 The format for recurring reminders extends the format used for one-time
-reminders: ``<date_pattern> <time_pattern> <description>``. Here are the
-details:
+reminders: ``<date_pattern> <time_pattern> <description>``.
+Here are the details:
 
 -  ``date_pattern`` can be specified in either ``date`` or
    ``date_from-date_until/date_divisor`` formats. You can include
@@ -111,6 +112,28 @@ Examples
 
 -  ``5m grab tea`` => notify in 5 minutes
 -  ``1d1h`` => notify in 25 hours
+
+----
+
+Nagging
+-------
+
+Nagging makes a reminder behave like a small to-do item. When the reminder
+fires, the bot sends it with a ``Done`` button. If you do not press
+``Done``, the bot keeps re-notifying every ``nag_interval``.
+
+Use the optional suffix ``!nag_interval`` where ``nag_interval`` supports
+only weeks, days, hours, minutes, and seconds:
+``<weeks>w<days>d<hours>h<minutes>m<seconds>s``.
+
+Examples
+~~~~~~~~
+
+-  ``-/1d 10:00!15m take medicine`` => fires daily at 10:00 and then
+   repeats every 15 minutes until you press ``Done``
+-  ``-/mon-fri 12-18/3h!5m go out for a walk`` => fires at 12:00, 15:00,
+   and 18:00 on weekdays, then repeats every 5 minutes until you press
+   ``Done``
 
 ----
 
