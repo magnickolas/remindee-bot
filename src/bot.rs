@@ -440,7 +440,7 @@ mod test {
         db::MockDatabase, entity::reminder, generic_reminder::GenericReminder,
         handlers::get_handler, parsers::test::TEST_TIMESTAMP, tg::TgResponse,
     };
-    use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
+    use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
     use chrono_tz::Tz;
     use dptree::deps;
     use mockall::predicate::eq;
@@ -457,7 +457,8 @@ mod test {
     };
     use teloxide_tests::mock_bot::DistributionKey;
     use teloxide_tests::{
-        IntoUpdate, MockBot, MockCallbackQuery, MockMessageText, MockUser,
+        IntoUpdate, MockBot, MockCallbackQuery, MockEditedMessage,
+        MockMessageText, MockUser,
     };
 
     use super::State;
@@ -1285,6 +1286,67 @@ mod test {
             .times(2)
             .returning(|_, _, _, _| Ok(()));
         let mut bot = mock_bot(db, message);
+        bot.dispatch_and_check_last_text(
+            &TgResponse::SuccessInsert(
+                rem.into_active_model().to_unescaped_string(tz),
+            )
+            .to_string(),
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_edited_message_sets_reminder_when_original_invalid() {
+        *TEST_TIMESTAMP.write().unwrap() = mock_timezone()
+            .with_ymd_and_hms(2024, 1, 1, 0, 0, 0)
+            .unwrap()
+            .timestamp();
+
+        let mut db = MockDatabase::new();
+        let tz = mock_timezone();
+        let rem = reminder::Model {
+            id: 1,
+            rec_id: format!("{}:{}", MockUser::ID, 42),
+            chat_id: MockUser::ID as i64,
+            time: NaiveDateTime::new(
+                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            ),
+            desc: "test".to_owned(),
+            user_id: Some(MockUser::ID as i64),
+            paused: false,
+            nag_interval_sec: None,
+            pattern: None,
+        };
+        let rem_clone = rem.clone();
+
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+        db.expect_get_reminder_by_message()
+            .with(eq(MockUser::ID as i64), eq(42))
+            .times(1)
+            .returning(|_, _| Ok(None));
+        db.expect_insert_reminder()
+            .times(1)
+            .returning(move |_| Ok(rem_clone.clone().into()));
+        db.expect_insert_reminder_message()
+            .times(2)
+            .returning(|_, _, _, _| Ok(()));
+
+        let original = MockMessageText::new().id(42).text("10:00test");
+        let mut bot = mock_bot(db, original.clone());
+
+        bot.dispatch_and_check_last_text(
+            &TgResponse::IncorrectRequest.to_string(),
+        )
+        .await;
+
+        bot.update(MockEditedMessage::new(
+            original.text("10:00 test").edit_date(Utc::now()).build(),
+        ));
         bot.dispatch_and_check_last_text(
             &TgResponse::SuccessInsert(
                 rem.into_active_model().to_unescaped_string(tz),

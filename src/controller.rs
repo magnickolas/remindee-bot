@@ -859,26 +859,43 @@ impl TgMessageController {
         text: &str,
         user_tz: Tz,
     ) -> Result<(), Error> {
-        let (reminder, response) = match self
-            .db
-            .get_reminder_by_message(self.chat_id.0, self.msg_id.0)
-            .await?
-        {
-            Some(old_rem) => {
-                self.replace_reminder(text, old_rem.id, user_tz).await
-            }
-            None => (None, TgResponse::EditReminderNotFound),
-        };
+        let (reminder, response, link_source_msg, close_open_occurrences) =
+            match self
+                .db
+                .get_reminder_by_message(self.chat_id.0, self.msg_id.0)
+                .await?
+            {
+                Some(old_rem) => {
+                    let (reminder, response) =
+                        self.replace_reminder(text, old_rem.id, user_tz).await;
+                    (reminder, response, false, true)
+                }
+                None => {
+                    let (reminder, response) =
+                        self.set_reminder(text, user_tz).await;
+                    (
+                        reminder,
+                        response.unwrap_or(TgResponse::IncorrectRequest),
+                        true,
+                        false,
+                    )
+                }
+            };
 
         let reply = self.reply(response).await?;
 
         if let Some(ref reminder) = reminder {
-            if let Err(err) = self
-                .db
-                .close_open_occurrences(&reminder.rec_id.clone().unwrap())
-                .await
-            {
-                log::error!("{err}");
+            if close_open_occurrences {
+                if let Err(err) = self
+                    .db
+                    .close_open_occurrences(&reminder.rec_id.clone().unwrap())
+                    .await
+                {
+                    log::error!("{err}");
+                }
+            }
+            if link_source_msg {
+                self.link_reminder_message(reminder, self.msg_id).await?;
             }
             self.link_reminder_message(reminder, reply.id).await?;
         }

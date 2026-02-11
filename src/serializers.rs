@@ -383,6 +383,14 @@ impl Recurrence {
         tz: chrono_tz::Tz,
     ) -> Result<Self, ()> {
         let lower_bound = tz.from_utc_datetime(&now_time()).naive_local();
+        let has_implicit_dates_pattern = recurrence.dates_patterns.len() == 1
+            && matches!(
+                recurrence.dates_patterns.first(),
+                grammar::DatePattern::Point(holey_date)
+                    if holey_date.year.is_none()
+                        && holey_date.month.is_none()
+                        && holey_date.day.is_none()
+            );
         let first_time = match recurrence.time_patterns.first() {
             Some(time_pattern) => match time_pattern {
                 grammar::TimePattern::Point(time) => {
@@ -466,6 +474,18 @@ impl Recurrence {
             .map(TimePattern::from)
             .collect::<Option<Vec<_>>>()
             .ok_or(())?;
+        if has_implicit_dates_pattern && has_time_divisor {
+            dates_patterns = vec![DatePattern::Range(DateRange {
+                from: init_time.date(),
+                until: None,
+                date_divisor: DateDivisor::Interval(DateInterval {
+                    years: 0,
+                    months: 0,
+                    weeks: 0,
+                    days: 1,
+                }),
+            })];
+        }
         Ok(Self {
             dates_patterns,
             time_patterns,

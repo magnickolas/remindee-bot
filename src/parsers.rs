@@ -254,4 +254,29 @@ pub(crate) mod test {
         .await;
         assert!(result.is_none());
     }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_parse_time_range_rolls_to_next_day_after_until() {
+        *TEST_TIMESTAMP.write().unwrap() = TEST_TZ
+            .with_ymd_and_hms(2007, 2, 2, 13, 23, 0)
+            .unwrap()
+            .timestamp();
+        let result =
+            parse_reminder("10-13/1h desc", 0, 0, "0:0".to_owned(), *TEST_TZ)
+                .await
+                .expect("reminder should parse");
+        let dt = TEST_TZ.from_utc_datetime(&result.time.unwrap());
+        assert_eq!(
+            (
+                dt.year(),
+                dt.month(),
+                dt.day(),
+                dt.hour(),
+                dt.minute(),
+                dt.second()
+            ),
+            (2007, 2, 3, 10, 0, 0),
+        );
+    }
 }
