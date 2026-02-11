@@ -3266,7 +3266,7 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 
 [[package]]
 name = "remindee-bot"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "bitmask-enum",
  "chrono",
@@ -3301,7 +3301,7 @@ dependencies = [
 
 [[package]]
 name = "remindee-parser"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bitmask-enum",
  "log",

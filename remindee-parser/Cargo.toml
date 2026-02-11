@@ -1,6 +1,6 @@
 [package]
 name = "remindee-parser"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Nikolai Oplachko <magnickolas@gmail.com>"]
 edition = "2021"
 license = "GPL-3.0-only"
