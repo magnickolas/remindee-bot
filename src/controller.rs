@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::callbacks;
 #[cfg(not(test))]
 use crate::db::Database;
 #[cfg(test)]
@@ -7,6 +8,8 @@ use crate::db::MockDatabase as Database;
 use crate::err::Error;
 use crate::lang::get_user_language;
 use crate::lang::Language;
+use crate::markup;
+use crate::markup::ReminderMarkupEntry;
 use crate::parsers;
 use crate::tg;
 use crate::tz;
@@ -16,10 +19,7 @@ use crate::generic_reminder::GenericReminder;
 use chrono_tz::Tz;
 use sea_orm::IntoActiveModel;
 use teloxide::prelude::*;
-use teloxide::types::MessageId;
-use teloxide::types::{
-    InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup,
-};
+use teloxide::types::{InlineKeyboardMarkup, MessageId};
 use teloxide::{ApiError, RequestError};
 use tg::TgResponse;
 
@@ -172,7 +172,7 @@ impl TgMessageController {
         let lang = self.user_lang().await;
         tg::send_markup(
             &TgResponse::SelectTimezone.to_string_lang(lang.code()),
-            self.get_markup_for_tz_page_idx(0),
+            markup::timezone_page_markup(0, tz::get_tz_names_for_page_idx(0)),
             &self.bot,
             self.chat_id,
         )
@@ -183,7 +183,7 @@ impl TgMessageController {
         let lang = self.user_lang().await;
         tg::send_markup(
             &TgResponse::SelectLanguage.to_string_lang(lang.code()),
-            self.get_markup_for_languages(),
+            markup::languages_markup(crate::lang::LANGUAGES),
             &self.bot,
             self.chat_id,
         )
@@ -194,7 +194,7 @@ impl TgMessageController {
         let lang = self.user_lang().await;
         tg::send_markup(
             &TgResponse::SettingsMenu.to_string_lang(lang.code()),
-            self.get_markup_for_settings().await,
+            markup::settings_markup(lang),
             &self.bot,
             self.chat_id,
         )
@@ -319,23 +319,9 @@ impl TgMessageController {
         rem_id: i64,
     ) -> Result<(), RequestError> {
         let lang = self.user_lang().await;
-        let markup = InlineKeyboardMarkup::default().append_row(vec![
-            InlineKeyboardButton::new(
-                t!("TimePattern", locale = lang.code()),
-                InlineKeyboardButtonKind::CallbackData(format!(
-                    "edit_rem_mode::rem_time_pattern::{rem_id}"
-                )),
-            ),
-            InlineKeyboardButton::new(
-                t!("Description", locale = lang.code()),
-                InlineKeyboardButtonKind::CallbackData(format!(
-                    "edit_rem_mode::rem_description::{rem_id}"
-                )),
-            ),
-        ]);
         tg::send_markup(
             &t!("WhatToEdit", locale = lang.code()),
-            markup,
+            markup::edit_mode_markup(lang, rem_id),
             &self.bot,
             self.chat_id,
         )
@@ -503,7 +489,10 @@ impl TgMessageController {
         page_num: usize,
     ) -> Result<(), RequestError> {
         tg::edit_markup(
-            self.get_markup_for_tz_page_idx(page_num),
+            markup::timezone_page_markup(
+                page_num,
+                tz::get_tz_names_for_page_idx(page_num),
+            ),
             &self.bot,
             self.msg_id,
             self.chat_id,
@@ -551,131 +540,31 @@ impl TgMessageController {
         self.alter_reminder_set_page(markup).await
     }
 
-    pub(crate) fn get_markup_for_tz_page_idx(
-        &self,
-        num: usize,
-    ) -> InlineKeyboardMarkup {
-        let mut markup = InlineKeyboardMarkup::default();
-        let mut last_page: bool = false;
-        if let Some(tz_names) = tz::get_tz_names_for_page_idx(num) {
-            for chunk in tz_names.chunks(2) {
-                markup = markup.append_row(
-                    chunk
-                        .iter()
-                        .copied()
-                        .map(|tz_name| {
-                            InlineKeyboardButton::new(
-                                tz_name,
-                                InlineKeyboardButtonKind::CallbackData(
-                                    "seltz::tz::".to_owned() + tz_name,
-                                ),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                );
-            }
-        } else {
-            last_page = true;
-        }
-        let mut move_buttons = vec![];
-        if num > 0 {
-            move_buttons.push(InlineKeyboardButton::new(
-                "⬅️",
-                InlineKeyboardButtonKind::CallbackData(
-                    "seltz::page::".to_owned() + &(num - 1).to_string(),
-                ),
-            ))
-        }
-        if !last_page {
-            move_buttons.push(InlineKeyboardButton::new(
-                "➡️",
-                InlineKeyboardButtonKind::CallbackData(
-                    "seltz::page::".to_owned() + &(num + 1).to_string(),
-                ),
-            ))
-        }
-        markup.append_row(move_buttons)
-    }
-
-    pub(crate) fn get_markup_for_languages(&self) -> InlineKeyboardMarkup {
-        let row: Vec<InlineKeyboardButton> = crate::lang::LANGUAGES
-            .iter()
-            .map(|lang| {
-                InlineKeyboardButton::new(
-                    lang.name(),
-                    InlineKeyboardButtonKind::CallbackData(format!(
-                        "setlang::lang::{}",
-                        lang.code()
-                    )),
-                )
-            })
-            .collect();
-        InlineKeyboardMarkup::default().append_row(row)
-    }
-
-    pub(crate) async fn get_markup_for_settings(&self) -> InlineKeyboardMarkup {
-        let lang = self.user_lang().await;
-        InlineKeyboardMarkup::default().append_row(vec![
-            InlineKeyboardButton::new(
-                t!("ChangeLanguage", locale = lang.code()),
-                InlineKeyboardButtonKind::CallbackData(
-                    "settings::change_lang".into(),
-                ),
-            ),
-        ])
-    }
-
     async fn get_markup_for_reminders_page_alteration(
         &self,
         num: usize,
-        cb_prefix: &str,
+        callback_kind: callbacks::ReminderListKind,
         user_timezone: Tz,
     ) -> InlineKeyboardMarkup {
-        let mut markup = InlineKeyboardMarkup::default();
-        let mut last_rem_page: bool = false;
-        let sorted_reminders =
-            self.db.get_sorted_reminders(self.chat_id.0).await;
-        if let Some(reminders) = sorted_reminders
+        let reminders = self
+            .db
+            .get_sorted_reminders(self.chat_id.0)
+            .await
             .ok()
             .as_ref()
             .and_then(|rems| rems.chunks(45).nth(num))
-        {
-            for chunk in reminders.chunks(1) {
-                let mut row = vec![];
-                for rem in chunk {
-                    let rem_str = rem.to_unescaped_string(user_timezone);
-                    row.push(InlineKeyboardButton::new(
-                        rem_str,
-                        InlineKeyboardButtonKind::CallbackData(
-                            cb_prefix.to_owned()
-                                + &format!("::{}_alt::", rem.get_type())
-                                + &rem.get_id().unwrap().to_string(),
-                        ),
-                    ))
-                }
-                markup = markup.append_row(row);
-            }
-        } else {
-            last_rem_page = true;
-        }
-        let mut move_buttons = vec![];
-        if num > 0 {
-            move_buttons.push(InlineKeyboardButton::new(
-                "⬅️",
-                InlineKeyboardButtonKind::CallbackData(
-                    cb_prefix.to_owned() + "::page::" + &(num - 1).to_string(),
-                ),
-            ))
-        }
-        if !last_rem_page {
-            move_buttons.push(InlineKeyboardButton::new(
-                "➡️",
-                InlineKeyboardButtonKind::CallbackData(
-                    cb_prefix.to_owned() + "::page::" + &(num + 1).to_string(),
-                ),
-            ))
-        }
-        markup.append_row(move_buttons)
+            .map(|reminders| {
+                reminders
+                    .iter()
+                    .map(|rem| ReminderMarkupEntry {
+                        text: rem.to_unescaped_string(user_timezone),
+                        rem_type: rem.get_type(),
+                        rem_id: rem.get_id().unwrap(),
+                    })
+                    .collect::<Vec<_>>()
+            });
+
+        markup::reminders_page_markup(num, callback_kind, reminders)
     }
 
     pub(crate) async fn get_markup_for_reminders_page_deletion(
@@ -685,7 +574,7 @@ impl TgMessageController {
     ) -> InlineKeyboardMarkup {
         self.get_markup_for_reminders_page_alteration(
             num,
-            "delrem",
+            callbacks::ReminderListKind::Delete,
             user_timezone,
         )
         .await
@@ -698,7 +587,7 @@ impl TgMessageController {
     ) -> InlineKeyboardMarkup {
         self.get_markup_for_reminders_page_alteration(
             num,
-            "editrem",
+            callbacks::ReminderListKind::Edit,
             user_timezone,
         )
         .await
@@ -711,7 +600,7 @@ impl TgMessageController {
     ) -> InlineKeyboardMarkup {
         self.get_markup_for_reminders_page_alteration(
             num,
-            "pauserem",
+            callbacks::ReminderListKind::Pause,
             user_timezone,
         )
         .await

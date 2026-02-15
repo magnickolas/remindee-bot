@@ -9,6 +9,7 @@ use crate::err::Error;
 use crate::format;
 use crate::handlers::{get_handler, Command, State};
 use crate::lang::{get_user_language, Language};
+use crate::markup::done_markup;
 use crate::parsers::now_time;
 use crate::serializers::Pattern;
 use crate::tg::{clear_markup, send_message, send_message_with_markup};
@@ -22,23 +23,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use teloxide::dispatching::dialogue::serializer::Json;
 use teloxide::dispatching::dialogue::{ErasedStorage, SqliteStorage, Storage};
-use teloxide::types::{
-    InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup,
-    MessageId,
-};
+use teloxide::types::MessageId;
 use teloxide::{
     prelude::*, utils::command::BotCommands, ApiError, RequestError,
 };
 use tokio::time::Instant;
-
-fn done_markup(lang: Language, occ_id: i64) -> InlineKeyboardMarkup {
-    InlineKeyboardMarkup::default().append_row(vec![InlineKeyboardButton::new(
-        t!("Done", locale = lang.code()),
-        InlineKeyboardButtonKind::CallbackData(format!(
-            "donerem::occ::{occ_id}"
-        )),
-    )])
-}
 
 fn is_ignorable_markup_clear_error(err: &RequestError) -> bool {
     matches!(
@@ -437,8 +426,9 @@ mod test {
     use std::sync::Arc;
 
     use crate::{
-        db::MockDatabase, entity::reminder, generic_reminder::GenericReminder,
-        handlers::get_handler, parsers::test::TEST_TIMESTAMP, tg::TgResponse,
+        callbacks, db::MockDatabase, entity::reminder,
+        generic_reminder::GenericReminder, handlers::get_handler,
+        parsers::test::TEST_TIMESTAMP, tg::TgResponse,
     };
     use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
     use chrono_tz::Tz;
@@ -1547,7 +1537,7 @@ mod test {
     async fn test_done_callback_without_timezone() {
         let cb_message = MockMessageText::new().id(42).build();
         let update = MockCallbackQuery::new()
-            .data("donerem::occ::1")
+            .data(callbacks::done_occurrence(1))
             .message(cb_message);
         let mut db = MockDatabase::new();
         db.expect_complete_occurrence()
@@ -1561,7 +1551,7 @@ mod test {
     async fn test_done_callback_clears_stale_markup() {
         let cb_message = MockMessageText::new().id(42).build();
         let update = MockCallbackQuery::new()
-            .data("donerem::occ::1")
+            .data(callbacks::done_occurrence(1))
             .message(cb_message);
         let mut db = MockDatabase::new();
         db.expect_complete_occurrence()

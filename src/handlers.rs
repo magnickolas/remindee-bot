@@ -13,6 +13,7 @@ use teloxide::dispatching::dialogue::ErasedStorage;
 use teloxide::dispatching::dialogue::InMemStorage;
 
 use crate::{
+    callbacks,
     controller::{
         EditMode, ReminderUpdate, TgCallbackController, TgMessageController,
     },
@@ -155,25 +156,25 @@ pub(crate) fn get_handler(
                 .filter_map(|cb_query: CallbackQuery| cb_query.data)
                 .branch(
                     dptree::filter(|cb_data: String| {
-                        cb_data.starts_with("seltz::")
+                        callbacks::is_select_timezone(&cb_data)
                     })
                     .endpoint(select_timezone_handler),
                 )
                 .branch(
                     dptree::filter(|cb_data: String| {
-                        cb_data.starts_with("setlang::")
+                        callbacks::is_set_language(&cb_data)
                     })
                     .endpoint(select_language_handler),
                 )
                 .branch(
                     dptree::filter(|cb_data: String| {
-                        cb_data.starts_with("settings::")
+                        callbacks::is_settings(&cb_data)
                     })
                     .endpoint(settings_menu_handler),
                 )
                 .branch(
                     dptree::filter(|cb_data: String| {
-                        cb_data.starts_with("donerem::occ::")
+                        callbacks::is_done_occurrence(&cb_data)
                     })
                     .endpoint(done_occurrence_handler),
                 )
@@ -356,15 +357,13 @@ async fn select_timezone_handler(
     ctl: TgCallbackController,
     cb_data: String,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if let Some(page_num) = cb_data
-        .strip_prefix("seltz::page::")
-        .and_then(|x| x.parse::<usize>().ok())
-    {
+    if let Some(page_num) = callbacks::parse_select_timezone_page(&cb_data) {
         ctl.msg_ctl
             .select_timezone_set_page(page_num)
             .await
             .map_err(From::from)
-    } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
+    } else if let Some(tz_name) = callbacks::parse_select_timezone_tz(&cb_data)
+    {
         ctl.set_timezone(tz_name).await.map_err(From::from)
     } else {
         ctl.msg_ctl.reply(TgResponse::IncorrectRequest).await?;
@@ -376,7 +375,7 @@ async fn select_language_handler(
     ctl: TgCallbackController,
     cb_data: String,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if let Some(lang_code) = cb_data.strip_prefix("setlang::lang::") {
+    if let Some(lang_code) = callbacks::parse_set_language(&cb_data) {
         ctl.set_language(lang_code).await.map_err(From::from)
     } else {
         ctl.msg_ctl.reply(TgResponse::IncorrectRequest).await?;
@@ -388,7 +387,7 @@ async fn settings_menu_handler(
     ctl: TgCallbackController,
     cb_data: String,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if cb_data == "settings::change_lang" {
+    if callbacks::is_settings_change_language(&cb_data) {
         ctl.msg_ctl.choose_language().await?;
         ctl.acknowledge_callback().await.map_err(From::from)
     } else {
@@ -401,10 +400,7 @@ async fn done_occurrence_handler(
     ctl: TgCallbackController,
     cb_data: String,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if let Some(occ_id) = cb_data
-        .strip_prefix("donerem::occ::")
-        .and_then(|x| x.parse::<i64>().ok())
-    {
+    if let Some(occ_id) = callbacks::parse_done_occurrence(&cb_data) {
         ctl.done_occurrence(occ_id).await.map_err(From::from)
     } else {
         ctl.msg_ctl.reply(TgResponse::IncorrectRequest).await?;
@@ -418,69 +414,69 @@ async fn callback_handler(
     user_tz: Tz,
     dialogue: MyDialogue,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    if let Some(page_num) = cb_data
-        .strip_prefix("seltz::page::")
-        .and_then(|x| x.parse::<usize>().ok())
-    {
+    if let Some(page_num) = callbacks::parse_select_timezone_page(&cb_data) {
         ctl.msg_ctl
             .select_timezone_set_page(page_num)
             .await
             .map_err(From::from)
-    } else if let Some(tz_name) = cb_data.strip_prefix("seltz::tz::") {
+    } else if let Some(tz_name) = callbacks::parse_select_timezone_tz(&cb_data)
+    {
         ctl.set_timezone(tz_name).await.map_err(From::from)
-    } else if cb_data == "settings::change_lang" {
+    } else if callbacks::is_settings_change_language(&cb_data) {
         ctl.msg_ctl.choose_language().await?;
         ctl.acknowledge_callback().await.map_err(From::from)
-    } else if let Some(lang_code) = cb_data.strip_prefix("setlang::lang::") {
+    } else if let Some(lang_code) = callbacks::parse_set_language(&cb_data) {
         ctl.set_language(lang_code).await.map_err(From::from)
-    } else if let Some(page_num) = cb_data
-        .strip_prefix("delrem::page::")
-        .and_then(|x| x.parse::<usize>().ok())
-    {
+    } else if let Some(page_num) = callbacks::parse_reminder_page(
+        callbacks::ReminderListKind::Delete,
+        &cb_data,
+    ) {
         ctl.msg_ctl
             .delete_reminder_set_page(page_num, user_tz)
             .await
             .map_err(From::from)
-    } else if let Some(rem_id) = cb_data
-        .strip_prefix("delrem::rem_alt::")
-        .and_then(|x| x.parse::<i64>().ok())
-    {
+    } else if let Some(rem_id) = callbacks::parse_reminder_alter(
+        callbacks::ReminderListKind::Delete,
+        "rem",
+        &cb_data,
+    ) {
         ctl.delete_reminder(rem_id, user_tz)
             .await
             .map_err(From::from)
-    } else if let Some(page_num) = cb_data
-        .strip_prefix("editrem::page::")
-        .and_then(|x| x.parse::<usize>().ok())
-    {
+    } else if let Some(page_num) = callbacks::parse_reminder_page(
+        callbacks::ReminderListKind::Edit,
+        &cb_data,
+    ) {
         ctl.msg_ctl
             .edit_reminder_set_page(page_num, user_tz)
             .await
             .map_err(From::from)
-    } else if let Some(rem_id) = cb_data
-        .strip_prefix("editrem::rem_alt::")
-        .and_then(|x| x.parse::<i64>().ok())
-    {
+    } else if let Some(rem_id) = callbacks::parse_reminder_alter(
+        callbacks::ReminderListKind::Edit,
+        "rem",
+        &cb_data,
+    ) {
         ctl.choose_edit_mode_reminder(rem_id)
             .await
             .map_err(From::from)
-    } else if let Some(page_num) = cb_data
-        .strip_prefix("pauserem::page::")
-        .and_then(|x| x.parse::<usize>().ok())
-    {
+    } else if let Some(page_num) = callbacks::parse_reminder_page(
+        callbacks::ReminderListKind::Pause,
+        &cb_data,
+    ) {
         ctl.msg_ctl
             .pause_reminder_set_page(page_num, user_tz)
             .await
             .map_err(From::from)
-    } else if let Some(rem_id) = cb_data
-        .strip_prefix("pauserem::rem_alt::")
-        .and_then(|x| x.parse::<i64>().ok())
-    {
+    } else if let Some(rem_id) = callbacks::parse_reminder_alter(
+        callbacks::ReminderListKind::Pause,
+        "rem",
+        &cb_data,
+    ) {
         ctl.pause_reminder(rem_id, user_tz)
             .await
             .map_err(From::from)
-    } else if let Some(rem_id) = cb_data
-        .strip_prefix("edit_rem_mode::rem_time_pattern::")
-        .and_then(|x| x.parse::<i64>().ok())
+    } else if let Some(rem_id) =
+        callbacks::parse_edit_mode_time_pattern(&cb_data)
     {
         ctl.set_edit_mode_reminder(EditMode::TimePattern).await?;
         #[allow(clippy::useless_conversion)]
@@ -491,9 +487,8 @@ async fn callback_handler(
             })
             .await
             .map_err(From::from)
-    } else if let Some(rem_id) = cb_data
-        .strip_prefix("edit_rem_mode::rem_description::")
-        .and_then(|x| x.parse::<i64>().ok())
+    } else if let Some(rem_id) =
+        callbacks::parse_edit_mode_description(&cb_data)
     {
         ctl.set_edit_mode_reminder(EditMode::Description).await?;
         #[allow(clippy::useless_conversion)]
