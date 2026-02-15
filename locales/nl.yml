@@ -7,7 +7,7 @@ DateIntervalTooLargeForRange: "⚠️ Het interval is te groot voor dit datumber
 TimeRangeEndBeforeStart: "⚠️ Het einde van het tijdsbereik moet later zijn dan het begin."
 DateRangeEndBeforeStart: "⚠️ Het einde van het datumbereik moet op of na het begin liggen."
 DateInPast: "⚠️ Datum ligt in het verleden. Gebruik een toekomstige datum."
-NagIntervalUnsupportedUnit: "⚠️ Voor !interval worden alleen w, d, h, m en s ondersteund."
+NagIntervalUnsupportedUnit: "⚠️ Het herhalingsinterval ondersteunt alleen w, d, h, m, s."
 CronExpressionInvalid: "⚠️ Ongeldige cron-expressie."
 QueryingError: "⚠️ Fout bij het ophalen van herinneringen."
 RemindersList: |

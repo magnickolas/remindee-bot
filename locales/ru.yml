@@ -7,7 +7,7 @@ DateIntervalTooLargeForRange: "⚠️ Интервал слишком больш
 TimeRangeEndBeforeStart: "⚠️ Конец диапазона времени должен быть позже начала."
 DateRangeEndBeforeStart: "⚠️ Конец диапазона дат должен быть не раньше начала."
 DateInPast: "⚠️ Указанная дата уже в прошлом. Укажите будущую дату."
-NagIntervalUnsupportedUnit: "⚠️ Для !интервала поддерживаются только w, d, h, m, s."
+NagIntervalUnsupportedUnit: "⚠️ Интервал повторения поддерживает только w, d, h, m, s."
 CronExpressionInvalid: "⚠️ Некорректное cron-выражение."
 QueryingError: "⚠️ Ошибка при запросе уведомлений."
 RemindersList: |
