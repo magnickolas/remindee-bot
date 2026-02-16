@@ -18,20 +18,6 @@ impl MigrationTrait for Migration {
             .await?;
 
         manager
-            .alter_table(
-                Table::alter()
-                    .table(ReminderMessage::Table)
-                    .add_column(
-                        ColumnDef::new(ReminderMessage::IsDelivery)
-                            .boolean()
-                            .not_null()
-                            .default(false),
-                    )
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
             .create_table(
                 Table::create()
                     .table(ReminderOccurrence::Table)
@@ -143,15 +129,6 @@ impl MigrationTrait for Migration {
         manager
             .alter_table(
                 Table::alter()
-                    .table(ReminderMessage::Table)
-                    .drop_column(ReminderMessage::IsDelivery)
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .alter_table(
-                Table::alter()
                     .table(Reminder::Table)
                     .drop_column(Reminder::NagIntervalSec)
                     .to_owned(),
@@ -164,12 +141,6 @@ impl MigrationTrait for Migration {
 enum Reminder {
     Table,
     NagIntervalSec,
-}
-
-#[derive(Iden)]
-enum ReminderMessage {
-    Table,
-    IsDelivery,
 }
 
 #[derive(Iden)]
