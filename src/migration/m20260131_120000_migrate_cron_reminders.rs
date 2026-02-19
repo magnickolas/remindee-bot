@@ -1,7 +1,7 @@
 use chrono::NaiveDateTime;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::NotSet, ConnectionTrait, EntityTrait,
-    QueryResult, Set, Statement,
+    ActiveValue::NotSet, ConnectionTrait, EntityTrait, QueryResult, Set,
+    Statement,
 };
 use sea_orm_migration::prelude::*;
 
@@ -74,7 +74,7 @@ impl MigrationTrait for Migration {
                 .map_err(|err| DbErr::Custom(err.to_string()))?;
 
             let rec_id = format!("cron:{id}");
-            reminder::ActiveModel {
+            reminder::Entity::insert(reminder::ActiveModel {
                 id: NotSet,
                 rec_id: Set(rec_id.clone()),
                 chat_id: Set(chat_id),
@@ -84,31 +84,35 @@ impl MigrationTrait for Migration {
                 paused: Set(paused),
                 nag_interval_sec: NotSet,
                 pattern: Set(Some(pattern_json)),
-            }
-            .insert(conn)
+            })
+            .exec(conn)
             .await?;
 
             if let Some(msg_id) = msg_id {
-                reminder_message::ActiveModel {
-                    id: NotSet,
-                    rec_id: Set(rec_id.clone()),
-                    chat_id: Set(chat_id),
-                    msg_id: Set(msg_id),
-                    is_delivery: NotSet,
-                }
-                .insert(conn)
+                reminder_message::Entity::insert(
+                    reminder_message::ActiveModel {
+                        id: NotSet,
+                        rec_id: Set(rec_id.clone()),
+                        chat_id: Set(chat_id),
+                        msg_id: Set(msg_id),
+                        is_delivery: NotSet,
+                    },
+                )
+                .exec(conn)
                 .await?;
             }
 
             if let Some(reply_id) = reply_id {
-                reminder_message::ActiveModel {
-                    id: NotSet,
-                    rec_id: Set(rec_id.clone()),
-                    chat_id: Set(chat_id),
-                    msg_id: Set(reply_id),
-                    is_delivery: NotSet,
-                }
-                .insert(conn)
+                reminder_message::Entity::insert(
+                    reminder_message::ActiveModel {
+                        id: NotSet,
+                        rec_id: Set(rec_id.clone()),
+                        chat_id: Set(chat_id),
+                        msg_id: Set(reply_id),
+                        is_delivery: NotSet,
+                    },
+                )
+                .exec(conn)
                 .await?;
             }
         }

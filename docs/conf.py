@@ -9,7 +9,7 @@
 project = "remindee-bot"
 copyright = "2025, Nikolai Oplachko"
 author = "Nikolai Oplachko"
-release = "0.5.0"
+release = "0.5.1"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
