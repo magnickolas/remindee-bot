@@ -1236,6 +1236,60 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_list_splits_long_output() {
+        let mut db = MockDatabase::new();
+        let tz = mock_timezone();
+        db.expect_get_user_timezone_name()
+            .returning(|_| Ok(Some(mock_timezone_name())));
+        db.expect_get_user_language_name()
+            .returning(|_| Ok(Some(mock_language_name())));
+
+        let mut rem1 = basic_mock_reminder();
+        rem1.id = 1;
+        rem1.desc = "a".repeat(2500);
+
+        let mut rem2 = basic_mock_reminder();
+        rem2.id = 2;
+        rem2.desc = "b".repeat(2500);
+        rem2.time = rem2.time + chrono::TimeDelta::minutes(1);
+
+        let rem1_clone = rem1.clone();
+        let rem2_clone = rem2.clone();
+        db.expect_get_sorted_reminders().returning(move |_| {
+            Ok(vec![
+                Box::new(rem1_clone.clone().into_active_model()),
+                Box::new(rem2_clone.clone().into_active_model()),
+            ])
+        });
+
+        let message = MockMessageText::new().text("/list");
+        let mut bot = mock_bot(db, message);
+        bot.dispatch().await;
+
+        let texts = bot
+            .get_responses()
+            .sent_messages
+            .iter()
+            .map(|msg| msg.text().unwrap().to_owned())
+            .collect::<Vec<_>>();
+
+        assert_eq!(texts.len(), 2);
+        assert_eq!(
+            texts,
+            vec![
+                TgResponse::RemindersList(
+                    rem1.into_active_model().to_unescaped_string(tz),
+                )
+                .to_string(),
+                TgResponse::RemindersList(
+                    rem2.into_active_model().to_unescaped_string(tz),
+                )
+                .to_string(),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn test_edit_reply() {
         let mut db = MockDatabase::new();
         let rem = basic_mock_reminder();

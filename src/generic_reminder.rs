@@ -34,7 +34,7 @@ fn format_nag_interval(mut secs: i64) -> String {
 
 /// Interface to grab reminders of different types together
 /// to format, display, sort or get attributes
-pub(crate) trait GenericReminder {
+pub(crate) trait GenericReminder: Send {
     fn get_time(&self) -> NaiveDateTime;
     fn get_id(&self) -> Option<i64>;
     fn get_type(&self) -> &'static str;

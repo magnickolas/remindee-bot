@@ -24,6 +24,7 @@ use teloxide::{ApiError, RequestError};
 use tg::TgResponse;
 
 const REMINDER_PAGE_SIZE: usize = 15;
+const MAX_REMINDERS_LIST_MESSAGE_LEN: usize = 4096;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) enum EditMode {
@@ -60,6 +61,88 @@ fn is_ignorable_markup_clear_error(err: &RequestError) -> bool {
             | RequestError::Api(ApiError::MessageToEditNotFound)
             | RequestError::Api(ApiError::MessageIdInvalid)
     )
+}
+
+fn reminders_list_message_len(reminders: &str, lang: &str) -> usize {
+    TgResponse::RemindersList(reminders.to_owned())
+        .to_string_lang(lang)
+        .len()
+}
+
+fn split_reminder_list_line(line: &str, lang: &str) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+
+    for ch in line.chars() {
+        let mut candidate = current.clone();
+        candidate.push(ch);
+        if reminders_list_message_len(&candidate, lang)
+            <= MAX_REMINDERS_LIST_MESSAGE_LEN
+        {
+            current = candidate;
+        } else {
+            if !current.is_empty() {
+                chunks.push(current);
+            }
+            current = ch.to_string();
+        }
+    }
+
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+
+    if chunks.is_empty() {
+        vec![String::new()]
+    } else {
+        chunks
+    }
+}
+
+fn split_reminders_list_chunks(
+    reminder_lines: Vec<String>,
+    lang: &str,
+) -> Vec<String> {
+    if reminder_lines.is_empty() {
+        return vec![String::new()];
+    }
+
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+
+    for line in reminder_lines {
+        let candidate = if current.is_empty() {
+            line.clone()
+        } else {
+            format!("{current}\n{line}")
+        };
+
+        if reminders_list_message_len(&candidate, lang)
+            <= MAX_REMINDERS_LIST_MESSAGE_LEN
+        {
+            current = candidate;
+            continue;
+        }
+
+        if !current.is_empty() {
+            chunks.push(current);
+            current = String::new();
+        }
+
+        if reminders_list_message_len(&line, lang)
+            <= MAX_REMINDERS_LIST_MESSAGE_LEN
+        {
+            current = line;
+        } else {
+            chunks.extend(split_reminder_list_line(&line, lang));
+        }
+    }
+
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+
+    chunks
 }
 
 impl TgMessageController {
@@ -149,7 +232,7 @@ impl TgMessageController {
     pub(crate) async fn list(&self, user_tz: Tz) -> Result<(), RequestError> {
         let lang = self.user_lang().await;
 
-        let reminders_str =
+        let reminder_lines =
             match self.db.get_sorted_reminders(self.chat_id.0).await {
                 Ok(sorted_reminders) => sorted_reminders
                     .into_iter()
@@ -157,16 +240,29 @@ impl TgMessageController {
                         rem.to_unescaped_string(user_tz)
                             .replace('@', "@\u{200B}")
                     })
-                    .collect::<Vec<String>>()
-                    .join("\n"),
+                    .collect::<Vec<String>>(),
                 Err(err) => {
                     log::error!("{err}");
-                    TgResponse::QueryingError.to_string_lang(lang.code())
+                    return tg::send_silent_message(
+                        &TgResponse::QueryingError.to_string_lang(lang.code()),
+                        &self.bot,
+                        self.chat_id,
+                    )
+                    .await
+                    .map(|_| ());
                 }
             };
-        self.reply(TgResponse::RemindersList(reminders_str))
-            .await
-            .map(|_| ())
+
+        for chunk in split_reminders_list_chunks(reminder_lines, lang.code()) {
+            tg::send_silent_message(
+                &TgResponse::RemindersList(chunk).to_string_lang(lang.code()),
+                &self.bot,
+                self.chat_id,
+            )
+            .await?;
+        }
+
+        Ok(())
     }
 
     /// Send a markup with timezone prefixes to select
