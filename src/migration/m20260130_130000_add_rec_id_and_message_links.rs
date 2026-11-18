@@ -1,4 +1,4 @@
-use sea_orm::{ConnectionTrait, Statement};
+use sea_orm::ConnectionTrait;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -8,8 +8,6 @@ pub struct Migration;
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let conn = manager.get_connection();
-        let db_backend = manager.get_database_backend();
-
         manager
             .alter_table(
                 Table::alter()
@@ -24,11 +22,16 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        conn.execute(Statement::from_string(
-            db_backend,
-            "UPDATE reminder SET rec_id = id WHERE rec_id = '' OR rec_id IS NULL",
-        ))
-        .await?;
+        let populate_rec_ids = Query::update()
+            .table(Reminder::Table)
+            .value(Reminder::RecId, Expr::col(Reminder::Id))
+            .cond_where(
+                Cond::any()
+                    .add(Expr::col(Reminder::RecId).eq(""))
+                    .add(Expr::col(Reminder::RecId).is_null()),
+            )
+            .to_owned();
+        conn.execute(&populate_rec_ids).await?;
 
         manager
             .create_table(
@@ -61,24 +64,39 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-        conn.execute(Statement::from_string(
-            db_backend,
-            concat!(
-                "INSERT INTO reminder_message (rec_id, chat_id, msg_id) ",
-                "SELECT rec_id, chat_id, msg_id FROM reminder ",
-                "WHERE msg_id IS NOT NULL"
-            ),
-        ))
-        .await?;
-        conn.execute(Statement::from_string(
-            db_backend,
-            concat!(
-                "INSERT INTO reminder_message (rec_id, chat_id, msg_id) ",
-                "SELECT rec_id, chat_id, reply_id FROM reminder ",
-                "WHERE reply_id IS NOT NULL"
-            ),
-        ))
-        .await?;
+        let delivery_messages = Query::select()
+            .columns([Reminder::RecId, Reminder::ChatId, Reminder::MsgId])
+            .from(Reminder::Table)
+            .and_where(Expr::col(Reminder::MsgId).is_not_null())
+            .to_owned();
+        let mut insert_delivery_messages = Query::insert();
+        insert_delivery_messages
+            .into_table(ReminderMessage::Table)
+            .columns([
+                ReminderMessage::RecId,
+                ReminderMessage::ChatId,
+                ReminderMessage::MsgId,
+            ])
+            .select_from(delivery_messages)
+            .map_err(|err| DbErr::Custom(err.to_string()))?;
+        conn.execute(&insert_delivery_messages).await?;
+
+        let reply_messages = Query::select()
+            .columns([Reminder::RecId, Reminder::ChatId, Reminder::ReplyId])
+            .from(Reminder::Table)
+            .and_where(Expr::col(Reminder::ReplyId).is_not_null())
+            .to_owned();
+        let mut insert_reply_messages = Query::insert();
+        insert_reply_messages
+            .into_table(ReminderMessage::Table)
+            .columns([
+                ReminderMessage::RecId,
+                ReminderMessage::ChatId,
+                ReminderMessage::MsgId,
+            ])
+            .select_from(reply_messages)
+            .map_err(|err| DbErr::Custom(err.to_string()))?;
+        conn.execute(&insert_reply_messages).await?;
 
         manager
             .drop_index(Index::drop().name("ix_reminder_msg_id").to_owned())
@@ -208,6 +226,8 @@ impl MigrationTrait for Migration {
 #[derive(Iden)]
 pub enum Reminder {
     Table,
+    Id,
+    ChatId,
     MsgId,
     ReplyId,
     RecId,

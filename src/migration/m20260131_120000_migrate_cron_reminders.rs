@@ -1,7 +1,6 @@
 use chrono::NaiveDateTime;
 use sea_orm::{
     ActiveValue::NotSet, ConnectionTrait, EntityTrait, QueryResult, Set,
-    Statement,
 };
 use sea_orm_migration::prelude::*;
 
@@ -22,18 +21,21 @@ impl MigrationTrait for Migration {
         }
 
         let conn = manager.get_connection();
-        let db_backend = manager.get_database_backend();
-
-        let rows = conn
-            .query_all(Statement::from_string(
-                db_backend,
-                concat!(
-                    "SELECT id, chat_id, cron_expr, time, desc, user_id, ",
-                    "paused, msg_id, reply_id ",
-                    "FROM cron_reminder"
-                ),
-            ))
-            .await?;
+        let select_cron_reminders = Query::select()
+            .columns([
+                CronReminder::Id,
+                CronReminder::ChatId,
+                CronReminder::CronExpr,
+                CronReminder::Time,
+                CronReminder::Desc,
+                CronReminder::UserId,
+                CronReminder::Paused,
+                CronReminder::MsgId,
+                CronReminder::ReplyId,
+            ])
+            .from(CronReminder::Table)
+            .to_owned();
+        let rows = conn.query_all(&select_cron_reminders).await?;
 
         for row in rows {
             let id = get_required_i64(&row, "id")?;
@@ -117,21 +119,30 @@ impl MigrationTrait for Migration {
             }
         }
 
-        conn.execute(Statement::from_string(
-            db_backend,
-            "DROP INDEX IF EXISTS ix_cron_reminder_reply_id",
-        ))
-        .await?;
-        conn.execute(Statement::from_string(
-            db_backend,
-            "DROP INDEX IF EXISTS ix_cron_reminder_msg_id",
-        ))
-        .await?;
-        conn.execute(Statement::from_string(
-            db_backend,
-            "DROP INDEX IF EXISTS ix_cron_reminder_paused_time",
-        ))
-        .await?;
+        manager
+            .drop_index(
+                Index::drop()
+                    .if_exists()
+                    .name("ix_cron_reminder_reply_id")
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_index(
+                Index::drop()
+                    .if_exists()
+                    .name("ix_cron_reminder_msg_id")
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_index(
+                Index::drop()
+                    .if_exists()
+                    .name("ix_cron_reminder_paused_time")
+                    .to_owned(),
+            )
+            .await?;
 
         manager
             .drop_table(Table::drop().table(CronReminder::Table).to_owned())

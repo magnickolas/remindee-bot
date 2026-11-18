@@ -64,3 +64,87 @@ impl MigratorTrait for Migrator {
         ]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use sea_orm::{ConnectionTrait, Database, EntityTrait};
+
+    use super::{Migrator, MigratorTrait, SchemaManager};
+    use crate::entity::{reminder, reminder_message};
+
+    #[tokio::test]
+    async fn modernized_migrations_preserve_legacy_data() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+
+        // Stop after chat_id was split from user_id, immediately before the
+        // modernized data migrations begin.
+        Migrator::up(&db, Some(4)).await.unwrap();
+        db.execute_unprepared(
+            r#"
+            INSERT INTO reminder
+                (id, chat_id, time, desc, sent, edit, user_id)
+            VALUES
+                (7, 42, '2026-01-01 12:00:00', 'kept reminder', 0, 0, NULL),
+                (8, 42, '2026-01-02 12:00:00', 'sent reminder', 1, 0, NULL);
+            INSERT INTO cron_reminder
+                (id, chat_id, cron_expr, time, desc, sent, edit, user_id)
+            VALUES
+                (5, 99, '0 9 * * *', '2026-01-03 09:00:00',
+                 'kept cron reminder', 0, 0, NULL),
+                (6, 99, '0 10 * * *', '2026-01-04 10:00:00',
+                 'sent cron reminder', 1, 0, NULL)
+            "#,
+        )
+        .await
+        .unwrap();
+
+        // Apply through the migration immediately before rec_id and message
+        // links are introduced.
+        Migrator::up(&db, Some(13)).await.unwrap();
+        db.execute_unprepared(
+            r#"
+            UPDATE reminder SET msg_id = 101, reply_id = 102 WHERE id = 7;
+            UPDATE cron_reminder SET msg_id = 201, reply_id = 202 WHERE id = 5
+            "#,
+        )
+        .await
+        .unwrap();
+
+        Migrator::up(&db, None).await.unwrap();
+
+        let mut reminders = reminder::Entity::find().all(&db).await.unwrap();
+        reminders.sort_by_key(|model| model.rec_id.clone());
+        assert_eq!(reminders.len(), 2);
+        assert_eq!(reminders[0].rec_id, "7");
+        assert_eq!(reminders[0].chat_id, 42);
+        assert_eq!(reminders[0].user_id, Some(42));
+        assert_eq!(reminders[0].desc, "kept reminder");
+        assert_eq!(reminders[1].rec_id, "cron:5");
+        assert_eq!(reminders[1].chat_id, 99);
+        assert_eq!(reminders[1].user_id, Some(99));
+        assert_eq!(reminders[1].desc, "kept cron reminder");
+
+        let mut messages =
+            reminder_message::Entity::find().all(&db).await.unwrap();
+        messages.sort_by_key(|model| model.msg_id);
+        assert_eq!(
+            messages
+                .iter()
+                .map(|model| (
+                    model.rec_id.as_str(),
+                    model.chat_id,
+                    model.msg_id,
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                ("7", 42, 101),
+                ("7", 42, 102),
+                ("cron:5", 99, 201),
+                ("cron:5", 99, 202),
+            ]
+        );
+
+        let manager = SchemaManager::new(&db);
+        assert!(!manager.has_table("cron_reminder").await.unwrap());
+    }
+}
