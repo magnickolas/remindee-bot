@@ -1,3 +1,5 @@
+#![allow(unreachable_code)] // BotCommands emits an unreachable parser branch.
+
 use chrono_tz::Tz;
 use dptree::case;
 use teloxide::{

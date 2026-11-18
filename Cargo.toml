@@ -5,7 +5,6 @@ authors = ["Nikolai Oplachko <magnickolas@gmail.com>"]
 edition = "2021"
 license = "GPL-3.0-only"
 description = "Reminder bot for Telegram without bullshit"
-homepage = "https://github.com/magnickolas/remindee-bot"
 repository = "https://github.com/magnickolas/remindee-bot"
 readme = "README.md"
 keywords = ["bot", "reminder", "cron", "telegram-bot", "reminders"]
@@ -28,9 +27,6 @@ serde_json = "1.0"
 bitmask-enum = "2.1"
 nonempty = "0.12"
 tzf-rs = { version = "2.0.0", default-features = false, features = ["bundled"] }
-teloxide_tests = "0.4.0"
-teloxide_tests_macros = "0.2.0"
-mockall = "0.15"
 remindee-parser = { version = "0.3.0", path = "remindee-parser" }
 
 [dependencies.serde]
@@ -57,14 +53,13 @@ features = ["macros", "sqlite-storage-rustls"]
 version = "1.25"
 features = ["rt-multi-thread", "macros"]
 
-[dependencies.openssl]
-version = "0.10"
-features = ["vendored"]
-
 [dependencies.rust-i18n]
 version = "4"
 
 [dev-dependencies]
+teloxide_tests = "0.4.0"
+teloxide_tests_macros = "0.2.0"
+mockall = "0.15"
 test-case = "3.0"
 strfmt = "0.2"
 serial_test = "4.0"
