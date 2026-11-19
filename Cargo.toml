@@ -1,6 +1,6 @@
 [package]
 name = "remindee-bot"
-version = "0.6.1"
+version = "0.6.2"
 authors = ["Nikolai Oplachko <magnickolas@gmail.com>"]
 edition = "2021"
 license = "GPL-3.0-only"
@@ -56,7 +56,8 @@ features = ["rt-multi-thread", "macros"]
 [dependencies.rust-i18n]
 version = "4"
 
-[target.armv7-unknown-linux-gnueabihf.dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
+# Linux release run without a system OpenSSL library.
 openssl = { version = "0.10", features = ["vendored"] }
 
 [dev-dependencies]

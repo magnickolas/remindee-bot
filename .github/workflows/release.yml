@@ -88,6 +88,15 @@ jobs:
         if: ${{ matrix.is_windows }}
         run: cargo build --verbose --release --target ${{ matrix.target }}
 
+      - name: Check Linux OpenSSL linkage
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          dynamic_section=$(LC_ALL=C readelf -d "$BINARY_PATH")
+          if grep -E 'Shared library: \[lib(ssl|crypto)\.so' <<< "$dynamic_section"; then
+            echo "::error::Linux release binary links to a shared OpenSSL library"
+            exit 1
+          fi
+
       - name: Strip release binary
         if: ${{ ! matrix.is_arm && ! matrix.is_windows }}
         run: strip ${{ env.BINARY_PATH }}
